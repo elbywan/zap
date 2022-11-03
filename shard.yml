@@ -1,0 +1,23 @@
+name: zap
+version: 0.1.0
+
+authors:
+  - Julien Elbaz <elbywan@hotmail.com>
+
+targets:
+  zap:
+    main: src/zap.cr
+
+crystalline:
+  main: .crystalline_main.cr
+
+dependencies:
+  crystar:
+    github: naqvis/crystar
+    branch: master
+  debug:
+    github: Sija/debug.cr
+
+crystal: 1.6.1
+
+license: MIT
