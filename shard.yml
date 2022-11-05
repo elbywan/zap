@@ -15,8 +15,8 @@ dependencies:
   crystar:
     github: naqvis/crystar
     branch: master
-  debug:
-    github: Sija/debug.cr
+  term-cursor:
+    github: crystal-term/cursor
 
 crystal: 1.6.1
 

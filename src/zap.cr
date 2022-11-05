@@ -1,49 +1,61 @@
 require "./ext/**"
-require "debug"
+require "log"
+require "colorize"
+require "./config"
 require "./utils/**"
 require "./store"
 require "./package"
+require "./lockfile"
 require "./semver"
 require "./resolvers/resolver"
-require "./resolvers/registry"
+require "./resolvers/*"
+require "./installers/installer"
+require "./installers/*"
+require "./reporter"
+require "./cli"
 
 require "benchmark"
 
-Debug::Logger.configure do |settings|
-  settings.show_severity = false
-  settings.show_datetime = true
-  settings.show_progname = false
-end
-
-Debug.configure do |settings|
-  settings.location_detection = :none
-end
-
 module Zap
-  VERSION = "0.1.0"
+  VERSION = {{ `shards version`.stringify }}.chomp
 
-  class_getter store = Store.new
-  class_getter pipeline = Pipeline.new
-  class_getter lockfile = Lockfile.new
+  Log          = ::Log.for("zap")
+  PROJECT_PATH = Path.new(Config.project_directory)
 
-  Resolver::Registry.init(@@store)
+  class_property pipeline = Pipeline.new
+  class_property lockfile : Lockfile = Lockfile.new
+  class_property reporter : Reporter = Reporter.new
 
-  root_package = Package.init(Path.new "../wretch")
-  root_package.resolve_dependencies(self.store, root_package: true, pipeline: self.pipeline)
+  CLI.parse
 
-  self.pipeline.await
+  puts <<-TERM
+  ⚡ #{"Zap".colorize.mode(:bright).mode(:underline)} #{"(v#{VERSION})".colorize.mode(:dim)}
+     #{"project:".colorize(:blue)} #{PROJECT_PATH.normalize} • #{"store:".colorize(:blue)} #{Config.global_store_path} • #{"workers:".colorize(:blue)} #{Crystal::Scheduler.nb_of_workers}
+     #{"lockfile:".colorize(:blue)} #{lockfile.read_from_disk ? "ok".colorize(:green) : "not found".colorize(:red)}
+  \n
+  TERM
 
-  self.lockfile.write
+  realtime = nil
+  memory = Benchmark.memory {
+    realtime = Benchmark.realtime {
+      Resolver::Registry.init
 
-  # process.start
-  # p! package
-  # wretch_resolver = Resolver::Registry.new("wretch", Semver.parse("~1.0.0"))
-  # wretch_resolver.fetch_metadata
-  # wretch_resolver.download(store)
-  # Batcher.stop_loop
-  # puts process.results
+      Zap.reporter.report_resolver_updates
+      main_package = Package.init(PROJECT_PATH)
+      main_package.resolve_dependencies(pipeline: Zap.pipeline)
+      Zap.pipeline.await
+      Zap.reporter.stop
 
-  # resolver = Resolver::Registry.new("statuses", Semver.parse(">=1.5.0 <1.6.0"))
-  # debug! resolver.fetch_metadata
-  # debug! resolver.download(store)
+      Zap.pipeline = Pipeline.new
+      Zap.reporter.report_installer_updates
+      installer = Installer::Npm.install
+      Zap.pipeline.await
+      Zap.reporter.stop
+
+      Zap.lockfile.prune(main_package)
+      Zap.lockfile.write
+    }
+  }
+
+  Zap.reporter.report_done(realtime, memory)
 end

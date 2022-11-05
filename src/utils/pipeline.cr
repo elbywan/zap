@@ -1,4 +1,4 @@
-class Pipeline
+class Zap::Pipeline
   getter counter = 0
   getter progress = 0
   getter max = 0
@@ -18,13 +18,15 @@ class Pipeline
     ensure
       @mutex.synchronize do
         @counter -= 1
-        p "#{@progress += 1} / #{max}"
-        @end_channel.send(nil) if @counter == 0
+        if @counter == 0
+          @end_channel.close
+        end
       end
     end
   end
 
   def await
-    @end_channel.receive
+    Fiber.yield
+    @end_channel.receive? if @counter > 0
   end
 end

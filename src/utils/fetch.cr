@@ -1,7 +1,7 @@
 require "http/client"
 require "json"
 
-module Fetch
+module Zap::Fetch
   abstract class Cache
     abstract def get(url : String, etag : String?) : String?
     abstract def set(url : String, value : String, expiry : Time::Span?, etag : String?) : Nil
@@ -43,8 +43,8 @@ module Fetch
       META_FILE_NAME = "meta.json"
       @path : Path
 
-      def initialize(@store : Store)
-        @path = @store.store_path / ".fetch_cache"
+      def initialize
+        @path = Path.new(Config.global_store_path, ".fetch_cache")
         Dir.mkdir_p(@path)
       end
 
@@ -61,8 +61,8 @@ module Fetch
             return File.read(path)
           end
         end
-        if etag && meta_etag
-          return File.read(path) if meta_etag == etag
+        if etag && meta_etag && meta_etag == etag
+          return File.read(path)
         end
       end
 
@@ -135,6 +135,7 @@ module Fetch
               body = @cache.get(full_url, etag)
 
               if body
+                # close the reusable connection and discard the body
                 http.close
                 next
               end
@@ -142,6 +143,13 @@ module Fetch
               cache_control_directives = response.headers["Cache-Control"]?.try &.split(/\s*,\s*/)
               expiry = cache_control_directives.try &.find { |d| d.starts_with?("max-age=") }.try &.split("=")[1]?.try &.to_i?.try &.seconds
               body = @cache.set(full_url, response.body_io.gets_to_end, expiry, etag)
+            ensure
+              begin
+                # drain the body
+                response.body_io.skip_to_end if response && response.body_io && !response.body_io.closed?
+              rescue
+                # ignore errors
+              end
             end
           end
         ensure

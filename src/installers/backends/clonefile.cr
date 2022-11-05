@@ -1,0 +1,14 @@
+module Zap::Backend
+  module CloneFile
+    def self.install(dependency : Package, target : Path, &on_installing) : Bool
+      src_path, dest_path, exists = Backend.prepare(dependency, target, mkdir_parent: true)
+      return false if exists
+      yield
+      result = LibC.clonefile(src_path.to_s, dest_path.to_s, 0)
+      if result == -1
+        raise "Error cloning file: #{Errno.value} #{src_path.to_s} -> #{dest_path.to_s}"
+      end
+      true
+    end
+  end
+end

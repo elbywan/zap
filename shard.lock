@@ -4,7 +4,7 @@ shards:
     git: https://github.com/naqvis/crystar.git
     version: 0.2.0+git.commit.56db8bb9dfbd5ed6d7908353405a5fae632a6561
 
-  debug:
-    git: https://github.com/sija/debug.cr.git
-    version: 2.0.2
+  term-cursor:
+    git: https://github.com/crystal-term/cursor.git
+    version: 0.1.0+git.commit.8805d5f686d153db92cf2ce3333433f8ed3708d0
 
