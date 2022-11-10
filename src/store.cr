@@ -9,11 +9,23 @@ struct Zap::Store
 
   def self.init_package(name : String, version : String)
     path = package_path(name, version)
+    FileUtils.rm_rf(path) if Dir.exists?(path)
     Dir.mkdir_p(path)
   end
 
   def self.remove_package(name : String, version : String)
     Dir.delete(package_path(name, version))
+  end
+
+  def self.store_tarball(name : String, version : String, io : IO)
+    Store.init_package(name, version)
+    TarGzip.unpack(io) do |entry, file_path, io|
+      if (entry.flag === Crystar::DIR)
+        Store.store_package_dir(name, version, file_path)
+      else
+        Store.store_package_file(name, version, file_path, entry.io)
+      end
+    end
   end
 
   def self.store_package_file(package_name : String, package_version : String, relative_file_path : String | Path, file_io : IO)

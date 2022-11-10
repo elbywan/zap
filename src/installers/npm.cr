@@ -32,16 +32,64 @@ module Zap::Installer
       case dependency.kind
       when .file?
         Zap.reporter.on_installing_package
-        unless relative_path = dependency.dist.try &.as(Package::LinkDist)[:link]
-          raise "Cannot install file dependency #{dependency.name} because the dist.link field is missing."
+        case dist = dependency.dist
+        when Package::LinkDist
+          relative_path = dist[:link]
+          relative_path = Path.new(relative_path)
+          origin_path = cache.last[0].dirname
+          target_path = cache.last[0] / dependency.name
+          FileUtils.rm_rf(target_path) if File.directory?(target_path)
+          File.symlink(relative_path.expand(origin_path), target_path)
+          on_install(dependency, target_path)
+          nil
+        when Package::TarballDist
+          target_path = cache.last[0] / dependency.name
+          FileUtils.rm_rf(target_path) if File.directory?(target_path)
+          extracted_folder = Path.new(dist[:path])
+          package_json = JSON.parse(File.read(extracted_folder / "package.json"))
+          includes = (package_json["files"]?.try(&.as_a.map(&.to_s)) || ["**/*"])
+          if main = package_json["main"]?.try(&.as_s)
+            includes << main
+          end
+          excludes = [] of String
+          if File.readable?(extracted_folder / ".gitignore")
+            excludes = File.read(extracted_folder / ".gitignore").each_line.to_a
+          elsif File.readable?(extracted_folder / ".npmignore")
+            excludes = File.read(extracted_folder / ".npmignore").each_line.to_a
+          end
+          Utils.crawl(extracted_folder, included: includes, excluded: excludes, always_included: ALWAYS_INCLUDED, always_excluded: ALWAYS_IGNORED) do |path|
+            if File.directory?(path)
+              relative_dir_path = Path.new(path).relative_to(extracted_folder)
+              Dir.mkdir_p(target_path / relative_dir_path)
+            else
+              relative_file_path = Path.new(path).relative_to(extracted_folder)
+              Dir.mkdir_p((target_path / relative_file_path).dirname)
+              File.copy(path, target_path / relative_file_path)
+            end
+          end
+        else
+          raise "Unknown dist type: #{dist}"
         end
-        relative_path = Path.new(relative_path)
-        origin_path = cache.last[0].dirname
-        target_path = cache.last[0] / dependency.name
-        FileUtils.rm_rf(target_path) if File.directory?(target_path)
-        File.symlink(relative_path.expand(origin_path), target_path)
-        on_install(dependency, target_path)
-        nil
+      when .tarball?
+        unless temp_path = dependency.dist.try &.as(Package::TarballDist)[:path]
+          raise "Cannot install file dependency #{dependency.name} because the dist.path field is missing."
+        end
+        target = cache.last[0]
+
+        installed = begin
+          Backend.install(dependency: dependency, target: target) {
+            Zap.reporter.on_installing_package
+          }
+        rescue
+          # Fallback to the widely supported "plain copy" backend
+          Backend.install(dependency: dependency, target: target, backend: :copy) { }
+        end
+
+        on_install(dependency, target / dependency.name) if installed
+
+        cache.last[1] << dependency
+        subcache = cache.dup
+        subcache << {target / dependency.name / "node_modules", Set(Package).new}
       when .registry?
         leftmost_dir_and_cache : CacheItem? = nil
         cache.reverse_each { |path, pkgs_at_path|
@@ -77,7 +125,7 @@ module Zap::Installer
     def self.on_install(dependency : Package, install_folder : Path)
       if bin = dependency.bin
         root_bin_dir = Path.new(PROJECT_PATH, "node_modules", ".bin")
-        FileUtils.mkdir_p(root_bin_dir)
+        Dir.mkdir_p(root_bin_dir)
         if bin.is_a?(Hash)
           bin.each do |name, path|
             bin_name = name.split("/").last

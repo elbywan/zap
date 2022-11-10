@@ -31,7 +31,8 @@ class Zap::Package
   # Npm specific fields
   alias RegistryDist = {"tarball": String, "shasum": String, "integrity": String?}
   alias LinkDist = {"link": String}
-  property dist : RegistryDist | LinkDist | Nil = nil
+  alias TarballDist = {"tarball": String, "path": String}
+  property dist : RegistryDist | LinkDist | TarballDist | Nil = nil
 
   # Lockfile specific
   @[JSON::Field(ignore: true)]
@@ -47,7 +48,16 @@ class Zap::Package
   getter key : String do
     case kind
     when .file?
-      "#{name}@file:#{dist.try &.as(LinkDist)["link"]}"
+      case dist = self.dist
+      when TarballDist
+        "#{name}@file:#{dist.try &.["tarball"]}"
+      when LinkDist
+        "#{name}@file:#{dist.try &.["link"]}"
+      else
+        raise "Invalid dist type"
+      end
+    when .tarball?
+      "#{name}@#{self.dist.try &.as(TarballDist)["tarball"]}"
     else
       "#{name}@#{version}"
     end
@@ -65,7 +75,11 @@ class Zap::Package
 
   def resolve_dependencies(*, pipeline : Pipeline = Zap.pipeline, dependent = nil)
     main_package = !dependent
-    pkg_ref = @pkg_ref ||= main_package ? Zap.lockfile : (Zap.lockfile.pkgs[key] ||= self)
+    pkg_ref = @pkg_ref ||= main_package ? Zap.lockfile : self
+    # if !main_package
+    #   Zap.lockfile.pkgs[key] ||= self
+    # end
+
     {
       dependencies:          dependencies,
       optional_dependencies: optional_dependencies,
@@ -91,9 +105,11 @@ class Zap::Package
           stored = resolver.store(metadata) { Zap.reporter.on_downloading_package } if metadata
           Zap.reporter.on_package_downloaded if stored
         rescue e
-          Zap.reporter.stop
-          Zap::Log.error { "#{name}#{version}: #{e}".colorize(:red) }
-          exit(1)
+          if type != :optional_dependencies
+            Zap.reporter.stop
+            Zap::Log.error { "#{name}#{version}: #{e}".colorize(:red) }
+            exit(1)
+          end
         ensure
           Zap.reporter.on_package_resolved
         end

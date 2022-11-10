@@ -19,14 +19,14 @@ require "benchmark"
 module Zap
   VERSION = {{ `shards version`.stringify }}.chomp
 
+  CLI.parse
+
   Log          = ::Log.for("zap")
   PROJECT_PATH = Path.new(Config.project_directory)
 
   class_property pipeline = Pipeline.new
   class_property lockfile : Lockfile = Lockfile.new
   class_property reporter : Reporter = Reporter.new
-
-  CLI.parse
 
   puts <<-TERM
   ⚡ #{"Zap".colorize.mode(:bright).mode(:underline)} #{"(v#{VERSION})".colorize.mode(:dim)}

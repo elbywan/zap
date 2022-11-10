@@ -1,17 +1,17 @@
-require "./src/ext/**"
+# require "./src/ext/**"
 
-def recursively(src_path : Path | String, dest_path : Path | String, &block : (String | Path, String | Path) -> Nil)
-  if Dir.exists?(src_path)
-    Dir.mkdir(dest_path) unless Dir.exists?(dest_path)
-    Dir.each_child(src_path) do |entry|
-      src = File.join(src_path, entry)
-      dest = File.join(dest_path, entry)
-      recursively(src, dest, &block)
-    end
-  else
-    yield(src_path, dest_path)
-  end
-end
+# def recursively(src_path : Path | String, dest_path : Path | String, &block : (String | Path, String | Path) -> Nil)
+#   if Dir.exists?(src_path)
+#     Dir.mkdir(dest_path) unless Dir.exists?(dest_path)
+#     Dir.each_child(src_path) do |entry|
+#       src = File.join(src_path, entry)
+#       dest = File.join(dest_path, entry)
+#       recursively(src, dest, &block)
+#     end
+#   else
+#     yield(src_path, dest_path)
+#   end
+# end
 
 # recursively("./node_modules", "./node_modules2") do |src, dest|
 #   spawn do
@@ -44,7 +44,7 @@ end
 # Fiber.yield
 # puts "after yield"
 
-LibC.clonefile("./node_modules", "./node_modules2", 0)
+# LibC.clonefile("./node_modules", "./node_modules2", 0)
 
 # output = STDOUT
 # output.puts "\nhello"
@@ -54,3 +54,7 @@ LibC.clonefile("./node_modules", "./node_modules2", 0)
 # sleep 1
 # output << "world"
 # output.flush
+
+Dir.glob(Path.new("**/*").expand("/Users/elbywan/Programmation/wretch/test")) do |path|
+  puts Path.new(path).relative_to("/Users/elbywan/Programmation/wretch/test")
+end

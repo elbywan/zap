@@ -14,6 +14,7 @@ abstract class Zap::Resolver::Base
       dependents << dependent.key
     end
     parent_pkg.locked_dependencies[pkg.name] = locked_version
+    Zap.lockfile.pkgs[pkg.key] ||= pkg
   end
 
   abstract def resolve(parent_pkg : Lockfile | Package, *, dependent : Package?, validate_lockfile = false) : Package?
@@ -27,8 +28,8 @@ module Zap::Resolver
     case version_field
     when .starts_with?("git://"), .starts_with?("git+ssh://"), .starts_with?("git+http://"), .starts_with?("git+https://"), .starts_with?("git+file://")
       raise "#{version_field}: git protocol not supported yet"
-    when .starts_with?("http://")
-      raise "#{version_field}: tarball url not supported yet"
+    when .starts_with?("http://"), .starts_with?("https://")
+      TarballUrl.new(name, version_field)
     when .starts_with?("file:")
       File.new(name, version_field)
     when .matches?(/^[^@].*\/.*$/)

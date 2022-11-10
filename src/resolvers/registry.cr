@@ -2,7 +2,6 @@ require "../utils/fetch"
 require "digest"
 require "compress/gzip"
 require "base64"
-require "crystar"
 require "./resolver"
 require "../package"
 require "../semver"
@@ -22,7 +21,7 @@ module Zap::Resolver
     def self.init(base_url = nil)
       @@base_url = base_url if base_url
       fetch_cache = Fetch::Cache::InMemory.new(fallback: Fetch::Cache::InStore.new)
-      @@client_pool ||= Fetch::Pool.new(@@base_url, 50, cache: fetch_cache) { |client|
+      @@client_pool ||= Fetch::Pool.new(@@base_url, 20, cache: fetch_cache) { |client|
         client.read_timeout = 10.seconds
         client.write_timeout = 1.seconds
         client.connect_timeout = 1.second
@@ -39,7 +38,8 @@ module Zap::Resolver
         if validate_lockfile && pkg
           range_set = self.version
           invalidated =
-            (range_set.is_a?(String) && range_set != pkg.version) ||
+            !pkg.kind.registry? ||
+              (range_set.is_a?(String) && range_set != pkg.version) ||
               (range_set.is_a?(Semver::SemverSets) && !range_set.valid?(pkg.version))
           if invalidated
             pkg = nil
@@ -47,7 +47,6 @@ module Zap::Resolver
         end
       end
       pkg ||= self.fetch_metadata
-      on_resolve(pkg, parent_pkg, :registry, pkg.version, dependent)
       begin
         @@resolved_packages_lock.lock
         return if @@resolved_packages.includes?(pkg.key)
@@ -55,6 +54,7 @@ module Zap::Resolver
       ensure
         @@resolved_packages_lock.unlock
       end
+      on_resolve(pkg, parent_pkg, :registry, pkg.version, dependent)
       pkg.resolve_dependencies(dependent: dependent || pkg)
       pkg
     rescue e
@@ -96,23 +96,7 @@ module Zap::Resolver
       client_pool.client &.get(tarball_url) do |response|
         raise "Invalid status code from #{tarball_url} (#{response.status_code})" unless response.status_code == 200
         IO::Digest.new(response.body_io, algorithm_instance).try do |io|
-          Compress::Gzip::Reader.open(io) do |gzip|
-            Crystar::Reader.open(gzip) do |tar|
-              Store.init_package(package_name, version)
-              tar.each_entry do |entry|
-                file_path = Path.new(entry.name.split("/")[1..-1].join("/"))
-                if (entry.flag === Crystar::DIR)
-                  Store.store_package_dir(package_name, version, file_path)
-                else
-                  Store.store_package_file(package_name, version, file_path, entry.io)
-                end
-              rescue e
-                puts e, package_name, version, entry.name, file_path
-                # Ignore
-              end
-            end
-            gzip.skip_to_end if io.peek.try(&.size.> 0)
-          end
+          Store.store_tarball(package_name, version, io)
 
           computed_hash = io.final
           if unsupported_algorithm
