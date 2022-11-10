@@ -10,7 +10,7 @@ class Zap::Lockfile
   property dev_dependencies : SafeHash(String, String)? = nil
   property optional_dependencies : SafeHash(String, String)? = nil
   property peer_dependencies : SafeHash(String, String)? = nil
-  property locked_dependencies : SafeHash(String, String) = SafeHash(String, String).new
+  property pinned_dependencies : SafeHash(String, String) = SafeHash(String, String).new
   property pkgs : SafeHash(String, Package) = SafeHash(String, Package).new
 
   @[JSON::Field(ignore: true)]
@@ -39,7 +39,7 @@ class Zap::Lockfile
         (self.optional_dependencies.try(&.keys) || [] of String)
 
     pruned_deps = Set(String).new
-    self.locked_dependencies.select! { |name, version|
+    self.pinned_dependencies.select! { |name, version|
       unless keep = all_dependencies.includes?(name)
         pruned_deps << ("#{name}@#{version}")
       end

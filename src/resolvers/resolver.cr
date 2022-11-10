@@ -13,7 +13,7 @@ abstract class Zap::Resolver::Base
       dependents = pkg.dependents ||= SafeSet(String).new
       dependents << dependent.key
     end
-    parent_pkg.locked_dependencies[pkg.name] = locked_version
+    parent_pkg.pinned_dependencies[pkg.name] = locked_version
     Zap.lockfile.pkgs[pkg.key] ||= pkg
   end
 

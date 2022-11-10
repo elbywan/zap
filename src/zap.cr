@@ -10,7 +10,7 @@ require "./semver"
 require "./resolvers/resolver"
 require "./resolvers/*"
 require "./installers/installer"
-require "./installers/*"
+require "./installers/npm/*"
 require "./reporter"
 require "./cli"
 
@@ -48,7 +48,7 @@ module Zap
 
       Zap.pipeline = Pipeline.new
       Zap.reporter.report_installer_updates
-      installer = Installer::Npm.install
+      installer = Installers::Npm::Installer.install
       Zap.pipeline.await
       Zap.reporter.stop
 

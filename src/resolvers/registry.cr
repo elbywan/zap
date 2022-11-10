@@ -14,6 +14,7 @@ module Zap::Resolver
     class_getter base_url : String = "https://registry.npmjs.org"
     @@client_pool = nil
 
+    # Prevents resolving the same package multiple times
     @@resolved_packages = Set(String).new
     @@resolved_packages_lock = Mutex.new
     @@lock = Mutex.new
@@ -21,6 +22,7 @@ module Zap::Resolver
     def self.init(base_url = nil)
       @@base_url = base_url if base_url
       fetch_cache = Fetch::Cache::InMemory.new(fallback: Fetch::Cache::InStore.new)
+      # Reusable client pool
       @@client_pool ||= Fetch::Pool.new(@@base_url, 20, cache: fetch_cache) { |client|
         client.read_timeout = 10.seconds
         client.write_timeout = 1.seconds
@@ -33,8 +35,10 @@ module Zap::Resolver
 
     def resolve(parent_pkg : Lockfile | Package, *, dependent : Package? = nil, validate_lockfile = false) : Package?
       pkg = nil
-      if lockfile_version = parent_pkg.locked_dependencies[self.package_name]?
+      # Check if the metadata lives inside the lockfile already
+      if lockfile_version = parent_pkg.pinned_dependencies[self.package_name]?
         pkg = Zap.lockfile.pkgs["#{self.package_name}@#{lockfile_version}"]?
+        # Validate the lockfile version - for root packages
         if validate_lockfile && pkg
           range_set = self.version
           invalidated =
@@ -46,15 +50,17 @@ module Zap::Resolver
           end
         end
       end
+      # If not, fetch the metadata from the registry
       pkg ||= self.fetch_metadata
+      on_resolve(pkg, parent_pkg, :registry, pkg.version, dependent)
       begin
         @@resolved_packages_lock.lock
+        # Skip resolving own dependencies if we already resolved them before
         return if @@resolved_packages.includes?(pkg.key)
         @@resolved_packages.add(pkg.key)
       ensure
         @@resolved_packages_lock.unlock
       end
-      on_resolve(pkg, parent_pkg, :registry, pkg.version, dependent)
       pkg.resolve_dependencies(dependent: dependent || pkg)
       pkg
     rescue e

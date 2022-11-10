@@ -38,7 +38,7 @@ class Zap::Package
   @[JSON::Field(ignore: true)]
   property kind : Kind = Kind::Registry
   @[JSON::Field(ignore: true)]
-  property locked_dependencies : SafeHash(String, String) = SafeHash(String, String).new
+  property pinned_dependencies : SafeHash(String, String) = SafeHash(String, String).new
   @[JSON::Field(ignore: true)]
   property dependents : SafeSet(String)? = nil
 
@@ -76,9 +76,6 @@ class Zap::Package
   def resolve_dependencies(*, pipeline : Pipeline = Zap.pipeline, dependent = nil)
     main_package = !dependent
     pkg_ref = @pkg_ref ||= main_package ? Zap.lockfile : self
-    # if !main_package
-    #   Zap.lockfile.pkgs[key] ||= self
-    # end
 
     {
       dependencies:          dependencies,
