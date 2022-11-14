@@ -5,14 +5,9 @@ module Zap::Installers::Npm::Helpers::Tarball
     end
     target = cache.last[0]
 
-    installed = begin
-      Backend.install(dependency: dependency, target: target) {
-        Zap.reporter.on_installing_package
-      }
-    rescue
-      # Fallback to the widely supported "plain copy" backend
-      Backend.install(dependency: dependency, target: target, backend: :copy) { }
-    end
+    installed = Backend.install(dependency: dependency, target: target, backend: :copy) {
+      Zap.reporter.on_installing_package
+    }
 
     Installer.on_install(dependency, target / dependency.name) if installed
 

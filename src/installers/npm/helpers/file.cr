@@ -26,24 +26,10 @@ module Zap::Installers::Npm::Helpers::File
     target_path = cache.last[0] / dependency.name
     FileUtils.rm_rf(target_path) if ::File.directory?(target_path)
     extracted_folder = Path.new(dist[:path])
-    package_json = JSON.parse(::File.read(extracted_folder / "package.json"))
-    includes = (package_json["files"]?.try(&.as_a.map(&.to_s)) || ["**/*"])
-    if main = package_json["main"]?.try(&.as_s)
-      includes << main
-    end
-    excludes = [] of String
-    if ::File.readable?(extracted_folder / ".gitignore")
-      excludes = ::File.read(extracted_folder / ".gitignore").each_line.to_a
-    elsif ::File.readable?(extracted_folder / ".npmignore")
-      excludes = ::File.read(extracted_folder / ".npmignore").each_line.to_a
-    end
-
-    if ::File.directory?(target_path)
-      return nil
-    end
 
     Zap.reporter.on_installing_package
-    Utils.crawl(extracted_folder, included: includes, excluded: excludes, always_included: ALWAYS_INCLUDED, always_excluded: ALWAYS_IGNORED) do |path|
+
+    Utils::File.crawl_package_files(extracted_folder) do |path|
       if ::File.directory?(path)
         relative_dir_path = Path.new(path).relative_to(extracted_folder)
         Dir.mkdir_p(target_path / relative_dir_path)

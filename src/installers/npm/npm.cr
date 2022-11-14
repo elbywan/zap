@@ -44,6 +44,8 @@ module Zap::Installers::Npm
         Helpers::File.install(dependency, cache: cache)
       when .tarball?
         Helpers::Tarball.install(dependency, cache: cache)
+      when .git?
+        Helpers::Git.install(dependency, cache: cache)
       when .registry?
         Helpers::Registry.install(dependency, cache: cache)
       end

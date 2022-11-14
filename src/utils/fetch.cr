@@ -102,6 +102,7 @@ module Zap::Fetch
           begin
             break yield client
           rescue e : IO::TimeoutError
+            client.close
             sleep 0.5.seconds
             raise e if retry_count >= retry_attempts
           end
@@ -149,6 +150,7 @@ module Zap::Fetch
                 response.body_io.skip_to_end if response && response.body_io && !response.body_io.closed?
               rescue
                 # ignore errors
+                http.close
               end
             end
           end

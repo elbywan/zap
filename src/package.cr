@@ -11,7 +11,6 @@ class Zap::Package
   enum Kind
     File
     Git
-    Github
     Registry
     Tarball
   end
@@ -32,7 +31,9 @@ class Zap::Package
   alias RegistryDist = {"tarball": String, "shasum": String, "integrity": String?}
   alias LinkDist = {"link": String}
   alias TarballDist = {"tarball": String, "path": String}
-  property dist : RegistryDist | LinkDist | TarballDist | Nil = nil
+  alias GitDist = {"commit_hash": String, "path": String}
+  property dist : RegistryDist | LinkDist | TarballDist | GitDist | Nil = nil
+  property deprecated : String? = nil
 
   # Lockfile specific
   @[JSON::Field(ignore: true)]
@@ -58,6 +59,8 @@ class Zap::Package
       end
     when .tarball?
       "#{name}@#{self.dist.try &.as(TarballDist)["tarball"]}"
+    when .git?
+      "#{name}@#{self.dist.try &.as(GitDist)["commit_hash"]}"
     else
       "#{name}@#{version}"
     end
@@ -99,12 +102,16 @@ class Zap::Package
         pipeline.process do
           resolver = Resolver.make(name, version)
           metadata = resolver.resolve(pkg_ref.not_nil!, validate_lockfile: !!main_package, dependent: dependent)
+          if deprecated = metadata.try &.deprecated
+            Zap.reporter.log(%(#{(metadata.not_nil!.name + "@" + metadata.not_nil!.version).colorize(:yellow)} #{deprecated}))
+          end
           stored = resolver.store(metadata) { Zap.reporter.on_downloading_package } if metadata
           Zap.reporter.on_package_downloaded if stored
         rescue e
           if type != :optional_dependencies
             Zap.reporter.stop
-            Zap::Log.error { "#{name}#{version}: #{e}".colorize(:red) }
+            error_string = ("#{name} @ #{version} \n#{e}\n" + e.backtrace.map { |line| "\t#{line}" }.join("\n")).colorize(:red)
+            Zap::Log.error { error_string }
             exit(1)
           end
         ensure

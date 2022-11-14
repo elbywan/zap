@@ -27,13 +27,13 @@ module Zap::Resolver
   def self.make(name : String, version_field : String?) : Base
     case version_field
     when .starts_with?("git://"), .starts_with?("git+ssh://"), .starts_with?("git+http://"), .starts_with?("git+https://"), .starts_with?("git+file://")
-      raise "#{version_field}: git protocol not supported yet"
+      Git.new(name, version_field)
     when .starts_with?("http://"), .starts_with?("https://")
       TarballUrl.new(name, version_field)
     when .starts_with?("file:")
       File.new(name, version_field)
     when .matches?(/^[^@].*\/.*$/)
-      raise "#{version_field}: github url not supported yet"
+      Git.new(name, "git+https://github.com/#{version_field}")
     else
       Registry.new(name, Semver.parse(version_field))
     end

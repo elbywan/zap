@@ -8,7 +8,7 @@ module Zap::Resolver
       tarball_url = version.to_s
       store_hash = Digest::SHA1.hexdigest(tarball_url)
       temp_path = Path.new(Dir.tempdir, "zap--tarball-#{store_hash}")
-      # TODO: dedicated pool (mutualized?)
+      # TODO: a dedicated pool?
       unless Dir.exists?(temp_path)
         @stored = true
         HTTP::Client.get(tarball_url) do |response|
