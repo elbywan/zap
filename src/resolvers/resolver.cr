@@ -9,9 +9,22 @@ abstract class Zap::Resolver::Base
 
   def on_resolve(pkg : Package, parent_pkg : Lockfile | Package, kind : Package::Kind, locked_version : String, dependent : Package? = nil)
     pkg.kind = kind
+    dependents = pkg.dependents ||= SafeSet(String).new
     if dependent
-      dependents = pkg.dependents ||= SafeSet(String).new
       dependents << dependent.key
+    else
+      dependents << pkg.key
+    end
+    # For direct dependencies: check if the package is freshly added since the last install and report accordingly
+    if parent_pkg.is_a?(Lockfile)
+      if version = parent_pkg.pinned_dependencies[pkg.name]?
+        if locked_version != version
+          Zap.reporter.on_package_added(pkg.key)
+          Zap.reporter.on_package_removed(pkg.name + "@" + version)
+        end
+      else
+        Zap.reporter.on_package_added(pkg.key)
+      end
     end
     parent_pkg.pinned_dependencies[pkg.name] = locked_version
     Zap.lockfile.pkgs[pkg.key] ||= pkg

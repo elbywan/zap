@@ -14,6 +14,8 @@ class Zap::Reporter
     @downloaded_packages = Atomic(Int32).new(0)
     @installing_packages = Atomic(Int32).new(0)
     @installed_packages = Atomic(Int32).new(0)
+    @added_packages = SafeArray(String).new
+    @removed_packages = SafeArray(String).new
     @update_channel = Channel(Int32?).new
     @cursor = Term::Cursor
   end
@@ -46,6 +48,14 @@ class Zap::Reporter
   def on_installing_package
     @installing_packages.add(1)
     update()
+  end
+
+  def on_package_added(pkg_key : String)
+    @added_packages << pkg_key
+  end
+
+  def on_package_removed(pkg_key : String)
+    @removed_packages << pkg_key
   end
 
   def stop
@@ -140,10 +150,33 @@ class Zap::Reporter
       if @logs.size > 0
         @out << header("📝", "Logs", :blue)
         @out << "\n"
-        separator = "\n   • ".colorize(:default)
-        @out << separator
-        @out << @logs.join(separator)
+        if @logs.size > 0
+          separator = "\n   • ".colorize(:default)
+          @out << separator
+          @out << @logs.join(separator)
+          @out << "\n\n"
+        end
+      end
+
+        # print added / removed packages
+      all_packages = @added_packages.map { |pkg_key| {pkg_key, true }} + @removed_packages.map { |pkg_key| {pkg_key, false }}
+      if all_packages.size > 0
+        @out << header("📦", "Dependencies", :light_yellow) + %(Added: #{@added_packages.size}, Removed: #{@removed_packages.size}).colorize.mode(:dim).to_s
         @out << "\n\n"
+        all_packages.map{ |pkg_key, added|
+          parts = pkg_key.split("@")
+          {
+            parts[...-1].join("@").colorize.mode(:bold).to_s + (" " + parts.last).colorize.mode(:dim).to_s,
+            added
+          }
+        }.sort_by(&.[0]).each do |pkg_key, added|
+          if added
+            @out << "   #{"＋".colorize(:green).mode(:bold)} #{pkg_key}\n"
+          else
+            @out << "   #{"－".colorize(:red).mode(:bold)} #{pkg_key}\n"
+          end
+        end
+        @out << "\n"
       end
 
       @out << header("👌", "Done!", :green)
@@ -155,5 +188,12 @@ class Zap::Reporter
       end
       @out << "\n"
     end
+  end
+
+  protected def self.format_pkg_keys(pkgs)
+    pkgs.map{ |pkg_key|
+      parts = pkg_key.split("@")
+      parts[...-1].join("@").colorize.mode(:bold).to_s + ("@" + parts.last).colorize.mode(:dim).to_s
+    }.sort!
   end
 end

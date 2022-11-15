@@ -39,9 +39,14 @@ class Zap::Lockfile
         (self.optional_dependencies.try(&.keys) || [] of String)
 
     pruned_deps = Set(String).new
+    pinned_deps = Set(String).new
     self.pinned_dependencies.select! { |name, version|
+      key = "#{name}@#{version}"
       unless keep = all_dependencies.includes?(name)
-        pruned_deps << ("#{name}@#{version}")
+        pruned_deps << key
+        Zap.reporter.on_package_removed(key)
+      else
+        pinned_deps << key
       end
       keep
     }
@@ -50,7 +55,7 @@ class Zap::Lockfile
       if pruned_deps.includes?(pkg.key)
         false
       elsif dependents = pkg.dependents
-        dependents.inner = dependents.inner - pruned_deps
+        dependents.inner = dependents.inner & pinned_deps
         pkg.dependents = dependents
         dependents.inner.size > 0
       else

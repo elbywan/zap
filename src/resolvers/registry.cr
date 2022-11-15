@@ -64,7 +64,7 @@ module Zap::Resolver
       pkg.resolve_dependencies(dependent: dependent || pkg)
       pkg
     rescue e
-      puts "Error resolving #{pkg.try &.name || self.package_name} #{pkg.try &.version || self.version} #{e} #{e.backtrace.join("\n")}".colorize(:red)
+      raise "Error resolving #{pkg.try &.name || self.package_name} #{pkg.try &.version || self.version} #{e} #{e.backtrace.join("\n")}".colorize(:red).to_s
     end
 
     def store(metadata : Package, &on_downloading) : Bool

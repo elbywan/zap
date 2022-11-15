@@ -101,7 +101,7 @@ module Zap::Fetch
           retry_count += 1
           begin
             break yield client
-          rescue e : IO::TimeoutError
+          rescue e
             client.close
             sleep 0.5.seconds
             raise e if retry_count >= retry_attempts
