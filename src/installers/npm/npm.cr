@@ -5,9 +5,9 @@ module Zap::Installers::Npm
   alias CacheItem = {Path, Set(Package)}
 
   class Installer < Base
-    def self.install
+    def install
       # create the root node modules folder
-      node_modules = Path.new(PROJECT_PATH, "node_modules")
+      node_modules = Path.new(state.common_config.prefix, "node_modules")
       Dir.mkdir_p(node_modules)
 
       # process each dependency breadth-first
@@ -18,9 +18,9 @@ module Zap::Installers::Npm
       initial_cache : Deque(CacheItem) = Deque(CacheItem).new
       initial_cache << {node_modules, Set(Package).new}
       # initialize the queue with the root dependencies
-      Zap.lockfile.pinned_dependencies.map { |name, version|
+      state.lockfile.pinned_dependencies.map { |name, version|
         dependency_queue << {
-          Zap.lockfile.pkgs["#{name}@#{version}"],
+          state.lockfile.pkgs["#{name}@#{version}"],
           initial_cache.dup,
         }
       }
@@ -33,27 +33,27 @@ module Zap::Installers::Npm
         # no subcache = do not process the sub dependencies
         next unless subcache
         dependency.pinned_dependencies.each do |name, version|
-          dependency_queue << {Zap.lockfile.pkgs["#{name}@#{version}"], subcache}
+          dependency_queue << {state.lockfile.pkgs["#{name}@#{version}"], subcache}
         end
       end
     end
 
-    def self.install_dependency(dependency : Package, *, cache : Deque(CacheItem)) : Deque(CacheItem)?
+    def install_dependency(dependency : Package, *, cache : Deque(CacheItem)) : Deque(CacheItem)?
       case dependency.kind
       when .file?
-        Helpers::File.install(dependency, cache: cache)
+        Helpers::File.install(dependency, cache: cache, state: state)
       when .tarball?
-        Helpers::Tarball.install(dependency, cache: cache)
+        Helpers::Tarball.install(dependency, cache: cache, state: state)
       when .git?
-        Helpers::Git.install(dependency, cache: cache)
+        Helpers::Git.install(dependency, cache: cache, state: state)
       when .registry?
-        Helpers::Registry.install(dependency, cache: cache)
+        Helpers::Registry.install(dependency, cache: cache, state: state)
       end
     end
 
-    def self.on_install(dependency : Package, install_folder : Path)
+    def self.on_install(dependency : Package, install_folder : Path, *, state : Commands::Install::State)
       if bin = dependency.bin
-        root_bin_dir = Path.new(PROJECT_PATH, "node_modules", ".bin")
+        root_bin_dir = Path.new(state.common_config.prefix, "node_modules", ".bin")
         Dir.mkdir_p(root_bin_dir)
         if bin.is_a?(Hash)
           bin.each do |name, path|
@@ -71,7 +71,7 @@ module Zap::Installers::Npm
           Crystal::System::File.chmod(bin_path.to_s, 0o755)
         end
       end
-      Zap.reporter.on_package_installed
+      state.reporter.on_package_installed
     end
   end
 end

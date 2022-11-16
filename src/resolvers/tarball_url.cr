@@ -26,7 +26,7 @@ module Zap::Resolver
       Package.init(temp_path).tap { |pkg|
         pkg.dist = {tarball: tarball_url, path: temp_path.to_s}
         on_resolve(pkg, parent_pkg, :tarball, tarball_url, dependent)
-        pkg.resolve_dependencies(dependent: dependent || pkg)
+        pkg.resolve_dependencies(state: state, dependent: dependent || pkg)
       }
     end
 

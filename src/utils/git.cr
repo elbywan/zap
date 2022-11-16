@@ -16,7 +16,7 @@ module Zap::Utils
     @commitish : String?
     @semver : String?
 
-    def initialize(@url : String)
+    def initialize(@url : String, @reporter : Zap::Reporter)
       begin
         @match = GIT_URL_REGEX.match(@url).not_nil!
       rescue
@@ -48,8 +48,8 @@ module Zap::Utils
     def clone(@dest : Path | String) : Nil
       if @commitish
         # shallow clone and checkout the commit
-        self.class.run("git clone --quiet --filter=tree:0 #{@base_url} #{dest}")
-        self.class.run("git checkout --quiet #{@commitish}", chdir: dest)
+        self.class.run("git clone --quiet --filter=tree:0 #{@base_url} #{dest}", @reporter)
+        self.class.run("git checkout --quiet #{@commitish}", @reporter, chdir: dest)
       elsif semver = @semver
         # list tags and checkout the right one
         # self.run("git clone --no-checkout #{@base_url} #{dest}")
@@ -66,11 +66,11 @@ module Zap::Utils
           end
         end
         raise "There is no tag matching semver for #{@url}" unless tag
-        self.class.run("git checkout --quiet --filter=tree:0 #{@base_url} #{dest}")
-        self.class.run("git checkout --quiet #{tag}", chdir: dest)
+        self.class.run("git checkout --quiet --filter=tree:0 #{@base_url} #{dest}", @reporter)
+        self.class.run("git checkout --quiet #{tag}", @reporter, chdir: dest)
       else
         # clone + checkout the default branch
-        self.class.run("git clone --quiet #{@base_url} #{dest}")
+        self.class.run("git clone --quiet #{@base_url} #{dest}", @reporter)
       end
     end
 
@@ -78,9 +78,9 @@ module Zap::Utils
       self.run_and_get_output("git rev-parse HEAD", chdir: dest)
     end
 
-    def self.run(command, **extra) : Nil
+    def self.run(command : String, reporter : Zap::Reporter, **extra) : Nil
       command_and_args = command.split(/\s+/)
-      reporter_pipe = Zap::Reporter::ReporterPipe.new
+      reporter_pipe = Zap::Reporter::ReporterPipe.new(reporter)
       status = Process.run(command_and_args[0], **extra, args: command_and_args[1..]? || nil, output: reporter_pipe, error: reporter_pipe)
       unless status.success?
         Fiber.yield

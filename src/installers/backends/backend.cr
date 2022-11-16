@@ -9,37 +9,37 @@ module Zap::Backend
     Symlink
   end
 
-  def self.install(*, dependency : Package, target : Path | String, backend : Backends = Config::Install.file_backend, &on_installing) : Bool?
+  def self.install(*, dependency : Package, target : Path | String, backend : Backends, store : Store, pipeline : Pipeline, &on_installing) : Bool?
     case backend
     when .clone_file?
       {% unless flag?(:darwin) %}
         raise "clonefile not supported on this platform"
       {% end %}
-      Backend::CloneFile.install(dependency, target, &on_installing)
+      Backend::CloneFile.install(dependency, target, store: store, pipeline: pipeline, &on_installing)
     when .copy_file?
       {% unless flag?(:darwin) %}
         raise "copyfile not supported on this platform"
       {% end %}
-      Backend::CopyFile.install(dependency, target, &on_installing)
+      Backend::CopyFile.install(dependency, target, store: store, pipeline: pipeline, &on_installing)
     when .hardlink?
-      Backend::Hardlink.install(dependency, target, &on_installing)
+      Backend::Hardlink.install(dependency, target, store: store, pipeline: pipeline, &on_installing)
     when .copy?
-      Backend::Copy.install(dependency, target, &on_installing)
+      Backend::Copy.install(dependency, target, store: store, pipeline: pipeline, &on_installing)
     when .symlink?
-      Backend::Symlink.install(dependency, target, &on_installing)
+      Backend::Symlink.install(dependency, target, store: store, pipeline: pipeline, &on_installing)
     end
   end
 
-  protected def self.recursively(src_path : Path | String, dest_path : Path | String, &block : (String | Path, String | Path) -> Nil)
+  protected def self.recursively(src_path : Path | String, dest_path : Path | String, pipeline : Pipeline, &block : (String | Path, String | Path) -> Nil)
     if Dir.exists?(src_path)
       Dir.mkdir(dest_path) unless Dir.exists?(dest_path)
       Dir.each_child(src_path) do |entry|
         src = File.join(src_path, entry)
         dest = File.join(dest_path, entry)
-        self.recursively(src, dest, &block)
+        self.recursively(src, dest, pipeline: pipeline, &block)
       end
     else
-      Zap.pipeline.process do
+      pipeline.process do
         block.call(src_path, dest_path)
       end
     end
@@ -64,8 +64,8 @@ module Zap::Backend
     end
   end
 
-  protected def self.prepare(dependency : Package, node_modules : Path | String, *, mkdir_parent = false) : {Path, Path, Bool}
-    src_path = Store.package_path(dependency.name, dependency.version)
+  protected def self.prepare(dependency : Package, node_modules : Path | String, *, store : Store, mkdir_parent = false) : {Path, Path, Bool}
+    src_path = store.package_path(dependency.name, dependency.version)
     dest_path = node_modules / dependency.name
     if exists = Dir.exists?(dest_path)
       pkg_json_path = File.join(dest_path, "package.json")

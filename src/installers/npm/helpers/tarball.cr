@@ -1,15 +1,15 @@
 module Zap::Installers::Npm::Helpers::Tarball
-  def self.install(dependency : Package, *, cache : Deque(CacheItem)) : Deque(CacheItem)?
+  def self.install(dependency : Package, *, cache : Deque(CacheItem), state : Commands::Install::State) : Deque(CacheItem)?
     unless temp_path = dependency.dist.try &.as(Package::TarballDist)[:path]
       raise "Cannot install file dependency #{dependency.name} because the dist.path field is missing."
     end
     target = cache.last[0]
 
-    installed = Backend.install(dependency: dependency, target: target, backend: :copy) {
-      Zap.reporter.on_installing_package
+    installed = Backend.install(dependency: dependency, target: target, store: state.store, pipeline: state.pipeline, backend: :copy) {
+      state.reporter.on_installing_package
     }
 
-    Installer.on_install(dependency, target / dependency.name) if installed
+    Installer.on_install(dependency, target / dependency.name, state: state) if installed
 
     cache.last[1] << dependency
     subcache = cache.dup

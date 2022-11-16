@@ -1,5 +1,5 @@
 module Zap::Installers::Npm::Helpers::Git
-  def self.install(dependency : Package, *, cache : Deque(CacheItem)) : Deque(CacheItem)?
+  def self.install(dependency : Package, *, cache : Deque(CacheItem), state : Commands::Install::State) : Deque(CacheItem)?
     unless cloned_folder = dependency.dist.try &.as(Package::GitDist)[:path].try { |path| Path.new(path) }
       raise "Cannot install git dependency #{dependency.name} because the dist.path field is missing."
     end
@@ -7,7 +7,7 @@ module Zap::Installers::Npm::Helpers::Git
     target_path = cache.last[0] / dependency.name
     FileUtils.rm_rf(target_path) if ::File.directory?(target_path)
 
-    Zap.reporter.on_installing_package
+    state.reporter.on_installing_package
 
     Utils::File.crawl_package_files(cloned_folder) do |path|
       if ::File.directory?(path)
@@ -20,7 +20,7 @@ module Zap::Installers::Npm::Helpers::Git
       end
     end
 
-    Installer.on_install(dependency, target_path)
+    Installer.on_install(dependency, target_path, state: state)
 
     cache.last[1] << dependency
     subcache = cache.dup

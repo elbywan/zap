@@ -16,16 +16,26 @@ class Zap::Lockfile
   @[JSON::Field(ignore: true)]
   @[YAML::Field(ignore: true)]
   property read_from_disk = false
+  @[JSON::Field(ignore: true)]
+  @[YAML::Field(ignore: true)]
+  property! reporter : Zap::Reporter
+  @[JSON::Field(ignore: true)]
+  @[YAML::Field(ignore: true)]
+  property! lockfile_path : Path
 
-  def self.new
-    lockfile_path = PROJECT_PATH / NAME
+  def self.new(project_path : Path | String, *, reporter : Zap::Reporter)
+    lockfile_path = Path.new(project_path) / NAME
+    instance = uninitialized self
     if File.readable? lockfile_path
       instance = self.from_yaml(File.read(lockfile_path))
       instance.read_from_disk = true
-      instance
     else
-      self.allocate
+      instance = self.allocate
     end
+    instance.reporter = reporter
+    instance.lockfile_path = lockfile_path
+
+    instance
   end
 
   def prune(pkg : Package)
@@ -44,7 +54,7 @@ class Zap::Lockfile
       key = "#{name}@#{version}"
       unless keep = all_dependencies.includes?(name)
         pruned_deps << key
-        Zap.reporter.on_package_removed(key)
+        reporter.on_package_removed(key)
       else
         pinned_deps << key
       end
@@ -65,7 +75,6 @@ class Zap::Lockfile
   end
 
   def write
-    lockfile_path = PROJECT_PATH / NAME
-    File.write(lockfile_path, self.to_yaml)
+    File.write(@lockfile_path.to_s, self.to_yaml)
   end
 end

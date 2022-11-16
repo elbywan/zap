@@ -8,6 +8,18 @@ class Zap::Pipeline
   def initialize
   end
 
+  def reset
+    @mutex.synchronize do
+      @counter = 0
+      @progress = 0
+      @max = 0
+      @end_channel.close unless @end_channel.closed?
+      @end_channel = Channel(Nil).new
+    rescue
+      # ignore
+    end
+  end
+
   def process(&block)
     @mutex.synchronize do
       @counter += 1

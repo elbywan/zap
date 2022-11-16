@@ -72,12 +72,15 @@ class Zap::Reporter
   end
 
   class ReporterPipe < IO
+    def initialize(@reporter : Zap::Reporter)
+    end
+
     def read(slice : Bytes)
       raise "Cannot read from a pipe"
     end
 
     def write(slice : Bytes) : Nil
-      Zap.reporter.prepend(slice)
+      @reporter.prepend(slice)
     end
   end
 
@@ -158,16 +161,16 @@ class Zap::Reporter
         end
       end
 
-        # print added / removed packages
-      all_packages = @added_packages.map { |pkg_key| {pkg_key, true }} + @removed_packages.map { |pkg_key| {pkg_key, false }}
+      # print added / removed packages
+      all_packages = @added_packages.map { |pkg_key| {pkg_key, true} } + @removed_packages.map { |pkg_key| {pkg_key, false} }
       if all_packages.size > 0
         @out << header("📦", "Dependencies", :light_yellow) + %(Added: #{@added_packages.size}, Removed: #{@removed_packages.size}).colorize.mode(:dim).to_s
         @out << "\n\n"
-        all_packages.map{ |pkg_key, added|
+        all_packages.map { |pkg_key, added|
           parts = pkg_key.split("@")
           {
             parts[...-1].join("@").colorize.mode(:bold).to_s + (" " + parts.last).colorize.mode(:dim).to_s,
-            added
+            added,
           }
         }.sort_by(&.[0]).each do |pkg_key, added|
           if added
@@ -191,7 +194,7 @@ class Zap::Reporter
   end
 
   protected def self.format_pkg_keys(pkgs)
-    pkgs.map{ |pkg_key|
+    pkgs.map { |pkg_key|
       parts = pkg_key.split("@")
       parts[...-1].join("@").colorize.mode(:bold).to_s + ("@" + parts.last).colorize.mode(:dim).to_s
     }.sort!

@@ -19,9 +19,9 @@ module Zap::Resolver
     @@resolved_packages_lock = Mutex.new
     @@lock = Mutex.new
 
-    def self.init(base_url = nil)
+    def self.init(global_store_path : String, base_url = nil)
       @@base_url = base_url if base_url
-      fetch_cache = Fetch::Cache::InMemory.new(fallback: Fetch::Cache::InStore.new)
+      fetch_cache = Fetch::Cache::InMemory.new(fallback: Fetch::Cache::InStore.new(global_store_path))
       # Reusable client pool
       @@client_pool ||= Fetch::Pool.new(@@base_url, 20, cache: fetch_cache) { |client|
         client.read_timeout = 10.seconds
@@ -30,14 +30,11 @@ module Zap::Resolver
       }
     end
 
-    def initialize(@package_name, @version = "latest")
-    end
-
     def resolve(parent_pkg : Lockfile | Package, *, dependent : Package? = nil, validate_lockfile = false) : Package?
       pkg = nil
       # Check if the metadata lives inside the lockfile already
       if lockfile_version = parent_pkg.pinned_dependencies[self.package_name]?
-        pkg = Zap.lockfile.pkgs["#{self.package_name}@#{lockfile_version}"]?
+        pkg = state.lockfile.pkgs["#{self.package_name}@#{lockfile_version}"]?
         # Validate the lockfile version - for root packages
         if validate_lockfile && pkg
           range_set = self.version
@@ -61,7 +58,7 @@ module Zap::Resolver
       ensure
         @@resolved_packages_lock.unlock
       end
-      pkg.resolve_dependencies(dependent: dependent || pkg)
+      pkg.resolve_dependencies(state: state, dependent: dependent || pkg)
       pkg
     rescue e
       raise "Error resolving #{pkg.try &.name || self.package_name} #{pkg.try &.version || self.version} #{e} #{e.backtrace.join("\n")}".colorize(:red).to_s
@@ -69,7 +66,7 @@ module Zap::Resolver
 
     def store(metadata : Package, &on_downloading) : Bool
       raise "Resolver::Registry has not been initialized" unless client_pool = @@client_pool
-      return false if Store.package_exists?(metadata.name, metadata.version)
+      return false if state.store.package_exists?(metadata.name, metadata.version)
 
       yield
 
@@ -102,21 +99,21 @@ module Zap::Resolver
       client_pool.client &.get(tarball_url) do |response|
         raise "Invalid status code from #{tarball_url} (#{response.status_code})" unless response.status_code == 200
         IO::Digest.new(response.body_io, algorithm_instance).try do |io|
-          Store.store_tarball(package_name, version, io)
+          state.store.store_tarball(package_name, version, io)
 
           computed_hash = io.final
           if unsupported_algorithm
             if computed_hash.hexstring != shasum
-              Store.remove_package(package_name, version)
+              state.store.remove_package(package_name, version)
               raise "shasum mismatch for #{tarball_url} (#{shasum})"
             end
           else
             if Base64.strict_encode(computed_hash) != hash
-              Store.remove_package(package_name, version)
+              state.store.remove_package(package_name, version)
               raise "integrity mismatch for #{tarball_url} (#{integrity})"
             end
           end
-          Store.package(package_name, version)
+          state.store.package(package_name, version)
         ensure
           io.try &.close
         end
