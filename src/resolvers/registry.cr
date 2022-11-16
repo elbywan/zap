@@ -10,7 +10,7 @@ ACCEPT_HEADER = "application/vnd.npm.install-v1+json; q=1.0, application/json; q
 HEADERS       = HTTP::Headers{"Accept" => ACCEPT_HEADER}
 
 module Zap::Resolver
-  class Registry < Base
+  struct Registry < Base
     class_getter base_url : String = "https://registry.npmjs.org"
     @@client_pool = nil
 
@@ -30,10 +30,10 @@ module Zap::Resolver
       }
     end
 
-    def resolve(parent_pkg : Lockfile | Package, *, dependent : Package? = nil, validate_lockfile = false) : Package?
+    def resolve(parent_pkg_refs : Package::ParentPackageRefs, *, dependent : Package? = nil, validate_lockfile = false) : Package?
       pkg = nil
       # Check if the metadata lives inside the lockfile already
-      if lockfile_version = parent_pkg.pinned_dependencies[self.package_name]?
+      if lockfile_version = parent_pkg_refs.pinned_dependencies[self.package_name]?
         pkg = state.lockfile.pkgs["#{self.package_name}@#{lockfile_version}"]?
         # Validate the lockfile version - for root packages
         if validate_lockfile && pkg
@@ -49,7 +49,7 @@ module Zap::Resolver
       end
       # If not, fetch the metadata from the registry
       pkg ||= self.fetch_metadata
-      on_resolve(pkg, parent_pkg, :registry, pkg.version, dependent)
+      on_resolve(pkg, parent_pkg_refs, :registry, pkg.version, dependent)
       begin
         @@resolved_packages_lock.lock
         # Skip resolving own dependencies if we already resolved them before

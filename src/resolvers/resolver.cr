@@ -1,6 +1,6 @@
 require "../store"
 
-abstract class Zap::Resolver::Base
+abstract struct Zap::Resolver::Base
   getter package_name : String
   getter version : String | Semver::SemverSets?
   getter state : Commands::Install::State
@@ -8,7 +8,7 @@ abstract class Zap::Resolver::Base
   def initialize(@state, @package_name, @version = "latest")
   end
 
-  def on_resolve(pkg : Package, parent_pkg : Lockfile | Package, kind : Package::Kind, locked_version : String, dependent : Package? = nil)
+  def on_resolve(pkg : Package, parent_pkg_refs : Package::ParentPackageRefs, kind : Package::Kind, locked_version : String, dependent : Package? = nil)
     pkg.kind = kind
     dependents = pkg.dependents ||= SafeSet(String).new
     if dependent
@@ -17,8 +17,8 @@ abstract class Zap::Resolver::Base
       dependents << pkg.key
     end
     # For direct dependencies: check if the package is freshly added since the last install and report accordingly
-    if parent_pkg.is_a?(Lockfile)
-      if version = parent_pkg.pinned_dependencies[pkg.name]?
+    if parent_pkg_refs.is_lockfile
+      if version = parent_pkg_refs.pinned_dependencies[pkg.name]?
         if locked_version != version
           state.reporter.on_package_added(pkg.key)
           state.reporter.on_package_removed(pkg.name + "@" + version)
@@ -27,11 +27,11 @@ abstract class Zap::Resolver::Base
         state.reporter.on_package_added(pkg.key)
       end
     end
-    parent_pkg.pinned_dependencies[pkg.name] = locked_version
+    parent_pkg_refs.pinned_dependencies[pkg.name] = locked_version
     state.lockfile.pkgs[pkg.key] ||= pkg
   end
 
-  abstract def resolve(parent_pkg : Lockfile | Package, *, dependent : Package?, validate_lockfile = false) : Package?
+  abstract def resolve(parent_pkg_refs : ParentPackageRefs, *, dependent : Package?, validate_lockfile = false) : Package?
   abstract def store(metadata : Package, &on_downloading) : Bool
 end
 

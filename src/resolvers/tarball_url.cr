@@ -1,10 +1,10 @@
 require "crystar"
 
 module Zap::Resolver
-  class TarballUrl < Base
+  struct TarballUrl < Base
     @stored = false
 
-    def resolve(parent_pkg : Lockfile | Package, *, dependent : Package?, validate_lockfile = false) : Package?
+    def resolve(parent_pkg_refs : Package::ParentPackageRefs, *, dependent : Package?, validate_lockfile = false) : Package?
       tarball_url = version.to_s
       store_hash = Digest::SHA1.hexdigest(tarball_url)
       temp_path = Path.new(Dir.tempdir, "zap--tarball-#{store_hash}")
@@ -25,7 +25,7 @@ module Zap::Resolver
       end
       Package.init(temp_path).tap { |pkg|
         pkg.dist = {tarball: tarball_url, path: temp_path.to_s}
-        on_resolve(pkg, parent_pkg, :tarball, tarball_url, dependent)
+        on_resolve(pkg, parent_pkg_refs, :tarball, tarball_url, dependent)
         pkg.resolve_dependencies(state: state, dependent: dependent || pkg)
       }
     end

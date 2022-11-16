@@ -4,7 +4,7 @@ require "colorize"
 require "./semver"
 require "./resolvers/resolver"
 
-class Zap::Package
+struct Zap::Package
   include JSON::Serializable
   include YAML::Serializable
 
@@ -40,7 +40,7 @@ class Zap::Package
       self.{{kind.id}}
     end
 
-    def self.run_script(kind : Symbol | String, chdir : Path | String, raise_on_error_code = true, **args)
+    def run_script(kind : Symbol | String, chdir : Path | String, raise_on_error_code = true, **args)
       # TODO: add node_modules/.bin folder to the path
       # + node path
       # See: https://docs.npmjs.com/cli/v9/commands/npm-run-script
@@ -105,9 +105,11 @@ class Zap::Package
       "#{name}@#{version}"
     end
   end
+
+  record ParentPackageRefs, is_lockfile : Bool, pinned_dependencies : SafeHash(String, String)
   @[JSON::Field(ignore: true)]
   @[YAML::Field(ignore: true)]
-  @pkg_ref : Lockfile | Package | Nil = nil
+  @parent_pkg_refs : ParentPackageRefs? = nil
 
   def self.init(path : Path)
     File.open(path / "package.json") do |io|
@@ -118,7 +120,10 @@ class Zap::Package
 
   def resolve_dependencies(*, state : Commands::Install::State, dependent = nil)
     main_package = !dependent
-    pkg_ref = @pkg_ref ||= main_package ? state.lockfile : self
+    parent_pkg_refs = @parent_pkg_refs ||= ParentPackageRefs.new(
+      is_lockfile: main_package,
+      pinned_dependencies: (main_package ? state.lockfile : self).pinned_dependencies
+    )
 
     {
       dependencies:          dependencies,
@@ -141,7 +146,7 @@ class Zap::Package
         end
         state.pipeline.process do
           resolver = Resolver.make(state, name, version)
-          metadata = resolver.resolve(pkg_ref.not_nil!, validate_lockfile: !!main_package, dependent: dependent)
+          metadata = resolver.resolve(parent_pkg_refs.not_nil!, validate_lockfile: !!main_package, dependent: dependent)
           if deprecated = metadata.try &.deprecated
             state.reporter.log(%(#{(metadata.not_nil!.name + "@" + metadata.not_nil!.version).colorize(:yellow)} #{deprecated}))
           end
