@@ -72,7 +72,7 @@ class Zap::Reporter
   end
 
   class ReporterPipe < IO
-    def initialize(@reporter : Zap::Reporter)
+    def initialize(@reporter : Reporter)
     end
 
     def read(slice : Bytes)

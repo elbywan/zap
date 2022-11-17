@@ -16,7 +16,7 @@ module Zap::Utils
     @commitish : String?
     @semver : String?
 
-    def initialize(@url : String, @reporter : Zap::Reporter)
+    def initialize(@url : String, @reporter : Reporter)
       begin
         @match = GIT_URL_REGEX.match(@url).not_nil!
       rescue
@@ -75,12 +75,12 @@ module Zap::Utils
     end
 
     def self.commit_hash(dest : Path | String) : String
-      self.run_and_get_output("git rev-parse HEAD", chdir: dest)
+      self.run_and_get_output("git rev-parse HEAD", chdir: dest).chomp
     end
 
-    def self.run(command : String, reporter : Zap::Reporter, **extra) : Nil
+    def self.run(command : String, reporter : Reporter, **extra) : Nil
       command_and_args = command.split(/\s+/)
-      reporter_pipe = Zap::Reporter::ReporterPipe.new(reporter)
+      reporter_pipe = Reporter::ReporterPipe.new(reporter)
       status = Process.run(command_and_args[0], **extra, args: command_and_args[1..]? || nil, output: reporter_pipe, error: reporter_pipe)
       unless status.success?
         Fiber.yield

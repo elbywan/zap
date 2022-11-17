@@ -19,9 +19,9 @@ require "./commands/**"
 module Zap
   VERSION = {{ `shards version`.stringify }}.chomp
 
-  common_config, command_config = CLI.parse
+  config, command_config = CLI.new.parse
 
   Log = ::Log.for("zap")
 
-  Commands::Install.run(common_config, command_config)
+  Commands::Install.run(config, command_config)
 end

@@ -7,7 +7,7 @@ module Zap::Installers::Npm
   class Installer < Base
     def install
       # create the root node modules folder
-      node_modules = Path.new(state.common_config.prefix, "node_modules")
+      node_modules = Path.new(state.config.node_modules)
       Dir.mkdir_p(node_modules)
 
       # process each dependency breadth-first
@@ -32,6 +32,10 @@ module Zap::Installers::Npm
         subcache = install_dependency(dependency, cache: cache)
         # no subcache = do not process the sub dependencies
         next unless subcache
+        # shallow strategy means we only install direct deps at top-level
+        if state.install_config.install_strategy.npm_shallow? && subcache.size == 2 && subcache[0][0] == node_modules
+          subcache.shift
+        end
         dependency.pinned_dependencies.each do |name, version|
           dependency_queue << {state.lockfile.pkgs["#{name}@#{version}"], subcache}
         end
@@ -53,7 +57,7 @@ module Zap::Installers::Npm
 
     def self.on_install(dependency : Package, install_folder : Path, *, state : Commands::Install::State)
       if bin = dependency.bin
-        root_bin_dir = Path.new(state.common_config.prefix, "node_modules", ".bin")
+        root_bin_dir = Path.new(state.config.bin_path)
         Dir.mkdir_p(root_bin_dir)
         if bin.is_a?(Hash)
           bin.each do |name, path|

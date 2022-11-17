@@ -30,10 +30,10 @@ module Zap::Resolver
       }
     end
 
-    def resolve(parent_pkg_refs : Package::ParentPackageRefs, *, dependent : Package? = nil, validate_lockfile = false) : Package?
+    def resolve(parent_pkg_refs : Package::ParentPackageRefs, *, dependent : Package? = nil, validate_lockfile = false, resolve_dependencies = true) : Package?
       pkg = nil
       # Check if the metadata lives inside the lockfile already
-      if lockfile_version = parent_pkg_refs.pinned_dependencies[self.package_name]?
+      if !self.package_name.empty? && (lockfile_version = parent_pkg_refs.pinned_dependencies[self.package_name]?)
         pkg = state.lockfile.pkgs["#{self.package_name}@#{lockfile_version}"]?
         # Validate the lockfile version - for root packages
         if validate_lockfile && pkg
@@ -50,15 +50,17 @@ module Zap::Resolver
       # If not, fetch the metadata from the registry
       pkg ||= self.fetch_metadata
       on_resolve(pkg, parent_pkg_refs, :registry, pkg.version, dependent)
-      begin
-        @@resolved_packages_lock.lock
-        # Skip resolving own dependencies if we already resolved them before
-        return if @@resolved_packages.includes?(pkg.key)
-        @@resolved_packages.add(pkg.key)
-      ensure
-        @@resolved_packages_lock.unlock
+      if resolve_dependencies
+        begin
+          @@resolved_packages_lock.lock
+          # Skip resolving own dependencies if we already resolved them before
+          return if @@resolved_packages.includes?(pkg.key)
+          @@resolved_packages.add(pkg.key)
+        ensure
+          @@resolved_packages_lock.unlock
+        end
+        pkg.resolve_dependencies(state: state, dependent: dependent || pkg)
       end
-      pkg.resolve_dependencies(state: state, dependent: dependent || pkg)
       pkg
     rescue e
       raise "Error resolving #{pkg.try &.name || self.package_name} #{pkg.try &.version || self.version} #{e} #{e.backtrace.join("\n")}".colorize(:red).to_s

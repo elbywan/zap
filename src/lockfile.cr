@@ -18,12 +18,12 @@ class Zap::Lockfile
   property read_from_disk = false
   @[JSON::Field(ignore: true)]
   @[YAML::Field(ignore: true)]
-  property! reporter : Zap::Reporter
+  property! reporter : Reporter
   @[JSON::Field(ignore: true)]
   @[YAML::Field(ignore: true)]
   property! lockfile_path : Path
 
-  def self.new(project_path : Path | String, *, reporter : Zap::Reporter)
+  def self.new(project_path : Path | String, *, reporter : Reporter)
     lockfile_path = Path.new(project_path) / NAME
     instance = uninitialized self
     if File.readable? lockfile_path
@@ -76,5 +76,24 @@ class Zap::Lockfile
 
   def write
     File.write(@lockfile_path.to_s, self.to_yaml)
+  end
+
+  def add_dependency(name : String, version : String, type : Symbol)
+    case type
+    when :dependencies
+      (self.dependencies ||= SafeHash(String, String).new)[name] = version
+      self.dev_dependencies.try &.delete(name)
+      self.optional_dependencies.try &.delete(name)
+    when :optional_dependencies
+      (self.optional_dependencies ||= SafeHash(String, String).new)[name] = version
+      self.dependencies.try &.delete(name)
+      self.dev_dependencies.try &.delete(name)
+    when :dev_dependencies
+      (self.dev_dependencies ||= SafeHash(String, String).new)[name] = version
+      self.dependencies.try &.delete(name)
+      self.optional_dependencies.try &.delete(name)
+    else
+      raise "Wrong dependency type: #{type}"
+    end
   end
 end

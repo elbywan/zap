@@ -4,7 +4,7 @@ require "colorize"
 require "./semver"
 require "./resolvers/resolver"
 
-struct Zap::Package
+class Zap::Package
   include JSON::Serializable
   include YAML::Serializable
 
@@ -40,13 +40,14 @@ struct Zap::Package
       self.{{kind.id}}
     end
 
-    def run_script(kind : Symbol | String, chdir : Path | String, raise_on_error_code = true, **args)
-      # TODO: add node_modules/.bin folder to the path
-      # + node path
-      # See: https://docs.npmjs.com/cli/v9/commands/npm-run-script
+    def run_script(kind : Symbol | String, chdir : Path | String, config : Config, raise_on_error_code = true, **args)
       get_script(kind).try do |script|
         output = IO::Memory.new
-        status = Process.run(script, **args, shell: true, chdir: chdir, output: output, error: output)
+        # See: https://docs.npmjs.com/cli/v9/commands/npm-run-script
+        env = {
+          :PATH => ENV["PATH"] + Process.PATH_DELIMITER + config.bin_path + Process.PATH_DELIMITER + config.node_path,
+        }
+        status = Process.run(script, **args, shell: true, env: env, chdir: chdir, output: output, error: output)
         if !status.success? && raise_on_error_code
           raise "#{output}\nCommand failed: #{command} (#{status.exit_status})"
         end
@@ -57,12 +58,12 @@ struct Zap::Package
   getter name : String
   getter version : String
   getter bin : (String | Hash(String, String))? = nil
-  getter dependencies : SafeHash(String, String)? = nil
+  property dependencies : SafeHash(String, String)? = nil
   @[JSON::Field(key: "devDependencies")]
   @[YAML::Field(ignore: true)]
-  getter dev_dependencies : SafeHash(String, String)? = nil
+  property dev_dependencies : SafeHash(String, String)? = nil
   @[JSON::Field(key: "optionalDependencies")]
-  getter optional_dependencies : SafeHash(String, String)? = nil
+  property optional_dependencies : SafeHash(String, String)? = nil
   @[JSON::Field(key: "peerDependencies")]
   getter peer_dependencies : SafeHash(String, String)? = nil
   getter scripts : LifecycleScripts? = nil
@@ -78,6 +79,13 @@ struct Zap::Package
   # Lockfile specific
   @[JSON::Field(ignore: true)]
   property kind : Kind = Kind::Registry
+
+  # Attempt to replicate the "npm" definition of a local install
+  # Which seems to be packages pulled from git or linked locally
+  def local_install?
+    kind.git? || (kind.file? && dist.try &.as(LinkDist))
+  end
+
   @[JSON::Field(ignore: true)]
   property pinned_dependencies : SafeHash(String, String) = SafeHash(String, String).new
   @[JSON::Field(ignore: true)]
@@ -107,64 +115,163 @@ struct Zap::Package
   end
 
   record ParentPackageRefs, is_lockfile : Bool, pinned_dependencies : SafeHash(String, String)
-  @[JSON::Field(ignore: true)]
-  @[YAML::Field(ignore: true)]
-  @parent_pkg_refs : ParentPackageRefs? = nil
 
   def self.init(path : Path)
     File.open(path / "package.json") do |io|
       return self.from_json(io)
     end
+  rescue
     raise "package.json not found at #{path}"
   end
 
+  def initialize(@name = "", @version = "")
+  end
+
+  def add_dependency(name : String, version : String, type : Symbol)
+    case type
+    when :dependencies
+      (self.dependencies ||= SafeHash(String, String).new)[name] = version
+      self.dev_dependencies.try &.delete(name)
+      self.optional_dependencies.try &.delete(name)
+    when :optional_dependencies
+      (self.optional_dependencies ||= SafeHash(String, String).new)[name] = version
+      self.dependencies.try &.delete(name)
+      self.dev_dependencies.try &.delete(name)
+    when :dev_dependencies
+      (self.dev_dependencies ||= SafeHash(String, String).new)[name] = version
+      self.dependencies.try &.delete(name)
+      self.optional_dependencies.try &.delete(name)
+    else
+      raise "Wrong dependency type: #{type}"
+    end
+  end
+
   def resolve_dependencies(*, state : Commands::Install::State, dependent = nil)
-    main_package = !dependent
-    parent_pkg_refs = @parent_pkg_refs ||= ParentPackageRefs.new(
-      is_lockfile: main_package,
-      pinned_dependencies: (main_package ? state.lockfile : self).pinned_dependencies
+    is_main_package = !dependent
+    pkg_refs = ParentPackageRefs.new(
+      is_lockfile: is_main_package,
+      pinned_dependencies: (is_main_package ? state.lockfile : self).pinned_dependencies
     )
 
-    {
-      dependencies:          dependencies,
+    resolve_new_packages(pkg_refs: pkg_refs, state: state) if is_main_package
+
+    NamedTuple.new(
+      dependencies: dependencies,
       optional_dependencies: optional_dependencies,
-      dev_dependencies:      dev_dependencies,
-    }.each do |type, deps|
-      next if !main_package && type == :dev_dependencies
+      dev_dependencies: dev_dependencies,
+    ).each do |type, deps|
+      if type == :dev_dependencies
+        next if !is_main_package || state.install_config.omit_dev?
+      elsif type == :optional_dependencies
+        next if state.install_config.omit_optional?
+      end
       deps.try &.each do |name, version|
         # p "Resolving (#{type}): #{name}@#{version} from #{self.name}@#{self.version}"
-        state.reporter.on_resolving_package
-        if main_package
-          case type
-          when :dependencies
-            (state.lockfile.dependencies ||= SafeHash(String, String).new)[name] = version
-          when :optional_dependencies
-            (state.lockfile.optional_dependencies ||= SafeHash(String, String).new)[name] = version
-          when :dev_dependencies
-            (state.lockfile.dev_dependencies ||= SafeHash(String, String).new)[name] = version
-          end
-        end
-        state.pipeline.process do
-          resolver = Resolver.make(state, name, version)
-          metadata = resolver.resolve(parent_pkg_refs.not_nil!, validate_lockfile: !!main_package, dependent: dependent)
-          if deprecated = metadata.try &.deprecated
-            state.reporter.log(%(#{(metadata.not_nil!.name + "@" + metadata.not_nil!.version).colorize(:yellow)} #{deprecated}))
-          end
-          stored = resolver.store(metadata) { state.reporter.on_downloading_package } if metadata
-          state.reporter.on_package_downloaded if stored
-        rescue e
-          if type != :optional_dependencies
-            state.reporter.stop
-            error_string = ("#{name} @ #{version} \n#{e}\n" + e.backtrace.map { |line| "\t#{line}" }.join("\n")).colorize(:red)
-            Zap::Log.error { error_string }
-            exit(1)
-          else
-            state.reporter.log("Optional dependency #{name} @ #{version} failed to resolve: #{e}")
-          end
-        ensure
-          state.reporter.on_package_resolved
-        end
+        resolve_dependency(name, version, type, pkg_refs: pkg_refs, state: state, dependent: dependent)
       end
+    end
+  end
+
+  private def resolve_dependency(name : String, version : String, type : Symbol, *, pkg_refs : ParentPackageRefs, state : Commands::Install::State, dependent = nil)
+    is_main_package = !dependent
+    state.reporter.on_resolving_package
+    state.lockfile.add_dependency(name, version, type) if is_main_package
+    state.pipeline.process do
+      resolver = Resolver.make(state, name, version)
+      metadata = resolver.resolve(pkg_refs, validate_lockfile: is_main_package, dependent: dependent)
+      # Save pinned / range version to package.json file
+      if metadata
+        if deprecated = metadata.deprecated
+          state.reporter.log(%(#{(metadata.not_nil!.name + "@" + metadata.not_nil!.version).colorize(:yellow)} #{deprecated}))
+        end
+        stored = resolver.store(metadata) { state.reporter.on_downloading_package } if metadata
+        state.reporter.on_package_downloaded if stored
+      end
+    rescue e
+      if type != :optional_dependencies
+        state.reporter.stop
+        error_string = ("❌ Resolving: #{name} @ #{version} \n#{e}\n" + e.backtrace.map { |line| "\t#{line}" }.join("\n")).colorize(:red)
+        Zap::Log.error { error_string }
+        exit(1)
+      else
+        state.reporter.log("Optional dependency #{name} @ #{version} failed to resolve: #{e}")
+      end
+    ensure
+      state.reporter.on_package_resolved
+    end
+  end
+
+  private def parse_new_package(cli_version : String, *, state : Commands::Install::State) : {String?, String}
+    # Try to detect what kind of target it is
+    # See: https://docs.npmjs.com/cli/v9/commands/npm-install?v=true#description
+    # 1. npm install <folder>
+    fs_path = Path.new(cli_version).expand
+    if File.directory?(fs_path)
+      return "file:#{fs_path.relative_to(state.config.prefix)}", ""
+      # 2. npm install <tarball file>
+    elsif File.file?(fs_path) && (fs_path.to_s.ends_with?(".tgz") || fs_path.to_s.ends_with?(".tar.gz") || fs_path.to_s.ends_with?(".tar"))
+      return "file:#{fs_path.relative_to(state.config.prefix)}", ""
+      # 3. npm install <tarball url>
+    elsif cli_version.starts_with?("https://") || cli_version.starts_with?("http://")
+      return cli_version, ""
+    elsif cli_version.starts_with?("github:")
+      # 9. npm install github:<githubname>/<githubrepo>[#<commit-ish>]
+      return "git+https://github.com/#{cli_version[7..]}", ""
+    elsif cli_version.starts_with?("gist:")
+      # 10. npm install gist:[<githubname>/]<gistID>[#<commit-ish>|#semver:<semver>]
+      return "git+https://gist.github.com/#{cli_version[5..]}", ""
+    elsif cli_version.starts_with?("bitbucket:")
+      # 11. npm install bitbucket:<bitbucketname>/<bitbucketrepo>[#<commit-ish>]
+      return "git+https://bitbucket.org/#{cli_version[10..]}", ""
+    elsif cli_version.starts_with?("gitlab:")
+      # 12. npm install gitlab:<gitlabname>/<gitlabrepo>[#<commit-ish>]
+      return "git+https://gitlab.com/#{cli_version[7..]}", ""
+    elsif cli_version.starts_with?("git+") || cli_version.starts_with?("git://") || cli_version.matches?(/^[^@].*\/.*$/)
+      # 7. npm install <git remote url>
+      # 8. npm install <githubname>/<githubrepo>[#<commit-ish>]
+      return cli_version, ""
+    else
+      # 4. npm install [<@scope>/]<name>
+      # 5. npm install [<@scope>/]<name>@<tag>
+      # 6. npm install [<@scope>/]<name>@<version range>
+      parts = cli_version.split("@")
+      if parts.size == 1 || (parts.size == 2 && cli_version.starts_with?("@"))
+        return nil, cli_version
+      else
+        return parts.last, parts[...-1].join("@")
+      end
+    end
+  end
+
+  private def resolve_new_packages(pkg_refs : ParentPackageRefs, state : Commands::Install::State)
+    type = state.install_config.save_dev ? :dev_dependencies : state.install_config.save_optional ? :optional_dependencies : :dependencies
+    state.install_config.new_packages.each do |new_dep|
+      inferred_version, inferred_name = parse_new_package(new_dep, state: state)
+      # parse dep and make it resolvable
+      # state.pipeline.process do
+      resolver = Resolver.make(state, inferred_name, inferred_version || "*")
+      metadata = resolver.resolve(pkg_refs, resolve_dependencies: false).not_nil!
+      stored = resolver.store(metadata) { state.reporter.on_downloading_package } if metadata
+      state.reporter.on_package_downloaded if stored
+      if state.install_config.save
+        saved_version = inferred_version
+        if metadata.kind == Kind::Registry
+          if state.install_config.save_exact
+            saved_version = metadata.version
+          elsif inferred_version.nil?
+            saved_version = %(^#{metadata.version})
+          end
+        end
+        self.add_dependency(metadata.name, saved_version.not_nil!, type)
+        state.lockfile.add_dependency(name, saved_version.not_nil!, type)
+      end
+      # end
+
+    rescue e
+      state.reporter.stop
+      error_string = ("❌ Adding: #{new_dep}\n#{e}\n" + e.backtrace.map { |line| "\t#{line}" }.join("\n")).colorize(:red)
+      Zap::Log.error { error_string }
+      exit(1)
     end
   end
 end

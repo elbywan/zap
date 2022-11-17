@@ -31,14 +31,14 @@ abstract struct Zap::Resolver::Base
     state.lockfile.pkgs[pkg.key] ||= pkg
   end
 
-  abstract def resolve(parent_pkg_refs : ParentPackageRefs, *, dependent : Package?, validate_lockfile = false) : Package?
+  abstract def resolve(parent_pkg_refs : ParentPackageRefs, *, dependent : Package? = nil, validate_lockfile = false, resolve_dependencies = true) : Package?
   abstract def store(metadata : Package, &on_downloading) : Bool
 end
 
 require "./registry"
 
 module Zap::Resolver
-  def self.make(state : Commands::Install::State, name : String, version_field : String?) : Base
+  def self.make(state : Commands::Install::State, name : String, version_field : String = "latest") : Base
     case version_field
     when .starts_with?("git://"), .starts_with?("git+ssh://"), .starts_with?("git+http://"), .starts_with?("git+https://"), .starts_with?("git+file://")
       Git.new(state, name, version_field)
@@ -49,6 +49,8 @@ module Zap::Resolver
     when .matches?(/^[^@].*\/.*$/)
       Git.new(state, name, "git+https://github.com/#{version_field}")
     else
+      version = Semver.parse(version_field)
+      raise "Invalid version: #{version_field}" unless version
       Registry.new(state, name, Semver.parse(version_field))
     end
   end

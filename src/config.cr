@@ -1,6 +1,5 @@
 module Zap
   record Config,
-    prefix : String = Dir.current,
     global : Bool = false,
     global_store_path : String = File.expand_path(
       ENV["ZAP_STORE_PATH"]? || (
@@ -9,8 +8,66 @@ module Zap
         {% else %}
           "~/.zap/store"
         {% end %}
-      ), home: true) do
+      ), home: true),
+    prefix : String = Dir.current do
     alias CommandConfig = Install
+
+    getter node_modules : String do
+      if global
+        {% if flag?(:windows) %}
+          File.join(prefix, "node_modules")
+        {% else %}
+          File.join(prefix, "lib", "node_modules")
+        {% end %}
+      else
+        File.join(prefix, "node_modules")
+      end
+    end
+
+    getter bin_path : String do
+      if global
+        {% if flag?(:windows) %}
+          prefix
+        {% else %}
+          File.join(prefix, "bin")
+        {% end %}
+      else
+        File.join(prefix, "node_modules", ".bin")
+      end
+    end
+
+    getter man_pages : String do
+      if global
+        File.join(prefix, "shares", "man")
+      else
+        ""
+      end
+    end
+
+    getter node_path : String do
+      nodejs = Process.find_executable("node").try { |node_path| File.real_path(node_path) }
+      raise "❌ Couldn't find the node executable.\nPlease install node.js and ensure that your PATH environment variable is set correctly." unless nodejs
+      nodejs
+    end
+
+    def deduce_global_prefix : String
+      {% if flag?(:windows) %}
+        node_path
+      {% else %}
+        Path.new(node_path, "..").normalize.to_s
+      {% end %}
+    end
+
+    enum Omit
+      Dev
+      Optional
+      Peer
+    end
+
+    enum InstallStrategy
+      NPM_Hoisted
+      NPM_Shallow
+    end
 
     record Install,
       file_backend : Backend::Backends = (
@@ -20,10 +77,28 @@ module Zap
           Backend::Backends::Hardlink
         {% end %}
       ),
-      only_prod : Bool = false,
-      only_dev : Bool = false,
-      lockfile_only : Bool = false,
       frozen_lockfile : Bool = !!ENV["CI"]?,
-      ignore_scripts : Bool = false
+      ignore_scripts : Bool = false,
+      install_strategy : InstallStrategy = InstallStrategy::NPM_Hoisted,
+      omit : Array(Omit) = ENV["NODE_ENV"]? === "production" ? [Omit::Dev] : [] of Omit,
+      new_packages : SafeArray(String) = SafeArray(String).new,
+      save : Bool = true,
+      save_exact : Bool = false,
+      save_prod : Bool = true,
+      save_dev : Bool = false,
+      save_optional : Bool = false,
+      lockfile_only : Bool = false do
+      def omit_dev?
+        omit.includes?(Omit::Dev)
+      end
+
+      def omit_optional?
+        omit.includes?(Omit::Optional)
+      end
+
+      def omit_peer?
+        omit.includes?(Omit::Peer)
+      end
+    end
   end
 end

@@ -1,8 +1,8 @@
 module Zap::Resolver
   struct File < Base
-    def resolve(parent_pkg_refs : Package::ParentPackageRefs, *, dependent : Package?, validate_lockfile = false) : Package?
+    def resolve(parent_pkg_refs : Package::ParentPackageRefs, *, dependent : Package? = nil, validate_lockfile = false, resolve_dependencies = true) : Package?
       path = Path.new version.to_s.split("file:").last
-      absolute_path = path.expand(state.common_config.prefix)
+      absolute_path = path.expand(state.config.prefix)
       if Dir.exists? absolute_path
         Package.init(absolute_path).tap { |pkg|
           pkg.dist = {link: path.to_s}
@@ -27,10 +27,10 @@ module Zap::Resolver
         Package.init(temp_path).tap { |pkg|
           pkg.dist = {tarball: tarball_path.to_s, path: temp_path.to_s}
           on_resolve(pkg, parent_pkg_refs, :file, version.to_s, dependent)
-          pkg.resolve_dependencies(state: state, dependent: dependent || pkg)
+          pkg.resolve_dependencies(state: state, dependent: dependent || pkg) if resolve_dependencies
         }
       else
-        raise "Invalid file path for dependency #{package_name} @ #{version}"
+        raise "Invalid file path #{version}"
       end
     end
 

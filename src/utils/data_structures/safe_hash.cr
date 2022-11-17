@@ -1,5 +1,5 @@
 struct SafeHash(K, V)
-  @inner : Hash(K, V)
+  getter inner : Hash(K, V)
   @lock = Mutex.new
 
   def initialize(*args, **kwargs)
