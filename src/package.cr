@@ -150,14 +150,20 @@ class Zap::Package
 
   def resolve_dependencies(*, state : Commands::Install::State, dependent = nil, resolved_packages = SafeSet(String).new)
     is_main_package = !dependent
+    # Store references to the parent package pinned dependencies so that its own dependencies can register themselves
     pkg_refs = ParentPackageRefs.new(
       is_lockfile: is_main_package,
       pinned_dependencies: (is_main_package ? state.lockfile : self).pinned_dependencies
     )
 
-    resolve_new_packages(pkg_refs: pkg_refs, state: state) if is_main_package
+    # Resolve new packages added from the CLI if we are curently in the root package
+    if is_main_package
+      resolve_new_packages(pkg_refs: pkg_refs, state: state)
+    end
 
+    # If we are in the root package or if the packages has not been saved in the lockfile
     if is_main_package || !pinned_dependencies || pinned_dependencies.empty?
+      # We crawl the regular dependencies fields to lock the versions
       NamedTuple.new(
         dependencies: dependencies,
         optional_dependencies: optional_dependencies,
@@ -174,19 +180,20 @@ class Zap::Package
         end
       end
     else
+      # Otherwise we use the pinned dependencies
       pinned_dependencies.each do |name, version|
         resolve_dependency(name, version, :dependencies, pkg_refs: pkg_refs, state: state, dependent: dependent, resolved_packages: resolved_packages)
       end
     end
   end
 
-  def should_resolve_dependencies?(state : Commands::Install::State)
+  protected def should_resolve_dependencies?(state : Commands::Install::State)
     !(kind.file? && dist.try &.as(LinkDist))
   end
 
   # For some dependencies, we need to store a Set of all the packages that have already been crawled
   # This is to prevent infinite loops when crawling the dependency tree
-  def already_resolved?(state : Commands::Install::State, resolved_packages : SafeSet(String)) : Bool
+  protected def already_resolved?(state : Commands::Install::State, resolved_packages : SafeSet(String)) : Bool
     if should_resolve_dependencies?(state)
       begin
         resolved_packages.lock.lock
@@ -215,10 +222,8 @@ class Zap::Package
       # If the package is not in the lock, or if it is a direct dependency, resolve it
       metadata ||= resolver.resolve(pkg_refs, validate_lockfile: is_main_package, dependent: dependent)
       # If the package has already been resolved, skip it to prevent infinite loops
-      unless is_main_package
-        already_resolved = metadata.already_resolved?(state, resolved_packages)
-        next if already_resolved
-      end
+      already_resolved = metadata.already_resolved?(state, resolved_packages)
+      next if already_resolved
       # Determine whether the dependencies should be resolved, most of the time they should
       should_resolve_dependencies = metadata.should_resolve_dependencies?(state)
       # Store the package data in the lockfile
@@ -294,29 +299,35 @@ class Zap::Package
   end
 
   private def resolve_new_packages(pkg_refs : ParentPackageRefs, state : Commands::Install::State)
+    # Infer new dependency type based on CLI flags
     type = state.install_config.save_dev ? :dev_dependencies : state.install_config.save_optional ? :optional_dependencies : :dependencies
+    # For each added dependency…
     state.install_config.new_packages.each do |new_dep|
+      # Infer the package.json version from the CLI argument
       inferred_version, inferred_name = parse_new_package(new_dep, state: state)
-      # parse dep and make it resolvable
-      # state.pipeline.process do
+      # Resolve the package
       resolver = Resolver.make(state, inferred_name, inferred_version || "*")
       metadata = resolver.resolve(pkg_refs).not_nil!
+      # Store it in the filesystem, potentially in the global store
       stored = resolver.store(metadata) { state.reporter.on_downloading_package } if metadata
       state.reporter.on_package_downloaded if stored
+      # If the save flag is set
       if state.install_config.save
         saved_version = inferred_version
         if metadata.kind == Kind::Registry
           if state.install_config.save_exact
+            # If the exact flag is set use the resolved version
             saved_version = metadata.version
           elsif inferred_version.nil?
+            # Otherwise add the default range operator (^) to the resolved version
             saved_version = %(^#{metadata.version})
           end
         end
+        # Save the dependency in the package.json
         self.add_dependency(metadata.name, saved_version.not_nil!, type)
+        # Save the dependency in the lockfile
         state.lockfile.add_dependency(name, saved_version.not_nil!, type)
       end
-      # end
-
     rescue e
       state.reporter.stop
       error_string = ("❌ Adding: #{new_dep}\n#{e}\n" + e.backtrace.map { |line| "\t#{line}" }.join("\n")).colorize(:red)
