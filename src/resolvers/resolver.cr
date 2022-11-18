@@ -28,10 +28,24 @@ abstract struct Zap::Resolver::Base
       end
     end
     parent_pkg_refs.pinned_dependencies[pkg.name] = locked_version
-    state.lockfile.pkgs[pkg.key] ||= pkg
   end
 
-  abstract def resolve(parent_pkg_refs : ParentPackageRefs, *, dependent : Package? = nil, validate_lockfile = false, resolve_dependencies = true) : Package?
+  def lockfile_cache(pkg : Package, name : String, *, dependent : Package? = nil)
+    if pinned_version = pkg.pinned_dependencies[name]?
+      cached_pkg = state.lockfile.pkgs[name + "@" + pinned_version]?
+      if cached_pkg
+        dependents = cached_pkg.dependents ||= SafeSet(String).new
+        if dependent
+          dependents << dependent.key
+        else
+          dependents << pkg.key
+        end
+        cached_pkg
+      end
+    end
+  end
+
+  abstract def resolve(parent_pkg_refs : ParentPackageRefs, *, dependent : Package? = nil, validate_lockfile = false) : Package
   abstract def store(metadata : Package, &on_downloading) : Bool
 end
 

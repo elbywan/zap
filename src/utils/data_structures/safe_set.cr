@@ -1,6 +1,6 @@
 struct SafeSet(T)
   property inner : Set(T)
-  @lock = Mutex.new
+  getter lock = Mutex.new
 
   def initialize(*args, **kwargs)
     @inner = Set(T).new(*args, **kwargs)

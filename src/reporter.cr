@@ -122,7 +122,7 @@ class Zap::Reporter
           @out << header("🔍", "Resolving…", :yellow) + %([#{@resolved_packages.get}/#{@resolving_packages.get}])
           if (downloading = @downloading_packages.get) > 0
             @out << "\n"
-            @out << header("🛰️", "Downloading…", :cyan) + %([#{@downloaded_packages.get}/#{downloading}])
+            @out << header("📡", "Downloading…", :cyan) + %([#{@downloaded_packages.get}/#{downloading}])
             @lines.set(2)
           else
             @lines.set(1)
@@ -141,7 +141,7 @@ class Zap::Reporter
         break if msg.nil?
         @io_lock.synchronize do
           @out << @cursor.clear_line
-          @out << header("💾", "Installing…", :magenta) + %([#{@installed_packages.get}/#{@installing_packages.get}])
+          @out << header("💽", "Installing…", :magenta) + %([#{@installed_packages.get}/#{@installing_packages.get}])
           @out.flush
         end
       end

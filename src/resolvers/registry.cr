@@ -14,11 +14,6 @@ module Zap::Resolver
     class_getter base_url : String = "https://registry.npmjs.org"
     @@client_pool = nil
 
-    # Prevents resolving the same package multiple times
-    @@resolved_packages = Set(String).new
-    @@resolved_packages_lock = Mutex.new
-    @@lock = Mutex.new
-
     def self.init(global_store_path : String, base_url = nil)
       @@base_url = base_url if base_url
       fetch_cache = Fetch::Cache::InMemory.new(fallback: Fetch::Cache::InStore.new(global_store_path))
@@ -30,7 +25,7 @@ module Zap::Resolver
       }
     end
 
-    def resolve(parent_pkg_refs : Package::ParentPackageRefs, *, dependent : Package? = nil, validate_lockfile = false, resolve_dependencies = true) : Package?
+    def resolve(parent_pkg_refs : Package::ParentPackageRefs, *, dependent : Package? = nil, validate_lockfile = false) : Package
       pkg = nil
       # Check if the metadata lives inside the lockfile already
       if !self.package_name.empty? && (lockfile_version = parent_pkg_refs.pinned_dependencies[self.package_name]?)
@@ -50,17 +45,6 @@ module Zap::Resolver
       # If not, fetch the metadata from the registry
       pkg ||= self.fetch_metadata
       on_resolve(pkg, parent_pkg_refs, :registry, pkg.version, dependent)
-      if resolve_dependencies
-        begin
-          @@resolved_packages_lock.lock
-          # Skip resolving own dependencies if we already resolved them before
-          return if @@resolved_packages.includes?(pkg.key)
-          @@resolved_packages.add(pkg.key)
-        ensure
-          @@resolved_packages_lock.unlock
-        end
-        pkg.resolve_dependencies(state: state, dependent: dependent || pkg)
-      end
       pkg
     rescue e
       raise "Error resolving #{pkg.try &.name || self.package_name} #{pkg.try &.version || self.version} #{e} #{e.backtrace.join("\n")}".colorize(:red).to_s

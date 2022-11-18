@@ -42,10 +42,12 @@ module Zap::Commands::Install
           end
         end
 
+        # Crawl, resolve and store dependencies
         main_package.resolve_dependencies(state: state)
         state.pipeline.await
         state.reporter.stop
 
+        # Install dependencies to the appropriate node_modules folder
         state.pipeline.reset
         state.reporter.report_installer_updates
         installer = Installers::Npm::Installer.new(state)
