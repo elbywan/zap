@@ -18,17 +18,18 @@ module Zap::Resolver
       @@base_url = base_url if base_url
       fetch_cache = Fetch::Cache::InMemory.new(fallback: Fetch::Cache::InStore.new(global_store_path))
       # Reusable client pool
-      @@client_pool ||= Fetch::Pool.new(@@base_url, 20, cache: fetch_cache) { |client|
+      @@client_pool ||= Fetch::Pool.new(@@base_url, 50, cache: fetch_cache) { |client|
         client.read_timeout = 10.seconds
         client.write_timeout = 1.seconds
         client.connect_timeout = 1.second
       }
     end
 
-    def resolve(parent_pkg_refs : Package::ParentPackageRefs, *, dependent : Package? = nil, validate_lockfile = false) : Package
+    def resolve(parent_pkg : Package | Lockfile, *, dependent : Package? = nil, validate_lockfile = false) : Package
       pkg = nil
       # Check if the metadata lives inside the lockfile already
-      if !self.package_name.empty? && (lockfile_version = parent_pkg_refs.pinned_dependencies[self.package_name]?)
+      pinned_dependencies = parent_pkg.pinned_dependencies
+      if !self.package_name.empty? && (lockfile_version = pinned_dependencies[self.package_name]?)
         pkg = state.lockfile.pkgs["#{self.package_name}@#{lockfile_version}"]?
         # Validate the lockfile version - for root packages
         if validate_lockfile && pkg
@@ -44,7 +45,7 @@ module Zap::Resolver
       end
       # If not, fetch the metadata from the registry
       pkg ||= self.fetch_metadata
-      on_resolve(pkg, parent_pkg_refs, pkg.version, dependent)
+      on_resolve(pkg, parent_pkg, pkg.version, dependent: dependent)
       pkg
     rescue e
       raise "Error resolving #{pkg.try &.name || self.package_name} #{pkg.try &.version || self.version} #{e} #{e.backtrace.join("\n")}".colorize(:red).to_s

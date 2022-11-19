@@ -14,9 +14,7 @@ require "./resolvers/resolver"
 class Zap::Package
   include JSON::Serializable
   include YAML::Serializable
-
-  # Used when crawling dependencies to register a package as a dependency of its parent.
-  record ParentPackageRefs, is_lockfile : Bool, pinned_dependencies : SafeHash(String, String)
+  include Utils::Macros
 
   #######################
   # Package.json fields #
@@ -55,9 +53,15 @@ class Zap::Package
   ############################
 
   @[JSON::Field(ignore: true)]
-  property pinned_dependencies : SafeHash(String, String)? = nil
+  safe_getter pinned_dependencies : SafeHash(String, String) { SafeHash(String, String).new }
+  getter? pinned_dependencies
+  setter pinned_dependencies : SafeHash(String, String)?
+
   @[JSON::Field(ignore: true)]
-  property dependents : SafeSet(String)? = nil
+  safe_getter dependents : SafeSet(String) { SafeSet(String).new }
+  getter? dependents
+  setter dependents : SafeSet(String)?
+
   @[JSON::Field(ignore: true)]
   property optional : Bool? = nil
 
@@ -142,21 +146,16 @@ class Zap::Package
     end
   end
 
-  def resolve_dependencies(*, state : Commands::Install::State, dependent = nil, resolved_packages = SafeSet(String).new)
-    is_main_package = !dependent
-    # Store references to the parent package pinned dependencies so that its own dependencies can register themselves
-    pkg_refs = ParentPackageRefs.new(
-      is_lockfile: is_main_package,
-      pinned_dependencies: ((is_main_package ? state.lockfile : self).pinned_dependencies ||= SafeHash(String, String).new),
-    )
+  def resolve_dependencies(*, state : Commands::Install::State, dependent : Package? = nil, resolved_packages = SafeSet(String).new)
+    is_main_package = dependent.nil?
 
     # Resolve new packages added from the CLI if we are curently in the root package
     if is_main_package
-      resolve_new_packages(pkg_refs: pkg_refs, state: state)
+      resolve_new_packages(state: state)
     end
 
     # If we are in the root package or if the packages has not been saved in the lockfile
-    if is_main_package || !pinned_dependencies || pinned_dependencies.try &.empty?
+    if is_main_package || !pinned_dependencies? || pinned_dependencies.empty?
       # We crawl the regular dependencies fields to lock the versions
       NamedTuple.new(
         dependencies: dependencies,
@@ -175,13 +174,13 @@ class Zap::Package
             next if optional_dependencies.try &.[name]?
           end
           # p "Resolving (#{type}): #{name}@#{version} from #{self.name}@#{self.version}"
-          resolve_dependency(name, version, type, pkg_refs: pkg_refs, state: state, dependent: dependent, resolved_packages: resolved_packages)
+          resolve_dependency(name, version, type, state: state, dependent: dependent, resolved_packages: resolved_packages)
         end
       end
     else
       # Otherwise we use the pinned dependencies
-      pinned_dependencies.try &.each do |name, version|
-        resolve_dependency(name, version, pkg_refs: pkg_refs, state: state, dependent: dependent, resolved_packages: resolved_packages)
+      pinned_dependencies?.try &.each do |name, version|
+        resolve_dependency(name, version, state: state, dependent: dependent, resolved_packages: resolved_packages)
       end
     end
   end
@@ -275,21 +274,21 @@ class Zap::Package
     false
   end
 
-  private def resolve_dependency(name : String, version : String, type : Symbol? = nil, *, pkg_refs : ParentPackageRefs, state : Commands::Install::State, resolved_packages : SafeSet(String), dependent = nil)
-    is_main_package = !dependent
+  private def resolve_dependency(name : String, version : String, type : Symbol? = nil, *, state : Commands::Install::State, dependent : Package? = nil, resolved_packages : SafeSet(String))
+    is_direct_dependency = dependent.nil?
     state.reporter.on_resolving_package
     # Add direct dependencies to the lockfile
-    state.lockfile.add_dependency(name, version, type) if is_main_package && type
+    state.lockfile.add_dependency(name, version, type) if is_direct_dependency && type
     # Multithreaded dependency resolution
     state.pipeline.process do
       # Create the appropriate resolver depending on the version (git, tarball, registry, local folder…)
       resolver = Resolver.make(state, name, version)
-      # Attempt to use the package data from the lock unless it is a direct dependency
-      unless is_main_package
+      # Attempt to use the package data from the lockfile unless it is a direct dependency
+      unless is_direct_dependency
         metadata = resolver.lockfile_cache(self, name, dependent: dependent)
       end
-      # If the package is not in the lock, or if it is a direct dependency, resolve it
-      metadata ||= resolver.resolve(pkg_refs, validate_lockfile: is_main_package, dependent: dependent)
+      # If the package is not in the lockfile or if it is a direct dependency, resolve it
+      metadata ||= resolver.resolve(is_direct_dependency ? state.lockfile : self, dependent: dependent, validate_lockfile: is_direct_dependency)
       metadata.optional = (type == :optional_dependencies || nil)
       metadata.match_os_and_cpu!
       # If the package has already been resolved, skip it to prevent infinite loops
@@ -315,12 +314,12 @@ class Zap::Package
       # Do not stop the world for optional dependencies
       if type != :optional_dependencies && !metadata.try(&.optional)
         state.reporter.stop
-        error_string = ("❌ Resolving: #{name} @ #{version} \n#{e}\n" + e.backtrace.map { |line| "\t#{line}" }.join("\n")).colorize(:red)
-        Zap::Log.error { error_string }
+        package_in_error = "#{name}@#{version}"
+        state.reporter.error(e, package_in_error.colorize.bold.to_s)
         exit(1)
       else
         # Silently ignore optional dependencies
-        metadata.try { |pkg| pinned_dependencies.try &.delete(pkg.name) }
+        metadata.try { |pkg| pinned_dependencies?.try &.delete(pkg.name) }
       end
     ensure
       # Report the package as resolved
@@ -370,7 +369,7 @@ class Zap::Package
     end
   end
 
-  private def resolve_new_packages(pkg_refs : ParentPackageRefs, state : Commands::Install::State)
+  private def resolve_new_packages(state : Commands::Install::State)
     # Infer new dependency type based on CLI flags
     type = state.install_config.save_dev ? :dev_dependencies : state.install_config.save_optional ? :optional_dependencies : :dependencies
     # For each added dependency…
@@ -379,7 +378,7 @@ class Zap::Package
       inferred_version, inferred_name = parse_new_package(new_dep, state: state)
       # Resolve the package
       resolver = Resolver.make(state, inferred_name, inferred_version || "*")
-      metadata = resolver.resolve(pkg_refs).not_nil!
+      metadata = resolver.resolve(state.lockfile).not_nil!
       metadata.match_os_and_cpu!
       # Store it in the filesystem, potentially in the global store
       stored = resolver.store(metadata) { state.reporter.on_downloading_package } if metadata
@@ -403,8 +402,7 @@ class Zap::Package
       end
     rescue e
       state.reporter.stop
-      error_string = ("❌ Adding: #{new_dep}\n#{e}\n" + e.backtrace.map { |line| "\t#{line}" }.join("\n")).colorize(:red)
-      Zap::Log.error { error_string }
+      state.reporter.error(e, new_dep)
       exit(1)
     end
   end

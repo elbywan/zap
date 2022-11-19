@@ -4,13 +4,15 @@ require "./utils/**"
 class Zap::Lockfile
   include JSON::Serializable
   include YAML::Serializable
+  include Utils::Macros
   NAME = ".zap-lock.yml"
 
   property dependencies : SafeHash(String, String)? = nil
   property dev_dependencies : SafeHash(String, String)? = nil
   property optional_dependencies : SafeHash(String, String)? = nil
   property peer_dependencies : SafeHash(String, String)? = nil
-  property pinned_dependencies : SafeHash(String, String)? = nil
+  safe_property pinned_dependencies : SafeHash(String, String) { SafeHash(String, String).new }
+  getter? pinned_dependencies
   property pkgs : SafeHash(String, Package) = SafeHash(String, Package).new
 
   @[JSON::Field(ignore: true)]
@@ -50,7 +52,7 @@ class Zap::Lockfile
 
     pruned_deps = Set(String).new
     pinned_deps = Set(String).new
-    self.pinned_dependencies.try &.select! { |name, version|
+    self.pinned_dependencies?.try &.select! { |name, version|
       key = "#{name}@#{version}"
       unless keep = all_dependencies.includes?(name)
         pruned_deps << key
@@ -63,7 +65,7 @@ class Zap::Lockfile
 
     self.pkgs.select! { |name, pkg|
       # Remove empty objects
-      if pkg.pinned_dependencies.try &.size == 0
+      if pkg.pinned_dependencies?.try &.size == 0
         pkg.pinned_dependencies = nil
       end
       if pkg.scripts.try &.no_scripts?

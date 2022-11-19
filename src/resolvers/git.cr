@@ -7,11 +7,11 @@ module Zap::Resolver
       @git_url = Utils::GitUrl.new(@version.to_s, @state.reporter)
     end
 
-    def resolve(parent_pkg_refs : Package::ParentPackageRefs, *, dependent : Package? = nil, validate_lockfile = false) : Package
+    def resolve(parent_pkg : Package | Lockfile, *, dependent : Package? = nil, validate_lockfile = false) : Package
       pkg = nil
       store_hash = Digest::SHA1.hexdigest(version.to_s)
       temp_path = Path.new(Dir.tempdir, "zap--git-#{store_hash}")
-      if !self.package_name.empty? && (lockfile_version = parent_pkg_refs.pinned_dependencies[self.package_name]?)
+      if !self.package_name.empty? && (lockfile_version = parent_pkg.pinned_dependencies[self.package_name]?)
         pkg = state.lockfile.pkgs["#{self.package_name}@#{lockfile_version}"]?
         # Validate the lockfile version
         if pkg
@@ -19,7 +19,7 @@ module Zap::Resolver
         end
       end
       pkg ||= fetch_metadata(temp_path)
-      on_resolve(pkg, parent_pkg_refs, pkg.dist.as(Package::GitDist).commit_hash, dependent)
+      on_resolve(pkg, parent_pkg, pkg.dist.as(Package::GitDist).commit_hash, dependent: dependent)
       pkg
     end
 

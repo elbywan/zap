@@ -8,16 +8,11 @@ abstract struct Zap::Resolver::Base
   def initialize(@state, @package_name, @version = "latest")
   end
 
-  def on_resolve(pkg : Package, parent_pkg_refs : Package::ParentPackageRefs, locked_version : String, dependent : Package? = nil)
-    dependents = pkg.dependents ||= SafeSet(String).new
-    if dependent
-      dependents << dependent.key
-    else
-      dependents << pkg.key
-    end
-    # For direct dependencies: check if the package is freshly added since the last install and report accordingly
-    if parent_pkg_refs.is_lockfile
-      if version = parent_pkg_refs.pinned_dependencies[pkg.name]?
+  def on_resolve(pkg : Package, parent_pkg : Package | Lockfile, locked_version : String, *, dependent : Package?)
+    pkg.dependents << (dependent || pkg).key
+    if parent_pkg.is_a?(Lockfile)
+      # For direct dependencies: check if the package is freshly added since the last install and report accordingly
+      if version = parent_pkg.pinned_dependencies[pkg.name]?
         if locked_version != version
           state.reporter.on_package_added(pkg.key)
           state.reporter.on_package_removed(pkg.name + "@" + version)
@@ -26,25 +21,20 @@ abstract struct Zap::Resolver::Base
         state.reporter.on_package_added(pkg.key)
       end
     end
-    parent_pkg_refs.pinned_dependencies[pkg.name] = locked_version
+    parent_pkg.pinned_dependencies[pkg.name] = locked_version
   end
 
   def lockfile_cache(pkg : Package, name : String, *, dependent : Package? = nil)
-    if pinned_version = pkg.pinned_dependencies.try &.[name]?
+    if pinned_version = pkg.pinned_dependencies?.try &.[name]?
       cached_pkg = state.lockfile.pkgs[name + "@" + pinned_version]?
       if cached_pkg
-        dependents = cached_pkg.dependents ||= SafeSet(String).new
-        if dependent
-          dependents << dependent.key
-        else
-          dependents << pkg.key
-        end
+        cached_pkg.dependents << (dependent || pkg).key
         cached_pkg
       end
     end
   end
 
-  abstract def resolve(parent_pkg_refs : ParentPackageRefs, *, dependent : Package? = nil, validate_lockfile = false) : Package
+  abstract def resolve(parent_pkg : Package | Lockfile, *, dependent : Package? = nil, validate_lockfile = false) : Package
   abstract def store(metadata : Package, &on_downloading) : Bool
 end
 

@@ -27,6 +27,8 @@ class Zap::Pipeline
     end
     spawn do
       block.call
+    rescue Channel::ClosedError
+      # Ignore
     ensure
       @mutex.synchronize do
         @counter -= 1

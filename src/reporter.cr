@@ -62,12 +62,26 @@ class Zap::Reporter
     @lock.synchronize do
       @update_channel.close
       @out.puts ""
+    rescue Channel::ClosedError
+      # Ignore
+    end
+  end
+
+  def error(error : Exception, location : String? = "")
+    @lock.synchronize do
+      @out << header("❌", "Error!", :red) + location
+      @out << "\n"
+      @out << "\n   • #{error.message}".colorize(:red)
+      @out << "\n"
+      Zap::Log.debug { error.backtrace.map { |line| "\t#{line}" }.join("\n").colorize(:red) }
     end
   end
 
   def update
     @lock.synchronize do
       @update_channel.send 0 unless @update_channel.closed?
+    rescue Channel::ClosedError
+      # Ignore
     end
   end
 
@@ -157,6 +171,7 @@ class Zap::Reporter
           separator = "\n   • ".colorize(:default)
           @out << separator
           @out << @logs.join(separator)
+          Colorize.reset(@out)
           @out << "\n\n"
         end
       end

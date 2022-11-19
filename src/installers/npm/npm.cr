@@ -18,7 +18,7 @@ module Zap::Installers::Npm
       initial_cache : Deque(CacheItem) = Deque(CacheItem).new
       initial_cache << {node_modules, Set(Package).new}
       # initialize the queue with the root dependencies
-      state.lockfile.pinned_dependencies.try &.map { |name, version|
+      state.lockfile.pinned_dependencies?.try &.map { |name, version|
         dependency_queue << {
           state.lockfile.pkgs["#{name}@#{version}"],
           initial_cache.dup,
@@ -27,17 +27,25 @@ module Zap::Installers::Npm
 
       # BFS loop
       while dependency_item = dependency_queue.shift?
-        dependency, cache = dependency_item
-        # install a dependency and get the new cache to pass to the subdeps
-        subcache = install_dependency(dependency, cache: cache)
-        # no subcache = do not process the sub dependencies
-        next unless subcache
-        # shallow strategy means we only install direct deps at top-level
-        if state.install_config.install_strategy.npm_shallow? && subcache.size == 2 && subcache[0][0] == node_modules
-          subcache.shift
-        end
-        dependency.pinned_dependencies.try &.each do |name, version|
-          dependency_queue << {state.lockfile.pkgs["#{name}@#{version}"], subcache}
+        begin
+          dependency, cache = dependency_item
+          # install a dependency and get the new cache to pass to the subdeps
+          subcache = install_dependency(dependency, cache: cache)
+          # no subcache = do not process the sub dependencies
+          next unless subcache
+          # shallow strategy means we only install direct deps at top-level
+          if state.install_config.install_strategy.npm_shallow? && subcache.size == 2 && subcache[0][0] == node_modules
+            subcache.shift
+          end
+          dependency.pinned_dependencies?.try &.each do |name, version|
+            dependency_queue << {state.lockfile.pkgs["#{name}@#{version}"], subcache}
+          end
+        rescue e
+          state.reporter.stop
+          parent_path = cache.try &.last[0]
+          package_in_error = "#{dependency.name}@#{dependency.version}" if dependency
+          state.reporter.error(e, package_in_error.colorize.bold.to_s + " at " + parent_path.colorize.dim.to_s)
+          exit 2
         end
       end
     end
