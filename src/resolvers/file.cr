@@ -5,8 +5,8 @@ module Zap::Resolver
       absolute_path = path.expand(state.config.prefix)
       if Dir.exists? absolute_path
         Package.init(absolute_path).tap { |pkg|
-          pkg.dist = {link: path.to_s}
-          on_resolve(pkg, parent_pkg_refs, :file, version.to_s, dependent)
+          pkg.dist = Package::LinkDist.new(path.to_s)
+          on_resolve(pkg, parent_pkg_refs, version.to_s, dependent)
         }
       elsif ::File.exists? absolute_path
         tarball_path = path
@@ -14,8 +14,8 @@ module Zap::Resolver
         temp_path = Path.new(Dir.tempdir, "zap--tarball-#{store_hash}")
         extract_tarball_to_temp(absolute_path, temp_path)
         Package.init(temp_path).tap { |pkg|
-          pkg.dist = {tarball: tarball_path.to_s, path: temp_path.to_s}
-          on_resolve(pkg, parent_pkg_refs, :file, version.to_s, dependent)
+          pkg.dist = Package::TarballDist.new(tarball_path.to_s, temp_path.to_s)
+          on_resolve(pkg, parent_pkg_refs, version.to_s, dependent)
         }
       else
         raise "Invalid file path #{version}"
@@ -24,7 +24,7 @@ module Zap::Resolver
 
     def store(metadata : Package, &on_downloading) : Bool
       if (dist = metadata.dist).is_a?(Package::TarballDist)
-        extract_tarball_to_temp(dist[:tarball], Path.new(dist[:path]))
+        extract_tarball_to_temp(dist.tarball, Path.new(dist.path))
       end
       false
     end

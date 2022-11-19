@@ -11,16 +11,16 @@ module Zap::Resolver
         download_tarball(tarball_url, temp_path)
       end
       Package.init(temp_path).tap { |pkg|
-        pkg.dist = {tarball: tarball_url, path: temp_path.to_s}
-        on_resolve(pkg, parent_pkg_refs, :tarball, tarball_url, dependent)
+        pkg.dist = Package::TarballDist.new(tarball_url, temp_path.to_s)
+        on_resolve(pkg, parent_pkg_refs, tarball_url, dependent)
       }
     end
 
     def store(metadata : Package, &on_downloading) : Bool
       dist = metadata.dist.as(Package::TarballDist)
-      return false if Dir.exists?(dist[:path])
+      return false if Dir.exists?(dist.path)
       yield
-      download_tarball(dist[:tarball], Path.new(dist[:path]))
+      download_tarball(dist.tarball, Path.new(dist.path))
       true
     end
 

@@ -1,6 +1,6 @@
 module Zap::Installers::Npm::Helpers::Git
   def self.install(dependency : Package, *, cache : Deque(CacheItem), state : Commands::Install::State) : Deque(CacheItem)?
-    unless cloned_folder = dependency.dist.try &.as(Package::GitDist)[:path].try { |path| Path.new(path) }
+    unless cloned_folder = dependency.dist.try &.as(Package::GitDist).path.try { |path| Path.new(path) }
       raise "Cannot install git dependency #{dependency.name} because the dist.path field is missing."
     end
 

@@ -18,7 +18,7 @@ module Zap::Installers::Npm
       initial_cache : Deque(CacheItem) = Deque(CacheItem).new
       initial_cache << {node_modules, Set(Package).new}
       # initialize the queue with the root dependencies
-      state.lockfile.pinned_dependencies.map { |name, version|
+      state.lockfile.pinned_dependencies.try &.map { |name, version|
         dependency_queue << {
           state.lockfile.pkgs["#{name}@#{version}"],
           initial_cache.dup,
@@ -36,7 +36,7 @@ module Zap::Installers::Npm
         if state.install_config.install_strategy.npm_shallow? && subcache.size == 2 && subcache[0][0] == node_modules
           subcache.shift
         end
-        dependency.pinned_dependencies.each do |name, version|
+        dependency.pinned_dependencies.try &.each do |name, version|
           dependency_queue << {state.lockfile.pkgs["#{name}@#{version}"], subcache}
         end
       end
@@ -44,9 +44,9 @@ module Zap::Installers::Npm
 
     def install_dependency(dependency : Package, *, cache : Deque(CacheItem)) : Deque(CacheItem)?
       case dependency.kind
-      when .file?
+      when .tarball_file?, .link?
         Helpers::File.install(dependency, cache: cache, state: state)
-      when .tarball?
+      when .tarball_url?
         Helpers::Tarball.install(dependency, cache: cache, state: state)
       when .git?
         Helpers::Git.install(dependency, cache: cache, state: state)

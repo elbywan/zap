@@ -15,16 +15,16 @@ module Zap::Resolver
         pkg = state.lockfile.pkgs["#{self.package_name}@#{lockfile_version}"]?
         # Validate the lockfile version
         if pkg
-          pkg = nil unless pkg.kind.git? && pkg.dist.as(Package::GitDist)[:path] == temp_path
+          pkg = nil unless pkg.dist.as?(Package::GitDist).try(&.path.== temp_path)
         end
       end
       pkg ||= fetch_metadata(temp_path)
-      on_resolve(pkg, parent_pkg_refs, :git, pkg.dist.as(Package::GitDist)[:commit_hash], dependent)
+      on_resolve(pkg, parent_pkg_refs, pkg.dist.as(Package::GitDist).commit_hash, dependent)
       pkg
     end
 
     def store(metadata : Package, &on_downloading) : Bool
-      temp_path = metadata.dist.as(Package::GitDist)[:path]
+      temp_path = metadata.dist.as(Package::GitDist).path
       return false if ::File.directory?(temp_path)
       yield
       clone_to_temp(temp_path)
@@ -38,7 +38,7 @@ module Zap::Resolver
       # end
       commit_hash = @git_url.class.commit_hash(temp_path)
       Package.init(temp_path).tap { |pkg|
-        pkg.dist = {commit_hash: commit_hash, path: temp_path.to_s}
+        pkg.dist = Package::GitDist.new(commit_hash, temp_path.to_s)
       }
     end
 

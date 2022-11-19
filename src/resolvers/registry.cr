@@ -44,7 +44,7 @@ module Zap::Resolver
       end
       # If not, fetch the metadata from the registry
       pkg ||= self.fetch_metadata
-      on_resolve(pkg, parent_pkg_refs, :registry, pkg.version, dependent)
+      on_resolve(pkg, parent_pkg_refs, pkg.version, dependent)
       pkg
     rescue e
       raise "Error resolving #{pkg.try &.name || self.package_name} #{pkg.try &.version || self.version} #{e} #{e.backtrace.join("\n")}".colorize(:red).to_s
@@ -57,9 +57,9 @@ module Zap::Resolver
       yield
 
       dist = metadata.dist.not_nil!.as(Package::RegistryDist)
-      tarball_url = dist[:tarball]
-      integrity = dist[:integrity].try &.split(" ")[0]
-      shasum = dist[:shasum]
+      tarball_url = dist.tarball
+      integrity = dist.integrity.try &.split(" ")[0]
+      shasum = dist.shasum
       version = metadata.version
       unsupported_algorithm = false
       algorithm, hash, algorithm_instance = nil, nil, nil

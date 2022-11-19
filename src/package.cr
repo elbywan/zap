@@ -8,13 +8,6 @@ class Zap::Package
   include JSON::Serializable
   include YAML::Serializable
 
-  enum Kind
-    File
-    Git
-    Registry
-    Tarball
-  end
-
   struct LifecycleScripts
     include JSON::Serializable
     include YAML::Serializable
@@ -71,46 +64,102 @@ class Zap::Package
   getter scripts : LifecycleScripts? = nil
 
   # Npm specific fields
-  alias RegistryDist = {"tarball": String, "shasum": String, "integrity": String?}
-  alias LinkDist = {"link": String}
-  alias TarballDist = {"tarball": String, "path": String}
-  alias GitDist = {"commit_hash": String, "path": String}
+  struct RegistryDist
+    include JSON::Serializable
+    include YAML::Serializable
+
+    property tarball : String
+    property shasum : String
+    property integrity : String?
+
+    def initialize(@tarball, @shasum, @integrity = nil)
+    end
+  end
+
+  struct LinkDist
+    include JSON::Serializable
+    include YAML::Serializable
+
+    property link : String
+
+    def initialize(@link)
+    end
+  end
+
+  struct TarballDist
+    include JSON::Serializable
+    include YAML::Serializable
+
+    property tarball : String
+    property path : String
+
+    def initialize(@tarball, @path)
+    end
+  end
+
+  struct GitDist
+    include JSON::Serializable
+    include YAML::Serializable
+
+    property commit_hash : String
+    property path : String
+
+    def initialize(@commit_hash, @path)
+    end
+  end
+
   property dist : RegistryDist | LinkDist | TarballDist | GitDist | Nil = nil
   getter deprecated : String? = nil
 
   # Lockfile specific
   @[JSON::Field(ignore: true)]
-  property kind : Kind = Kind::Registry
-
-  # Attempt to replicate the "npm" definition of a local install
-  # Which seems to be packages pulled from git or linked locally
-  def local_install?
-    kind.git? || (kind.file? && dist.try &.as(LinkDist))
-  end
-
-  @[JSON::Field(ignore: true)]
-  property pinned_dependencies : SafeHash(String, String) = SafeHash(String, String).new
+  property pinned_dependencies : SafeHash(String, String)? = nil
   @[JSON::Field(ignore: true)]
   property dependents : SafeSet(String)? = nil
 
   # Internal fields
+  enum Kind
+    Link
+    Git
+    Registry
+    TarballFile
+    TarballUrl
+  end
+
+  @[JSON::Field(ignore: true)]
+  @[YAML::Field(ignore: true)]
+  getter kind : Kind do
+    case dist = self.dist
+    when TarballDist
+      if dist.tarball.starts_with?("http://") || dist.tarball.starts_with?("https://")
+        Kind::TarballUrl
+      else
+        Kind::TarballFile
+      end
+    when LinkDist
+      Kind::Link
+    when GitDist
+      Kind::Git
+    else
+      Kind::Registry
+    end
+  end
+
   @[JSON::Field(ignore: true)]
   @[YAML::Field(ignore: true)]
   getter key : String do
-    case kind
-    when .file?
-      case dist = self.dist
-      when TarballDist
-        "#{name}@file:#{dist.try &.["tarball"]}"
-      when LinkDist
-        "#{name}@file:#{dist.try &.["link"]}"
+    case dist = self.dist
+    when LinkDist
+      "#{name}@file:#{dist.link}"
+    when TarballDist
+      case kind
+      when .tarball_file?
+        "#{name}@file:#{dist.tarball}"
       else
-        raise "Invalid dist type"
+        "#{name}@#{dist.tarball}"
       end
-    when .tarball?
-      "#{name}@#{self.dist.try &.as(TarballDist)["tarball"]}"
-    when .git?
-      "#{name}@#{self.dist.try &.as(GitDist)["commit_hash"]}"
+    when GitDist
+      "#{name}@#{dist.commit_hash}"
     else
       "#{name}@#{version}"
     end
@@ -153,7 +202,7 @@ class Zap::Package
     # Store references to the parent package pinned dependencies so that its own dependencies can register themselves
     pkg_refs = ParentPackageRefs.new(
       is_lockfile: is_main_package,
-      pinned_dependencies: (is_main_package ? state.lockfile : self).pinned_dependencies
+      pinned_dependencies: ((is_main_package ? state.lockfile : self).pinned_dependencies ||= SafeHash(String, String).new),
     )
 
     # Resolve new packages added from the CLI if we are curently in the root package
@@ -162,7 +211,7 @@ class Zap::Package
     end
 
     # If we are in the root package or if the packages has not been saved in the lockfile
-    if is_main_package || !pinned_dependencies || pinned_dependencies.empty?
+    if is_main_package || !pinned_dependencies || pinned_dependencies.try &.empty?
       # We crawl the regular dependencies fields to lock the versions
       NamedTuple.new(
         dependencies: dependencies,
@@ -181,14 +230,21 @@ class Zap::Package
       end
     else
       # Otherwise we use the pinned dependencies
-      pinned_dependencies.each do |name, version|
+      pinned_dependencies.try &.each do |name, version|
         resolve_dependency(name, version, :dependencies, pkg_refs: pkg_refs, state: state, dependent: dependent, resolved_packages: resolved_packages)
       end
     end
   end
 
+  # Attempt to replicate the "npm" definition of a local install
+  # Which seems to be packages pulled from git or linked locally
+  def local_install?
+    kind.git? || kind.link?
+  end
+
+  # Do not crawl the dependencies for linked packages
   protected def should_resolve_dependencies?(state : Commands::Install::State)
-    !(kind.file? && dist.try &.as(LinkDist))
+    !kind.link?
   end
 
   # For some dependencies, we need to store a Set of all the packages that have already been crawled
@@ -314,7 +370,7 @@ class Zap::Package
       # If the save flag is set
       if state.install_config.save
         saved_version = inferred_version
-        if metadata.kind == Kind::Registry
+        if metadata.kind.registry?
           if state.install_config.save_exact
             # If the exact flag is set use the resolved version
             saved_version = metadata.version

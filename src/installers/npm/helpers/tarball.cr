@@ -1,6 +1,6 @@
 module Zap::Installers::Npm::Helpers::Tarball
   def self.install(dependency : Package, *, cache : Deque(CacheItem), state : Commands::Install::State) : Deque(CacheItem)?
-    unless temp_path = dependency.dist.try &.as(Package::TarballDist)[:path]
+    unless temp_path = dependency.dist.try &.as(Package::TarballDist).path
       raise "Cannot install file dependency #{dependency.name} because the dist.path field is missing."
     end
     target = cache.last[0]

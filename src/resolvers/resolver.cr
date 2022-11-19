@@ -8,8 +8,7 @@ abstract struct Zap::Resolver::Base
   def initialize(@state, @package_name, @version = "latest")
   end
 
-  def on_resolve(pkg : Package, parent_pkg_refs : Package::ParentPackageRefs, kind : Package::Kind, locked_version : String, dependent : Package? = nil)
-    pkg.kind = kind
+  def on_resolve(pkg : Package, parent_pkg_refs : Package::ParentPackageRefs, locked_version : String, dependent : Package? = nil)
     dependents = pkg.dependents ||= SafeSet(String).new
     if dependent
       dependents << dependent.key
@@ -31,7 +30,7 @@ abstract struct Zap::Resolver::Base
   end
 
   def lockfile_cache(pkg : Package, name : String, *, dependent : Package? = nil)
-    if pinned_version = pkg.pinned_dependencies[name]?
+    if pinned_version = pkg.pinned_dependencies.try &.[name]?
       cached_pkg = state.lockfile.pkgs[name + "@" + pinned_version]?
       if cached_pkg
         dependents = cached_pkg.dependents ||= SafeSet(String).new

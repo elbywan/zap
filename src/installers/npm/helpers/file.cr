@@ -12,7 +12,7 @@ module Zap::Installers::Npm::Helpers::File
 
   def self.install_link(dependency : Package, dist : Package::LinkDist, *, cache : Deque(CacheItem), state : Commands::Install::State) : Deque(CacheItem)?
     state.reporter.on_installing_package
-    relative_path = dist[:link]
+    relative_path = dist.link
     relative_path = Path.new(relative_path)
     origin_path = cache.last[0].dirname
     target_path = cache.last[0] / dependency.name
@@ -25,7 +25,7 @@ module Zap::Installers::Npm::Helpers::File
   def self.install_tarball(dependency : Package, dist : Package::TarballDist, *, cache : Deque(CacheItem), state : Commands::Install::State) : Deque(CacheItem)?
     target_path = cache.last[0] / dependency.name
     FileUtils.rm_rf(target_path) if ::File.directory?(target_path)
-    extracted_folder = Path.new(dist[:path])
+    extracted_folder = Path.new(dist.path)
 
     state.reporter.on_installing_package
 
