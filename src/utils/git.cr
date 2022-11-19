@@ -1,3 +1,5 @@
+require "../reporter"
+
 module Zap::Utils
   struct GitUrl
     # See: https://docs.npmjs.com/cli/v9/configuring-npm/package-json#git-urls-as-dependencies
@@ -15,8 +17,9 @@ module Zap::Utils
     @path : String?
     @commitish : String?
     @semver : String?
+    @reporter : Reporter?
 
-    def initialize(@url : String, @reporter : Reporter)
+    def initialize(@url : String, @reporter : Reporter? = nil)
       begin
         @match = GIT_URL_REGEX.match(@url).not_nil!
       rescue
@@ -78,10 +81,14 @@ module Zap::Utils
       self.run_and_get_output("git rev-parse HEAD", chdir: dest).chomp
     end
 
-    def self.run(command : String, reporter : Reporter, **extra) : Nil
+    def self.run(command : String, reporter : Reporter? = nil, **extra) : Nil
       command_and_args = command.split(/\s+/)
-      reporter_pipe = Reporter::ReporterPipe.new(reporter)
-      status = Process.run(command_and_args[0], **extra, args: command_and_args[1..]? || nil, output: reporter_pipe, error: reporter_pipe)
+      if reporter
+        output = Reporter::ReporterPipe.new(reporter)
+      else
+        output = Process::Redirect::Inherit
+      end
+      status = Process.run(command_and_args[0], **extra, args: command_and_args[1..]? || nil, output: output, error: output)
       unless status.success?
         Fiber.yield
         raise "Command failed: #{command} (#{status.exit_status})"
