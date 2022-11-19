@@ -62,9 +62,12 @@ class Zap::Lockfile
     }
 
     self.pkgs.select! { |name, pkg|
-      # Remove empty pinned deps
+      # Remove empty objects
       if pkg.pinned_dependencies.try &.size == 0
         pkg.pinned_dependencies = nil
+      end
+      if pkg.scripts.try &.no_scripts?
+        pkg.scripts = nil
       end
       # Remove pruned dependencies
       if pruned_deps.includes?(pkg.key)

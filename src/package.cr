@@ -33,6 +33,14 @@ class Zap::Package
       self.{{kind.id}}
     end
 
+    def no_scripts?
+      !preinstall && !install && !postinstall &&
+        !preprepare && !prepare && !postprepare &&
+        !prepublishOnly && !prepublish && !postpublish &&
+        !prepack && !postpack &&
+        !dependencies
+    end
+
     def run_script(kind : Symbol | String, chdir : Path | String, config : Config, raise_on_error_code = true, **args)
       get_script(kind).try do |script|
         output = IO::Memory.new
@@ -61,7 +69,7 @@ class Zap::Package
   property optional_dependencies : SafeHash(String, String)? = nil
   @[JSON::Field(key: "peerDependencies")]
   getter peer_dependencies : SafeHash(String, String)? = nil
-  getter scripts : LifecycleScripts? = nil
+  property scripts : LifecycleScripts? = nil
 
   # Npm specific fields
   struct RegistryDist
