@@ -1,60 +1,27 @@
 require "json"
 require "yaml"
 require "colorize"
+require "./package/*"
 require "./semver"
 require "./resolvers/resolver"
 
+# A class that represents a package.
+# It is used to store the information about a package and to resolve dependencies.
+#
+# Serializable to:
+# - JSON (package.json like)
+# - YAML (lockfile entry)
 class Zap::Package
   include JSON::Serializable
   include YAML::Serializable
 
-  struct LifecycleScripts
-    include JSON::Serializable
-    include YAML::Serializable
+  # Used when crawling dependencies to register a package as a dependency of its parent.
+  record ParentPackageRefs, is_lockfile : Bool, pinned_dependencies : SafeHash(String, String)
 
-    getter preinstall : String?
-    getter install : String?
-    getter postinstall : String?
-
-    getter preprepare : String?
-    getter prepare : String?
-    getter postprepare : String?
-
-    getter prepublishOnly : String?
-    getter prepublish : String?
-    getter postpublish : String?
-
-    getter prepack : String?
-    getter postpack : String?
-
-    getter dependencies : String?
-
-    private macro get_script(kind)
-      self.{{kind.id}}
-    end
-
-    def no_scripts?
-      !preinstall && !install && !postinstall &&
-        !preprepare && !prepare && !postprepare &&
-        !prepublishOnly && !prepublish && !postpublish &&
-        !prepack && !postpack &&
-        !dependencies
-    end
-
-    def run_script(kind : Symbol | String, chdir : Path | String, config : Config, raise_on_error_code = true, **args)
-      get_script(kind).try do |script|
-        output = IO::Memory.new
-        # See: https://docs.npmjs.com/cli/v9/commands/npm-run-script
-        env = {
-          :PATH => ENV["PATH"] + Process.PATH_DELIMITER + config.bin_path + Process.PATH_DELIMITER + config.node_path,
-        }
-        status = Process.run(script, **args, shell: true, env: env, chdir: chdir, output: output, error: output)
-        if !status.success? && raise_on_error_code
-          raise "#{output}\nCommand failed: #{command} (#{status.exit_status})"
-        end
-      end
-    end
-  end
+  #######################
+  # Package.json fields #
+  #######################
+  # Ref: https://docs.npmjs.com/cli/v9/configuring-npm/package-json
 
   getter name : String
   getter version : String
@@ -67,72 +34,36 @@ class Zap::Package
   @[JSON::Field(key: "optionalDependencies")]
   @[YAML::Field(ignore: true)]
   property optional_dependencies : SafeHash(String, String)? = nil
+  @[JSON::Field(key: "bundleDependencies")]
+  @[YAML::Field(ignore: true)]
+  getter bundle_dependencies : SafeHash(String, String)? = nil
   @[JSON::Field(key: "peerDependencies")]
   getter peer_dependencies : SafeHash(String, String)? = nil
   property scripts : LifecycleScripts? = nil
+  getter os : Array(String)? = nil
+  getter cpu : Array(String)? = nil
 
-  # Npm specific fields
-  struct RegistryDist
-    include JSON::Serializable
-    include YAML::Serializable
-
-    property tarball : String
-    property shasum : String
-    property integrity : String?
-
-    def initialize(@tarball, @shasum, @integrity = nil)
-    end
-  end
-
-  struct LinkDist
-    include JSON::Serializable
-    include YAML::Serializable
-
-    property link : String
-
-    def initialize(@link)
-    end
-  end
-
-  struct TarballDist
-    include JSON::Serializable
-    include YAML::Serializable
-
-    property tarball : String
-    property path : String
-
-    def initialize(@tarball, @path)
-    end
-  end
-
-  struct GitDist
-    include JSON::Serializable
-    include YAML::Serializable
-
-    property commit_hash : String
-    property path : String
-
-    def initialize(@commit_hash, @path)
-    end
-  end
+  #######################
+  # Npm specific fields #
+  #######################
 
   property dist : RegistryDist | LinkDist | TarballDist | GitDist | Nil = nil
   getter deprecated : String? = nil
 
-  # Lockfile specific
+  ############################
+  # Lockfile specific fields #
+  ############################
+
   @[JSON::Field(ignore: true)]
   property pinned_dependencies : SafeHash(String, String)? = nil
   @[JSON::Field(ignore: true)]
   property dependents : SafeSet(String)? = nil
+  @[JSON::Field(ignore: true)]
+  property optional : Bool? = nil
 
-  # Internal fields
-  enum Kind
-    Link
-    Git
-    Registry
-    TarballFile
-    TarballUrl
-  end
+  ##################
+  # Utility fields #
+  ##################
 
   @[JSON::Field(ignore: true)]
   @[YAML::Field(ignore: true)]
@@ -173,7 +104,9 @@ class Zap::Package
     end
   end
 
-  record ParentPackageRefs, is_lockfile : Bool, pinned_dependencies : SafeHash(String, String)
+  ################
+  # Constructors #
+  ################
 
   def self.init(path : Path)
     File.open(path / "package.json") do |io|
@@ -185,6 +118,10 @@ class Zap::Package
 
   def initialize(@name = "", @version = "")
   end
+
+  ##########
+  # Public #
+  ##########
 
   def add_dependency(name : String, version : String, type : Symbol)
     case type
@@ -232,6 +169,11 @@ class Zap::Package
           next if state.install_config.omit_optional?
         end
         deps.try &.each do |name, version|
+          if type == :dependencies
+            # "Entries in optionalDependencies will override entries of the same name in dependencies"
+            # From: https://docs.npmjs.com/cli/v9/configuring-npm/package-json#optionaldependencies
+            next if optional_dependencies.try &.[name]?
+          end
           # p "Resolving (#{type}): #{name}@#{version} from #{self.name}@#{self.version}"
           resolve_dependency(name, version, type, pkg_refs: pkg_refs, state: state, dependent: dependent, resolved_packages: resolved_packages)
         end
@@ -239,7 +181,7 @@ class Zap::Package
     else
       # Otherwise we use the pinned dependencies
       pinned_dependencies.try &.each do |name, version|
-        resolve_dependency(name, version, :dependencies, pkg_refs: pkg_refs, state: state, dependent: dependent, resolved_packages: resolved_packages)
+        resolve_dependency(name, version, pkg_refs: pkg_refs, state: state, dependent: dependent, resolved_packages: resolved_packages)
       end
     end
   end
@@ -249,6 +191,69 @@ class Zap::Package
   def local_install?
     kind.git? || kind.link?
   end
+
+  # Returns false if the package is not meant to be run on the current architecture and operating system.
+  def match_os_and_cpu? : Bool
+    # Node.js process.platform returns the following values:
+    # See: https://nodejs.org/api/process.html#processplatform
+    platform = begin
+      {% if flag?(:aix) %}
+        "aix"
+      {% elsif flag?(:darwin) %}
+        "darwin"
+      {% elsif flag?(:bsd) %}
+        "freebsd"
+      {% elsif flag?(:linux) %}
+        "linux"
+      {% elsif flag?(:openbsd) %}
+        "openbsd"
+      {% elsif flag?(:windows) %}
+        "win32"
+      {% elsif flag?(:solaris) %}
+        "sunos"
+        # and one more for unix
+      {% elsif flag?(:unix) %}
+        "unix"
+      {% else %}
+        nil
+      {% end %}
+    end
+
+    # Node.js process.arch returns the following values:
+    # See: https://nodejs.org/api/process.html#processarch
+    arch = begin
+      {% if flag?(:arm) %}
+        "arm"
+      {% elsif flag?(:aarch64) %}
+        "arm64"
+      {% elsif flag?(:i386) %}
+        "ia32"
+      {% elsif flag?(:x86_64) %}
+        "x64"
+      {% else %}
+        # Unsupported values:
+        #   "mips"
+        #   "mipsel"
+        #   "ppc"
+        #   "ppc64"
+        #   "s390"
+        #   "s390x"
+        nil
+      {% end %}
+    end
+
+    (os.nil? || os.not_nil!.any? { |os| os.starts_with?("!") ? os[1..] != platform : os == platform }) &&
+      (cpu.nil? || cpu.not_nil!.any? { |cpu| cpu.starts_with?("!") ? cpu[1..] != arch : cpu == arch })
+  end
+
+  # Will raise if the package is not meant to be run on the current architecture and operating system.
+  def match_os_and_cpu! : Nil
+    raise "Incompatible os or architecture: #{os} / #{cpu}" unless match_os_and_cpu?
+  end
+
+  ############
+  # Internal #
+  ############
 
   # Do not crawl the dependencies for linked packages
   protected def should_resolve_dependencies?(state : Commands::Install::State)
@@ -270,11 +275,11 @@ class Zap::Package
     false
   end
 
-  private def resolve_dependency(name : String, version : String, type : Symbol, *, pkg_refs : ParentPackageRefs, state : Commands::Install::State, resolved_packages : SafeSet(String), dependent = nil)
+  private def resolve_dependency(name : String, version : String, type : Symbol? = nil, *, pkg_refs : ParentPackageRefs, state : Commands::Install::State, resolved_packages : SafeSet(String), dependent = nil)
     is_main_package = !dependent
     state.reporter.on_resolving_package
     # Add direct dependencies to the lockfile
-    state.lockfile.add_dependency(name, version, type) if is_main_package
+    state.lockfile.add_dependency(name, version, type) if is_main_package && type
     # Multithreaded dependency resolution
     state.pipeline.process do
       # Create the appropriate resolver depending on the version (git, tarball, registry, local folder…)
@@ -285,6 +290,8 @@ class Zap::Package
       end
       # If the package is not in the lock, or if it is a direct dependency, resolve it
       metadata ||= resolver.resolve(pkg_refs, validate_lockfile: is_main_package, dependent: dependent)
+      metadata.optional = (type == :optional_dependencies || nil)
+      metadata.match_os_and_cpu!
       # If the package has already been resolved, skip it to prevent infinite loops
       already_resolved = metadata.already_resolved?(state, resolved_packages)
       next if already_resolved
@@ -306,13 +313,14 @@ class Zap::Package
       state.reporter.on_package_downloaded if stored
     rescue e
       # Do not stop the world for optional dependencies
-      if type != :optional_dependencies
+      if type != :optional_dependencies && !metadata.try(&.optional)
         state.reporter.stop
         error_string = ("❌ Resolving: #{name} @ #{version} \n#{e}\n" + e.backtrace.map { |line| "\t#{line}" }.join("\n")).colorize(:red)
         Zap::Log.error { error_string }
         exit(1)
       else
-        state.reporter.log("Optional dependency #{name} @ #{version} failed to resolve: #{e}")
+        # Silently ignore optional dependencies
+        metadata.try { |pkg| pinned_dependencies.try &.delete(pkg.name) }
       end
     ensure
       # Report the package as resolved
@@ -372,6 +380,7 @@ class Zap::Package
       # Resolve the package
       resolver = Resolver.make(state, inferred_name, inferred_version || "*")
       metadata = resolver.resolve(pkg_refs).not_nil!
+      metadata.match_os_and_cpu!
       # Store it in the filesystem, potentially in the global store
       stored = resolver.store(metadata) { state.reporter.on_downloading_package } if metadata
       state.reporter.on_package_downloaded if stored
