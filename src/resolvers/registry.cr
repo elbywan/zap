@@ -6,6 +6,7 @@ require "./resolver"
 require "../package"
 require "../semver"
 
+# See: https://github.com/npm/registry/blob/master/docs/responses/package-metadata.md#package-metadata
 ACCEPT_HEADER = "application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*"
 HEADERS       = HTTP::Headers{"Accept" => ACCEPT_HEADER}
 
@@ -26,25 +27,7 @@ module Zap::Resolver
     end
 
     def resolve(parent_pkg : Package | Lockfile, *, dependent : Package? = nil, validate_lockfile = false) : Package
-      pkg = nil
-      # Check if the metadata lives inside the lockfile already
-      pinned_dependencies = parent_pkg.pinned_dependencies
-      if !self.package_name.empty? && (lockfile_version = pinned_dependencies[self.package_name]?)
-        pkg = state.lockfile.pkgs["#{self.package_name}@#{lockfile_version}"]?
-        # Validate the lockfile version - for root packages
-        if validate_lockfile && pkg
-          range_set = self.version
-          invalidated =
-            !pkg.kind.registry? ||
-              (range_set.is_a?(String) && range_set != pkg.version) ||
-              (range_set.is_a?(Semver::SemverSets) && !range_set.valid?(pkg.version))
-          if invalidated
-            pkg = nil
-          end
-        end
-      end
-      # If not, fetch the metadata from the registry
-      pkg ||= self.fetch_metadata
+      pkg = self.fetch_metadata
       on_resolve(pkg, parent_pkg, pkg.version, dependent: dependent)
       pkg
     rescue e
@@ -100,12 +83,18 @@ module Zap::Resolver
               raise "integrity mismatch for #{tarball_url} (#{integrity})"
             end
           end
-          state.store.package(package_name, version)
         ensure
           io.try &.close
         end
         true
       end
+    end
+
+    def is_lockfile_cache_valid?(cached_package : Package) : Bool
+      range_set = self.version
+      cached_package.kind.registry? &&
+        (range_set.is_a?(String) && range_set == cached_package.version) ||
+        (range_set.is_a?(Semver::SemverSets) && range_set.valid?(cached_package.version))
     end
 
     # # PRIVATE ##########################

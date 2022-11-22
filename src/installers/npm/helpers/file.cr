@@ -1,16 +1,16 @@
 module Zap::Installers::Npm::Helpers::File
-  def self.install(dependency : Package, *, cache : Deque(CacheItem), state : Commands::Install::State) : Deque(CacheItem)?
+  def self.install(dependency : Package, *, installer : Installers::Base, cache : Deque(CacheItem), state : Commands::Install::State) : Deque(CacheItem)?
     case dist = dependency.dist
     when Package::LinkDist
-      install_link(dependency, dist, cache: cache, state: state)
+      install_link(dependency, dist, installer: installer, cache: cache, state: state)
     when Package::TarballDist
-      install_tarball(dependency, dist, cache: cache, state: state)
+      install_tarball(dependency, dist, installer: installer, cache: cache, state: state)
     else
       raise "Unknown dist type: #{dist}"
     end
   end
 
-  def self.install_link(dependency : Package, dist : Package::LinkDist, *, cache : Deque(CacheItem), state : Commands::Install::State) : Deque(CacheItem)?
+  def self.install_link(dependency : Package, dist : Package::LinkDist, *, installer : Installers::Base, cache : Deque(CacheItem), state : Commands::Install::State) : Deque(CacheItem)?
     state.reporter.on_installing_package
     relative_path = dist.link
     relative_path = Path.new(relative_path)
@@ -18,11 +18,11 @@ module Zap::Installers::Npm::Helpers::File
     target_path = cache.last[0] / dependency.name
     FileUtils.rm_rf(target_path) if ::File.directory?(target_path)
     ::File.symlink(relative_path.expand(origin_path), target_path)
-    Installer.on_install(dependency, target_path, state: state)
+    installer.on_install(dependency, target_path, state: state)
     nil
   end
 
-  def self.install_tarball(dependency : Package, dist : Package::TarballDist, *, cache : Deque(CacheItem), state : Commands::Install::State) : Deque(CacheItem)?
+  def self.install_tarball(dependency : Package, dist : Package::TarballDist, *, installer : Installers::Base, cache : Deque(CacheItem), state : Commands::Install::State) : Deque(CacheItem)?
     target_path = cache.last[0] / dependency.name
     FileUtils.rm_rf(target_path) if ::File.directory?(target_path)
     extracted_folder = Path.new(dist.path)
@@ -40,7 +40,7 @@ module Zap::Installers::Npm::Helpers::File
       end
     end
 
-    Installer.on_install(dependency, target_path, state: state)
+    installer.on_install(dependency, target_path, state: state)
 
     cache.last[1] << dependency
     subcache = cache.dup

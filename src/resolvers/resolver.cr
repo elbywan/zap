@@ -21,14 +21,18 @@ abstract struct Zap::Resolver::Base
         state.reporter.on_package_added(pkg.key)
       end
     end
+    # Infer if the package has install hooks (the npm registry does the job already - but only when listing versions)
+    # Also we need that when reading from other sources
+    pkg.has_install_script ||= pkg.scripts.try(&.has_install_script?)
+    # Pin the dependency to the locked version
     parent_pkg.pinned_dependencies[pkg.name] = locked_version
   end
 
-  def lockfile_cache(pkg : Package, name : String, *, dependent : Package? = nil)
+  def lockfile_cache(pkg : Package | Lockfile, name : String, *, dependent : Package? = nil)
     if pinned_version = pkg.pinned_dependencies?.try &.[name]?
       cached_pkg = state.lockfile.pkgs[name + "@" + pinned_version]?
       if cached_pkg
-        cached_pkg.dependents << (dependent || pkg).key
+        cached_pkg.dependents << (dependent || cached_pkg).key
         cached_pkg
       end
     end
@@ -36,6 +40,7 @@ abstract struct Zap::Resolver::Base
 
   abstract def resolve(parent_pkg : Package | Lockfile, *, dependent : Package? = nil, validate_lockfile = false) : Package
   abstract def store(metadata : Package, &on_downloading) : Bool
+  abstract def is_lockfile_cache_valid?(cached_package : Package) : Bool
 end
 
 require "./registry"

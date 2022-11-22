@@ -1,5 +1,5 @@
 module Zap::Installers::Npm::Helpers::Registry
-  def self.install(dependency : Package, *, cache : Deque(CacheItem), state : Commands::Install::State) : Deque(CacheItem)?
+  def self.install(dependency : Package, *, installer : Installers::Base, cache : Deque(CacheItem), state : Commands::Install::State) : Deque(CacheItem)?
     leftmost_dir_and_cache : CacheItem? = nil
     cache.reverse_each { |path, pkgs_at_path|
       if pkgs_at_path.includes?(dependency)
@@ -23,7 +23,7 @@ module Zap::Installers::Npm::Helpers::Registry
       Backend.install(dependency: dependency, target: leftmost_dir, store: state.store, pipeline: state.pipeline, backend: :copy) { }
     end
 
-    Installer.on_install(dependency, leftmost_dir / dependency.name, state: state) if installed
+    installer.on_install(dependency, leftmost_dir / dependency.name, state: state) if installed
 
     leftmost_cache << dependency
     subcache = cache.dup

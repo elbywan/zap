@@ -6,6 +6,7 @@ module Zap::Installers::Npm
 
   class Installer < Base
     def install
+      @installed_packages_with_hooks = [] of {Package, Path}
       # create the root node modules folder
       node_modules = Path.new(state.config.node_modules)
       Dir.mkdir_p(node_modules)
@@ -53,17 +54,19 @@ module Zap::Installers::Npm
     def install_dependency(dependency : Package, *, cache : Deque(CacheItem)) : Deque(CacheItem)?
       case dependency.kind
       when .tarball_file?, .link?
-        Helpers::File.install(dependency, cache: cache, state: state)
+        Helpers::File.install(dependency, installer: self, cache: cache, state: state)
       when .tarball_url?
-        Helpers::Tarball.install(dependency, cache: cache, state: state)
+        Helpers::Tarball.install(dependency, installer: self, cache: cache, state: state)
       when .git?
-        Helpers::Git.install(dependency, cache: cache, state: state)
+        Helpers::Git.install(dependency, installer: self, cache: cache, state: state)
       when .registry?
-        Helpers::Registry.install(dependency, cache: cache, state: state)
+        Helpers::Registry.install(dependency, installer: self, cache: cache, state: state)
       end
     end
 
-    def self.on_install(dependency : Package, install_folder : Path, *, state : Commands::Install::State)
+    # Actions to perform after the dependency has been freshly installed.
+    def on_install(dependency : Package, install_folder : Path, *, state : Commands::Install::State)
+      # Copy binary files if they are declared in the package.json
       if bin = dependency.bin
         root_bin_dir = Path.new(state.config.bin_path)
         Dir.mkdir_p(root_bin_dir)
@@ -83,6 +86,23 @@ module Zap::Installers::Npm
           Crystal::System::File.chmod(bin_path.to_s, 0o755)
         end
       end
+
+      # Register hooks here if needed
+      if dependency.has_install_script
+        Package.init?(install_folder).try { |pkg| dependency.scripts = pkg.scripts }
+      end
+      # "If there is a binding.gyp file in the root of your package and you haven't defined your own install or preinstall scripts…
+      # …npm will default the install command to compile using node-gyp via node-gyp rebuild"
+      # See: https://docs.npmjs.com/cli/v9/using-npm/scripts#npm-install
+      if !dependency.scripts.try &.install && File.exists?(Path.new(install_folder, "binding.gyp"))
+        (dependency.scripts ||= Zap::Package::LifecycleScripts.new).install = "node gyp rebuild"
+      end
+
+      if dependency.scripts.try &.install
+        @installed_packages_with_hooks << {dependency, install_folder}
+      end
+
+      # Report that this package has been installed
       state.reporter.on_package_installed
     end
   end

@@ -29,6 +29,10 @@ module Zap::Resolver
       false
     end
 
+    def is_lockfile_cache_valid?(cached_package : Package) : Bool
+      false
+    end
+
     private def extract_tarball_to_temp(tar_path, temp_path)
       unless Dir.exists?(temp_path)
         ::File.open(tar_path) do |io|

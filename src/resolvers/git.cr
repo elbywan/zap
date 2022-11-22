@@ -31,6 +31,10 @@ module Zap::Resolver
       true
     end
 
+    def is_lockfile_cache_valid?(cached_package : Package) : Bool
+      false
+    end
+
     private def fetch_metadata(temp_path : Path)
       # unless Dir.exists?(temp_path) && ::File.exists?(temp_path / "package.json")
       FileUtils.rm_rf(temp_path)

@@ -37,9 +37,12 @@ class Zap::Package
   getter bundle_dependencies : SafeHash(String, String)? = nil
   @[JSON::Field(key: "peerDependencies")]
   getter peer_dependencies : SafeHash(String, String)? = nil
+  @[YAML::Field(ignore: true)]
   property scripts : LifecycleScripts? = nil
   getter os : Array(String)? = nil
   getter cpu : Array(String)? = nil
+  @[JSON::Field(key: "hasInstallScript")]
+  property has_install_script : Bool? = nil
 
   #######################
   # Npm specific fields #
@@ -118,6 +121,15 @@ class Zap::Package
     end
   rescue
     raise "package.json not found at #{path}"
+  end
+
+  def self.init?(path : Path)
+    return nil unless File.exists?(path / "package.json")
+    File.open(path / "package.json") do |io|
+      return self.from_json(io)
+    end
+  rescue
+    nil
   end
 
   def initialize(@name = "", @version = "")
@@ -241,8 +253,7 @@ class Zap::Package
       {% end %}
     end
 
-    (os.nil? || os.not_nil!.any? { |os| os.starts_with?("!") ? os[1..] != platform : os == platform }) &&
-      (cpu.nil? || cpu.not_nil!.any? { |cpu| cpu.starts_with?("!") ? cpu[1..] != arch : cpu == arch })
+    (self.class.check_os_cpu_array(os, platform)) && (self.class.check_os_cpu_array(cpu, arch))
   end
 
   # Will raise if the package is not meant to be run on the current architecture and operating system.
@@ -283,10 +294,13 @@ class Zap::Package
     state.pipeline.process do
       # Create the appropriate resolver depending on the version (git, tarball, registry, local folder…)
       resolver = Resolver.make(state, name, version)
-      # Attempt to use the package data from the lockfile unless it is a direct dependency
-      unless is_direct_dependency
-        metadata = resolver.lockfile_cache(self, name, dependent: dependent)
+      # Attempt to use the package data from the lockfile
+      metadata = resolver.lockfile_cache(is_direct_dependency ? state.lockfile : self, name, dependent: dependent)
+      # Check if the data from the lockfile is still valid (direct deps can be modified in the package.json file or through the cli)
+      if metadata && is_direct_dependency
+        metadata = nil unless resolver.is_lockfile_cache_valid?(metadata)
       end
+      # end
       # If the package is not in the lockfile or if it is a direct dependency, resolve it
       metadata ||= resolver.resolve(is_direct_dependency ? state.lockfile : self, dependent: dependent, validate_lockfile: is_direct_dependency)
       metadata.optional = (type == :optional_dependencies || nil)
@@ -327,9 +341,9 @@ class Zap::Package
     end
   end
 
+  # Try to detect what kind of target it is
+  # See: https://docs.npmjs.com/cli/v9/commands/npm-install?v=true#description
   private def parse_new_package(cli_version : String, *, state : Commands::Install::State) : {String?, String}
-    # Try to detect what kind of target it is
-    # See: https://docs.npmjs.com/cli/v9/commands/npm-install?v=true#description
     # 1. npm install <folder>
     fs_path = Path.new(cli_version).expand
     if File.directory?(fs_path)
@@ -405,5 +419,31 @@ class Zap::Package
       state.reporter.error(e, new_dep)
       exit(1)
     end
+  end
+
+  protected def self.check_os_cpu_array(field : Array(String)?, value : String)
+    # No os/cpu field, no problem
+    !field ||
+      field.not_nil!.reduce({rejected: false, matched: false, exclusive: false}) { |acc, item|
+        if item.starts_with?("!")
+          # Reject the os/cpu
+          if item[1..] == value
+            acc.merge({rejected: true})
+          else
+            acc
+          end
+        elsif item == value
+          # Matched and set the mode as exclusive
+          acc.merge({matched: true, exclusive: true})
+        else
+          # Set the mode as exclusive
+          acc.merge({exclusive: true})
+        end
+      }
+        .pipe { |maybe_result|
+          # Either the array is made of of rejections, so the mode will not be exclusive…
+          # …or one or more archs/platforms are specified and it will required the current one to be in the list
+          !maybe_result[:rejected] && (!maybe_result[:exclusive] || maybe_result[:matched])
+        }
   end
 end

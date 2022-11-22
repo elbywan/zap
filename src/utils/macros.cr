@@ -37,4 +37,19 @@ module Zap::Utils::Macros
       @{{name.var.id}} = {{name.var.id}}
     end
   end
+
+  macro define_field_accessors
+    def field(value : Symbol)
+      \{% begin %}
+      case value
+      \{% for ivar in @type.instance_vars %}
+        when :\{{ivar.id}}
+          self.\{{ivar.id}}
+      \{% end %}
+        else
+          raise "Unknown field: #{value}"
+        end
+      \{% end %}
+    end
+  end
 end

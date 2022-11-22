@@ -24,6 +24,10 @@ module Zap::Resolver
       true
     end
 
+    def is_lockfile_cache_valid?(cached_package : Package) : Bool
+      false
+    end
+
     private def download_tarball(tarball_url, temp_path)
       HTTP::Client.get(tarball_url) do |response|
         raise "Invalid status code from #{tarball_url} (#{response.status_code})" unless response.status_code == 200

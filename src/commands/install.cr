@@ -8,27 +8,28 @@ module Zap::Commands::Install
     reporter : Reporter = Reporter.new
 
   def self.run(config : Config, install_config : Config::Install)
-    project_path = config.prefix
-    global_store_path = config.global_store_path
+    realtime = nil
+    state = uninitialized State
+    memory = Benchmark.memory {
+      project_path = config.prefix
+      global_store_path = config.global_store_path
 
-    reporter = Reporter.new
-    state = State.new(
-      config: config,
-      install_config: install_config,
-      store: Store.new(global_store_path),
-      lockfile: Lockfile.new(project_path, reporter: reporter),
-      reporter: reporter
-    )
+      reporter = Reporter.new
+      state = State.new(
+        config: config,
+        install_config: install_config,
+        store: Store.new(global_store_path),
+        lockfile: Lockfile.new(project_path, reporter: reporter),
+        reporter: reporter
+      )
 
-    puts <<-TERM
+      puts <<-TERM
       ⚡ #{"Zap".colorize.mode(:bright).mode(:underline)} #{"(v#{VERSION})".colorize.mode(:dim)}
          #{"project:".colorize(:blue)} #{project_path} • #{"store:".colorize(:blue)} #{global_store_path} • #{"workers:".colorize(:blue)} #{Crystal::Scheduler.nb_of_workers}
          #{"lockfile:".colorize(:blue)} #{state.lockfile.read_from_disk ? "ok".colorize(:green) : "not found".colorize(:red)}
       \n
       TERM
 
-    realtime = nil
-    memory = Benchmark.memory {
       realtime = Benchmark.realtime {
         Resolver::Registry.init(global_store_path)
 
@@ -47,6 +48,9 @@ module Zap::Commands::Install
         state.pipeline.await
         state.reporter.stop
 
+        # Prune lockfile before installing to cleanup pinned dependencies
+        state.lockfile.prune(main_package)
+
         # Install dependencies to the appropriate node_modules folder
         state.pipeline.reset
         state.reporter.report_installer_updates
@@ -55,10 +59,65 @@ module Zap::Commands::Install
         state.pipeline.await
         state.reporter.stop
 
+        # Run install hooks
+        if installer.installed_packages_with_hooks.size > 0
+          state.pipeline.reset
+          state.reporter.report_builder_updates
+          installer.installed_packages_with_hooks.each do |package, path|
+            package.scripts.try do |scripts|
+              state.pipeline.process do
+                state.reporter.on_building_package
+                scripts.run_script(:preinstall, path, state.config)
+                scripts.run_script(:install, path, state.config)
+                scripts.run_script(:postinstall, path, state.config)
+              ensure
+                state.reporter.on_package_built
+              end
+            end
+          end
+
+          state.pipeline.await
+          state.reporter.stop
+        end
+
+        # Run package.json install hooks
+        main_package.scripts.try do |scripts|
+          state.reporter.output << state.reporter.header("⏳", "Hooks") + "\n"
+          if scripts.has_self_install_lifecycle?
+            begin
+              # output_io = STDOUT
+              output_io = Reporter::ReporterFormattedAppendPipe.new(state.reporter)
+              # prefix = ("#{main_package.name} @ #{main_package.version}").colorize()
+              # TODO: PROPER REPORTING !!
+              scripts.run_script(:preinstall, project_path, state.config, output_io: output_io) { |command|
+                state.reporter.output << "\n   • preinstall #{%(#{command}).colorize.mode(:dim)}\n"
+              }
+              scripts.run_script(:install, project_path, state.config, output_io: output_io) { |command|
+                state.reporter.output << "\n   • install #{%(#{command}).colorize.mode(:dim)}\n"
+              }
+              scripts.run_script(:postinstall, project_path, state.config, output_io: output_io) { |command|
+                state.reporter.output << "\n   • postinstall #{%(#{command}).colorize.mode(:dim)}\n"
+              }
+              scripts.run_script(:prepublish, project_path, state.config, output_io: output_io) { |command|
+                state.reporter.output << "\n   • prepublish #{%(#{command}).colorize.mode(:dim)}\n"
+              }
+              scripts.run_script(:preprepare, project_path, state.config, output_io: output_io) { |command|
+                state.reporter.output << "\n   • preprepare #{%(#{command}).colorize.mode(:dim)}\n"
+              }
+              scripts.run_script(:prepare, project_path, state.config, output_io: output_io) { |command|
+                state.reporter.output << "\n   • prepare #{%(#{command}).colorize.mode(:dim)}\n"
+              }
+              scripts.run_script(:postprepare, project_path, state.config, output_io: output_io) { |command|
+                state.reporter.output << "\n   • postprepare #{%(#{command}).colorize.mode(:dim)}\n"
+              }
+              state.reporter.output << "\n"
+            end
+          end
+        end
+
         # Do not edit lockfile or package.json files in global mode
         unless state.config.global
-          # Prune and write lockfile
-          state.lockfile.prune(main_package)
+          # Write lockfile
           state.lockfile.write
 
           # Edit and write the package.json file if the flags have been set in the config

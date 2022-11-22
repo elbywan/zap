@@ -1,10 +1,12 @@
 class Zap::Package
-  struct LifecycleScripts
+  class LifecycleScripts
     include JSON::Serializable
     include YAML::Serializable
 
+    Utils::Macros.define_field_accessors
+
     getter preinstall : String?
-    getter install : String?
+    property install : String?
     getter postinstall : String?
 
     getter preprepare : String?
@@ -20,8 +22,7 @@ class Zap::Package
 
     getter dependencies : String?
 
-    private macro get_script(kind)
-      self.{{kind.id}}
+    def initialize
     end
 
     def no_scripts?
@@ -32,18 +33,33 @@ class Zap::Package
         !dependencies
     end
 
-    def run_script(kind : Symbol | String, chdir : Path | String, config : Config, raise_on_error_code = true, **args)
-      get_script(kind).try do |script|
-        output = IO::Memory.new
+    def has_install_script?
+      !install.nil? || nil
+    end
+
+    def has_self_install_lifecycle?
+      !!install ||
+        !!prepublish ||
+        !!prepare
+    end
+
+    def run_script(kind : Symbol, chdir : Path | String, config : Config, raise_on_error_code = true, output_io = nil, **args)
+      field(kind).try do |command|
+        output = output_io || IO::Memory.new
         # See: https://docs.npmjs.com/cli/v9/commands/npm-run-script
         env = {
-          :PATH => ENV["PATH"] + Process.PATH_DELIMITER + config.bin_path + Process.PATH_DELIMITER + config.node_path,
+          "PATH" => config.bin_path + Process::PATH_DELIMITER + config.node_path + Process::PATH_DELIMITER + ENV["PATH"],
         }
-        status = Process.run(script, **args, shell: true, env: env, chdir: chdir, output: output, error: output)
+        yield command
+        status = Process.run(command, **args, shell: true, env: env, chdir: chdir, output: output, error: output)
         if !status.success? && raise_on_error_code
-          raise "#{output}\nCommand failed: #{command} (#{status.exit_status})"
+          raise "#{output_io ? "" : output}\nCommand failed: #{command} (#{status.exit_status})"
         end
       end
+    end
+
+    def run_script(kind : Symbol, chdir : Path | String, config : Config, raise_on_error_code = true, output_io = nil, **args)
+      run_script(kind, chdir, config, raise_on_error_code, output_io, **args) { }
     end
   end
 end

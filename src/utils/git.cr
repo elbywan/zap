@@ -84,7 +84,7 @@ module Zap::Utils
     def self.run(command : String, reporter : Reporter? = nil, **extra) : Nil
       command_and_args = command.split(/\s+/)
       if reporter
-        output = Reporter::ReporterPipe.new(reporter)
+        output = Reporter::ReporterPrependPipe.new(reporter)
       else
         output = Process::Redirect::Inherit
       end

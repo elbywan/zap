@@ -2,9 +2,15 @@ require "term-cursor"
 
 class Zap::Reporter
   @lock = Mutex.new
-  @io_lock = Mutex.new
+  getter io_lock = Mutex.new
   @out : IO
+
+  def output
+    @out
+  end
+
   @lines = Atomic(Int32).new(0)
+  @written : Bool = false
   @logs : Array(String) = [] of String
 
   def initialize(@out = STDOUT)
@@ -14,6 +20,8 @@ class Zap::Reporter
     @downloaded_packages = Atomic(Int32).new(0)
     @installing_packages = Atomic(Int32).new(0)
     @installed_packages = Atomic(Int32).new(0)
+    @building_packages = Atomic(Int32).new(0)
+    @built_packages = Atomic(Int32).new(0)
     @added_packages = SafeArray(String).new
     @removed_packages = SafeArray(String).new
     @update_channel = Channel(Int32?).new
@@ -50,6 +58,16 @@ class Zap::Reporter
     update()
   end
 
+  def on_package_built
+    @built_packages.add(1)
+    update()
+  end
+
+  def on_building_package
+    @building_packages.add(1)
+    update()
+  end
+
   def on_package_added(pkg_key : String)
     @added_packages << pkg_key
   end
@@ -61,7 +79,8 @@ class Zap::Reporter
   def stop
     @lock.synchronize do
       @update_channel.close
-      @out.puts ""
+      @out.puts "" if @written
+      @written = false
     rescue Channel::ClosedError
       # Ignore
     end
@@ -79,13 +98,14 @@ class Zap::Reporter
 
   def update
     @lock.synchronize do
+      @written = true
       @update_channel.send 0 unless @update_channel.closed?
     rescue Channel::ClosedError
       # Ignore
     end
   end
 
-  class ReporterPipe < IO
+  class ReporterPrependPipe < IO
     def initialize(@reporter : Reporter)
     end
 
@@ -95,6 +115,22 @@ class Zap::Reporter
 
     def write(slice : Bytes) : Nil
       @reporter.prepend(slice)
+    end
+  end
+
+  class ReporterFormattedAppendPipe < IO
+    def initialize(@reporter : Reporter, @separator = "\n", @prefix = "\n     ")
+    end
+
+    def read(slice : Bytes)
+      raise "Cannot read from a pipe"
+    end
+
+    def write(slice : Bytes) : Nil
+      str = @prefix + String.new(slice).split(@separator).join(@prefix)
+      @reporter.io_lock.synchronize do
+        @reporter.output << str
+      end
     end
   end
 
@@ -120,7 +156,8 @@ class Zap::Reporter
     end
   end
 
-  def header(emoji, str, color = nil)
+  def header(emoji, str, color = :default)
+    Colorize.reset(@out)
     %( ○ #{emoji} #{str.ljust(25).colorize(color).mode(:bright)})
   end
 
@@ -162,18 +199,30 @@ class Zap::Reporter
     end
   end
 
+  def report_builder_updates
+    @update_channel = Channel(Int32?).new
+    spawn(same_thread: true) do
+      loop do
+        msg = @update_channel.receive?
+        break if msg.nil?
+        @io_lock.synchronize do
+          @out << @cursor.clear_line
+          @out << header("🏗️", "Building…", :light_red) + %([#{@built_packages.get}/#{@building_packages.get}])
+          @out.flush
+        end
+      end
+    end
+  end
+
   def report_done(realtime, memory)
     @io_lock.synchronize do
       if @logs.size > 0
         @out << header("📝", "Logs", :blue)
         @out << "\n"
-        if @logs.size > 0
-          separator = "\n   • ".colorize(:default)
-          @out << separator
-          @out << @logs.join(separator)
-          Colorize.reset(@out)
-          @out << "\n\n"
-        end
+        separator = "\n   • ".colorize(:default)
+        @out << separator
+        @out << @logs.join(separator)
+        @out << "\n\n"
       end
 
       # print added / removed packages
