@@ -1,5 +1,8 @@
 module Zap
   record Config,
+    # ------------- #
+    # Config Fields #
+    # ------------- #
     global : Bool = false,
     global_store_path : String = File.expand_path(
       ENV["ZAP_STORE_PATH"]? || (
@@ -9,7 +12,11 @@ module Zap
           "~/.zap/store"
         {% end %}
       ), home: true),
-    prefix : String = Dir.current do
+    prefix : String = Dir.current,
+    child_concurrency : Int32 = 5 do
+    # ----------- #
+    # Config Body #
+    # ------------#
     alias CommandConfig = Install
 
     getter node_modules : String do

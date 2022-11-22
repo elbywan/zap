@@ -62,6 +62,8 @@ module Zap::Commands::Install
         # Run install hooks
         if installer.installed_packages_with_hooks.size > 0
           state.pipeline.reset
+          # Process hooks in parallel
+          state.pipeline.set_concurrency(state.config.child_concurrency)
           state.reporter.report_builder_updates
           installer.installed_packages_with_hooks.each do |package, path|
             package.scripts.try do |scripts|

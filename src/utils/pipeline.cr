@@ -4,6 +4,7 @@ class Zap::Pipeline
   getter max = 0
   @mutex = Mutex.new
   @end_channel : Channel(Nil) = Channel(Nil).new
+  @sync_channel : Channel(Nil)? = nil
 
   def initialize
   end
@@ -15,8 +16,30 @@ class Zap::Pipeline
       @max = 0
       @end_channel.close unless @end_channel.closed?
       @end_channel = Channel(Nil).new
+      @sync_channel = nil
     rescue
       # ignore
+    end
+  end
+
+  def set_concurrency(max_fibers : Int32 | Nil)
+    if max_fibers
+      @sync_channel = Channel(Nil).new(max_fibers)
+    else
+      @sync_channel = nil
+    end
+  end
+
+  def wait_for_sync
+    if (sync = @sync_channel).nil?
+      yield
+    else
+      begin
+        sync.send(nil)
+        yield
+      ensure
+        sync.receive
+      end
     end
   end
 
@@ -26,14 +49,16 @@ class Zap::Pipeline
       @max += 1
     end
     spawn do
-      block.call
-    rescue Channel::ClosedError
-      # Ignore
-    ensure
-      @mutex.synchronize do
-        @counter -= 1
-        if @counter == 0
-          @end_channel.close
+      wait_for_sync do
+        block.call
+      rescue Channel::ClosedError
+        # Ignore
+      ensure
+        @mutex.synchronize do
+          @counter -= 1
+          if @counter == 0
+            @end_channel.close
+          end
         end
       end
     end
