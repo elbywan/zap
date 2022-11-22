@@ -78,7 +78,7 @@ module Zap::Installers::Npm
             if !File.exists?(bin_path) || is_direct_dependency
               File.delete?(bin_path)
               File.symlink(Path.new(path).expand(install_folder), bin_path)
-              Crystal::System::File.chmod(bin_path.to_s, 0o755)
+              File.chmod(bin_path, 0o755)
             end
           end
         else
@@ -87,14 +87,16 @@ module Zap::Installers::Npm
           if !File.exists?(bin_path) || is_direct_dependency
             File.delete?(bin_path)
             File.symlink(Path.new(bin).expand(install_folder), bin_path)
-            Crystal::System::File.chmod(bin_path.to_s, 0o755)
+            File.chmod(bin_path, 0o755)
           end
         end
       end
 
       # Register hooks here if needed
       if dependency.has_install_script
-        Package.init?(install_folder).try { |pkg| dependency.scripts = pkg.scripts }
+        Package.init?(install_folder).try { |pkg|
+          dependency.scripts = pkg.scripts
+        }
       end
       # "If there is a binding.gyp file in the root of your package and you haven't defined your own install or preinstall scripts…
       # …npm will default the install command to compile using node-gyp via node-gyp rebuild"

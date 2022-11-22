@@ -5,7 +5,7 @@ module Zap::Installers::Npm::Helpers::Tarball
     end
     target = cache.last[0]
 
-    installed = Backend.install(dependency: dependency, target: target, store: state.store, pipeline: state.pipeline, backend: :copy) {
+    installed = Backend.install(dependency: dependency, target: target, store: state.store, backend: :copy) {
       state.reporter.on_installing_package
     }
 

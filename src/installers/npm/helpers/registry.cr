@@ -15,12 +15,12 @@ module Zap::Installers::Npm::Helpers::Registry
     leftmost_dir, leftmost_cache = leftmost_dir_and_cache
 
     installed = begin
-      Backend.install(dependency: dependency, target: leftmost_dir, store: state.store, pipeline: state.pipeline, backend: state.install_config.file_backend) {
+      Backend.install(dependency: dependency, target: leftmost_dir, store: state.store, backend: state.install_config.file_backend) {
         state.reporter.on_installing_package
       }
     rescue
       # Fallback to the widely supported "plain copy" backend
-      Backend.install(dependency: dependency, target: leftmost_dir, store: state.store, pipeline: state.pipeline, backend: :copy) { }
+      Backend.install(dependency: dependency, target: leftmost_dir, store: state.store, backend: :copy) { }
     end
 
     installer.on_install(dependency, leftmost_dir / dependency.name, state: state) if installed

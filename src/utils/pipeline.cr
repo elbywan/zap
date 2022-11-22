@@ -43,4 +43,13 @@ class Zap::Pipeline
     Fiber.yield
     @end_channel.receive? if @counter > 0
   end
+
+  def wrap
+    begin
+      reset
+      yield self
+    ensure
+      await
+    end
+  end
 end

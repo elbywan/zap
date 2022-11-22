@@ -22,6 +22,7 @@ module Zap
   config, command_config = CLI.new.parse
 
   Log = ::Log.for("zap")
+  ::Log.setup_from_env
 
   Commands::Install.run(config, command_config)
 end
