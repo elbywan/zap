@@ -261,6 +261,10 @@ class Zap::Package
     raise "Incompatible os or architecture: #{os} / #{cpu}" unless match_os_and_cpu?
   end
 
+  def is_direct_dependency? : Bool
+    dependents.size == 1 && dependents.first == key
+  end
+
   ############
   # Internal #
   ############

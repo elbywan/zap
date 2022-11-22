@@ -50,12 +50,10 @@ class Zap::Lockfile
         (self.dev_dependencies.try(&.keys) || [] of String) +
         (self.optional_dependencies.try(&.keys) || [] of String)
 
-    pruned_deps = Set(String).new
     pinned_deps = Set(String).new
     self.pinned_dependencies?.try &.select! { |name, version|
       key = "#{name}@#{version}"
       unless keep = all_dependencies.includes?(name)
-        pruned_deps << key
         reporter.on_package_removed(key)
       else
         pinned_deps << key
@@ -71,11 +69,8 @@ class Zap::Lockfile
       if pkg.scripts.try &.no_scripts?
         pkg.scripts = nil
       end
-      # Remove pruned dependencies
-      if pruned_deps.includes?(pkg.key)
-        false
-      elsif dependents = pkg.dependents
-        # Remove transitive dependencies that are not used
+      if dependents = pkg.dependents
+        # Remove pruned dependencies and unused transitive dependencies
         dependents.inner = dependents.inner & pinned_deps
         pkg.dependents = dependents
         dependents.inner.size > 0

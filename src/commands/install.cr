@@ -82,13 +82,10 @@ module Zap::Commands::Install
 
         # Run package.json install hooks
         main_package.scripts.try do |scripts|
-          state.reporter.output << state.reporter.header("⏳", "Hooks") + "\n"
           if scripts.has_self_install_lifecycle?
+            state.reporter.output << state.reporter.header("⏳", "Hooks") + "\n"
             begin
-              # output_io = STDOUT
               output_io = Reporter::ReporterFormattedAppendPipe.new(state.reporter)
-              # prefix = ("#{main_package.name} @ #{main_package.version}").colorize()
-              # TODO: PROPER REPORTING !!
               scripts.run_script(:preinstall, project_path, state.config, output_io: output_io) { |command|
                 state.reporter.output << "\n   • preinstall #{%(#{command}).colorize.mode(:dim)}\n"
               }

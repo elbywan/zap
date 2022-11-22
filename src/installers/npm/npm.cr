@@ -68,22 +68,27 @@ module Zap::Installers::Npm
     def on_install(dependency : Package, install_folder : Path, *, state : Commands::Install::State)
       # Copy binary files if they are declared in the package.json
       if bin = dependency.bin
+        is_direct_dependency = dependency.is_direct_dependency?
         root_bin_dir = Path.new(state.config.bin_path)
         Dir.mkdir_p(root_bin_dir)
         if bin.is_a?(Hash)
           bin.each do |name, path|
             bin_name = name.split("/").last
             bin_path = Path.new(root_bin_dir, bin_name)
-            File.delete?(bin_path)
-            File.symlink(Path.new(path).expand(install_folder), bin_path)
-            Crystal::System::File.chmod(bin_path.to_s, 0o755)
+            if !File.exists?(bin_path) || is_direct_dependency
+              File.delete?(bin_path)
+              File.symlink(Path.new(path).expand(install_folder), bin_path)
+              Crystal::System::File.chmod(bin_path.to_s, 0o755)
+            end
           end
         else
           bin_name = dependency.name.split("/").last
           bin_path = Path.new(root_bin_dir, bin_name)
-          File.delete?(bin_path)
-          File.symlink(Path.new(bin).expand(install_folder), bin_path)
-          Crystal::System::File.chmod(bin_path.to_s, 0o755)
+          if !File.exists?(bin_path) || is_direct_dependency
+            File.delete?(bin_path)
+            File.symlink(Path.new(bin).expand(install_folder), bin_path)
+            Crystal::System::File.chmod(bin_path.to_s, 0o755)
+          end
         end
       end
 
