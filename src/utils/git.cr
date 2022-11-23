@@ -1,4 +1,4 @@
-require "../reporter"
+require "../reporters/*"
 
 module Zap::Utils
   struct GitUrl
@@ -7,7 +7,7 @@ module Zap::Utils
     GIT_URL_REGEX = /(?:git\+)?(?<protocol>git|ssh|http|https|file):\/\/(?:(?<user>[^:@]+)?(:(?<password>[^@]+))?@)?(?<hostname>[^:\/]+)(:(?<port>\d+))?[\/:](?<path>[^#]+)((?:#semver:(?<semver>[^:]+))|(?:#(?<commitish>[^:]+)))?/
 
     @url : String
-    @base_url : String
+    getter base_url : String
     getter! match : Regex::MatchData
     @protocol : String
     @hostname : String
@@ -33,6 +33,7 @@ module Zap::Utils
       @path = match["path"]?
       @commitish = match["commitish"]?
       @semver = match["semver"]?
+
       # See: https://git-scm.com/docs/git-clone#_git_urls
       user_pwd_prefix = @user ? @user.not_nil! + (@password ? ":#{@password}" : "") + "@" : ""
       full_host = @hostname + (@port ? ":#{@port}" : "")
@@ -48,37 +49,63 @@ module Zap::Utils
       end
     end
 
-    def clone(@dest : Path | String) : Nil
-      if @commitish
-        # shallow clone and checkout the commit
+    def clone(dest : (String | Path)? = nil, &) : Nil
+      commitish = @commitish
+      if semver = @semver
+        # List tags and find one matching the specified semver
+        commitish = get_tag_for_semver!(semver)
+      end
+
+      if commitish
+        # Get the commit hash
+        dest ||= yield (get_ref_commit?(commitish) || commitish)
+        # Folder already exists, so we can skip cloning
+        return if dest.nil?
         self.class.run("git clone --quiet --filter=tree:0 #{@base_url} #{dest}", @reporter)
-        self.class.run("git checkout --quiet #{@commitish}", @reporter, chdir: dest)
-      elsif semver = @semver
-        # list tags and checkout the right one
-        # self.run("git clone --no-checkout #{@base_url} #{dest}")
-        raw_tags_list = self.class.run_and_get_output("git ls-remote --tags --refs --head -q #{@base_url} #{dest}")
-        tags = raw_tags_list.split("\n").map do |line|
-          line.split("\t").last.split("/").last
-        end
-        comparator = Semver::Comparator.parse(semver)
-        tag = nil
-        tags.each do |t|
-          matches = comparator.valid?(Semver::Comparator.parse(t))
-          if matches && (tag.nil? || tag < t)
-            tag = t
-          end
-        end
-        raise "There is no tag matching semver for #{@url}" unless tag
-        self.class.run("git checkout --quiet --filter=tree:0 #{@base_url} #{dest}", @reporter)
-        self.class.run("git checkout --quiet #{tag}", @reporter, chdir: dest)
+        self.class.run("git checkout --quiet #{commitish}", @reporter, chdir: dest)
       else
-        # clone + checkout the default branch
+        dest ||= yield (get_default_branch? || "main")
+        # Folder already exists, so we can skip cloning
+        return if dest.nil?
         self.class.run("git clone --quiet #{@base_url} #{dest}", @reporter)
       end
     end
 
+    def clone(dest : (String | Path)? = nil) : Nil
+      clone(dest) { }
+    end
+
     def self.commit_hash(dest : Path | String) : String
       self.run_and_get_output("git rev-parse HEAD", chdir: dest).chomp
+    end
+
+    def get_tag_for_semver!(semver : String) : String
+      raw_tags_list = self.class.run_and_get_output("git ls-remote --tags --refs -q #{@base_url}")
+      tags = raw_tags_list.split("\n").map do |line|
+        line.split("\t").last.split("/").last
+      end
+
+      semver = Semver.parse(semver)
+      tag = nil
+      tags.each do |t|
+        if semver.valid?(t)
+          comparator = Semver::Comparator.parse(t)
+          if tag.nil? || tag < comparator
+            tag = comparator
+          end
+        end
+      end
+      raise "There is no tag matching semver for #{@url}" unless tag
+      tag.to_s
+    end
+
+    def get_ref_commit?(ref : String) : String?
+      self.class.run_and_get_output("git ls-remote #{@base_url} #{ref}").split(/\s+/).first?
+    end
+
+    def get_default_branch? : String?
+      result = self.class.run_and_get_output("git ls-remote --symref #{@base_url} HEAD")
+      result.split("\n")[0]?.try &.split(/\s+/)[1]?.try &.split("/").last?
     end
 
     def self.run(command : String, reporter : Reporter? = nil, **extra) : Nil

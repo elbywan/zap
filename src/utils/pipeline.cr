@@ -3,7 +3,7 @@ class Zap::Pipeline
   getter progress = 0
   getter max = 0
   @mutex = Mutex.new
-  @end_channel : Channel(Nil) = Channel(Nil).new
+  @end_channel : Channel(Exception?) = Channel(Exception?).new
   @sync_channel : Channel(Nil)? = nil
 
   def initialize
@@ -15,7 +15,7 @@ class Zap::Pipeline
       @progress = 0
       @max = 0
       @end_channel.close unless @end_channel.closed?
-      @end_channel = Channel(Nil).new
+      @end_channel = Channel(Exception?).new
       @sync_channel = nil
     rescue
       # ignore
@@ -53,6 +53,11 @@ class Zap::Pipeline
         block.call
       rescue Channel::ClosedError
         # Ignore
+      rescue ex
+        @mutex.synchronize do
+          @end_channel.send(ex)
+          @end_channel.close
+        end
       ensure
         @mutex.synchronize do
           @counter -= 1
@@ -66,7 +71,8 @@ class Zap::Pipeline
 
   def await
     Fiber.yield
-    @end_channel.receive? if @counter > 0
+    possible_exception = @end_channel.receive? if @counter > 0
+    raise possible_exception if possible_exception
   end
 
   def wrap

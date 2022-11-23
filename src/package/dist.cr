@@ -37,9 +37,10 @@ class Zap::Package
     include YAML::Serializable
 
     property commit_hash : String
-    property path : String
+    property version : String
+    property cache_key : String
 
-    def initialize(@commit_hash, @path)
+    def initialize(@commit_hash, @version, @cache_key)
     end
   end
 end

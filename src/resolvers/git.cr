@@ -7,27 +7,26 @@ module Zap::Resolver
       @git_url = Utils::GitUrl.new(@version.to_s, @state.reporter)
     end
 
-    def resolve(parent_pkg : Package | Lockfile, *, dependent : Package? = nil, validate_lockfile = false) : Package
+    def resolve(parent_pkg : Package | Lockfile, *, dependent : Package? = nil) : Package
       pkg = nil
-      store_hash = Digest::SHA1.hexdigest(version.to_s)
-      temp_path = Path.new(Dir.tempdir, "zap--git-#{store_hash}")
       if !self.package_name.empty? && (lockfile_version = parent_pkg.pinned_dependencies[self.package_name]?)
         pkg = state.lockfile.pkgs["#{self.package_name}@#{lockfile_version}"]?
         # Validate the lockfile version
         if pkg
-          pkg = nil unless pkg.dist.as?(Package::GitDist).try(&.path.== temp_path)
+          pkg = nil unless pkg.dist.as?(Package::GitDist).try(&.version.== version.to_s)
         end
       end
-      pkg ||= fetch_metadata(temp_path)
+      pkg ||= fetch_metadata
       on_resolve(pkg, parent_pkg, pkg.dist.as(Package::GitDist).commit_hash, dependent: dependent)
       pkg
     end
 
     def store(metadata : Package, &on_downloading) : Bool
-      temp_path = metadata.dist.as(Package::GitDist).path
-      return false if ::File.directory?(temp_path)
+      cache_key = metadata.dist.as(Package::GitDist).cache_key
+      path = Path.new(Dir.tempdir, cache_key)
+      return false if ::File.directory?(path)
       yield
-      clone_to_temp(temp_path)
+      @git_url.clone(path)
       true
     end
 
@@ -35,19 +34,23 @@ module Zap::Resolver
       false
     end
 
-    private def fetch_metadata(temp_path : Path)
-      # unless Dir.exists?(temp_path) && ::File.exists?(temp_path / "package.json")
-      FileUtils.rm_rf(temp_path)
-      clone_to_temp(temp_path)
-      # end
-      commit_hash = @git_url.class.commit_hash(temp_path)
-      Package.init(temp_path).tap { |pkg|
-        pkg.dist = Package::GitDist.new(commit_hash, temp_path.to_s)
+    private def fetch_metadata
+      path = uninitialized Path
+      cache_key = uninitialized String
+      @git_url.clone { |commit_hash|
+        cache_key = "zap--git-#{@git_url.base_url}-#{commit_hash}"
+        path = Path.new(Dir.tempdir, cache_key)
+        if ::File.directory?(path)
+          # Skip cloning
+          nil
+        else
+          path
+        end
       }
-    end
-
-    private def clone_to_temp(temp_path : String | Path)
-      @git_url.clone(temp_path)
+      commit_hash = @git_url.class.commit_hash(path)
+      Package.init(path).tap { |pkg|
+        pkg.dist = Package::GitDist.new(commit_hash, version.to_s, cache_key)
+      }
     end
   end
 end

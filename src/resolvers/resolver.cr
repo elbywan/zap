@@ -38,7 +38,7 @@ abstract struct Zap::Resolver::Base
     end
   end
 
-  abstract def resolve(parent_pkg : Package | Lockfile, *, dependent : Package? = nil, validate_lockfile = false) : Package
+  abstract def resolve(parent_pkg : Package | Lockfile, *, dependent : Package? = nil) : Package
   abstract def store(metadata : Package, &on_downloading) : Bool
   abstract def is_lockfile_cache_valid?(cached_package : Package) : Bool
 end

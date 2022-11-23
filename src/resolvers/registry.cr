@@ -26,7 +26,7 @@ module Zap::Resolver
       }
     end
 
-    def resolve(parent_pkg : Package | Lockfile, *, dependent : Package? = nil, validate_lockfile = false) : Package
+    def resolve(parent_pkg : Package | Lockfile, *, dependent : Package? = nil) : Package
       pkg = self.fetch_metadata
       on_resolve(pkg, parent_pkg, pkg.version, dependent: dependent)
       pkg

@@ -1,4 +1,5 @@
 module Zap
+  # Global configuration for Zap
   record Config,
     # ------------- #
     # Config Fields #
@@ -13,7 +14,8 @@ module Zap
         {% end %}
       ), home: true),
     prefix : String = Dir.current,
-    child_concurrency : Int32 = 5 do
+    child_concurrency : Int32 = 5,
+    silent : Bool = false do
     # ----------- #
     # Config Body #
     # ------------#
@@ -76,7 +78,11 @@ module Zap
       NPM_Shallow
     end
 
+    # Configuration specific for the install command
     record Install,
+      # ------ #
+      # Fields #
+      # ------ #
       file_backend : Backend::Backends = (
         {% if flag?(:darwin) %}
           Backend::Backends::CloneFile
@@ -95,6 +101,9 @@ module Zap
       save_dev : Bool = false,
       save_optional : Bool = false,
       lockfile_only : Bool = false do
+      # ---- #
+      # Body #
+      # ---- #
       def omit_dev?
         omit.includes?(Omit::Dev)
       end

@@ -306,7 +306,7 @@ class Zap::Package
       end
       # end
       # If the package is not in the lockfile or if it is a direct dependency, resolve it
-      metadata ||= resolver.resolve(is_direct_dependency ? state.lockfile : self, dependent: dependent, validate_lockfile: is_direct_dependency)
+      metadata ||= resolver.resolve(is_direct_dependency ? state.lockfile : self, dependent: dependent)
       metadata.optional = (type == :optional_dependencies || nil)
       metadata.match_os_and_cpu!
       # If the package has already been resolved, skip it to prevent infinite loops

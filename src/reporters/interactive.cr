@@ -1,8 +1,8 @@
 require "term-cursor"
+require "./reporter"
 
-class Zap::Reporter
+class Zap::Reporter::Interactive < Zap::Reporter
   @lock = Mutex.new
-  getter io_lock = Mutex.new
   @out : IO
 
   def output
@@ -79,7 +79,11 @@ class Zap::Reporter
   def stop
     @lock.synchronize do
       @update_channel.close
-      @out.puts "" if @written
+      if @written
+        Colorize.reset(@out)
+        @out.flush
+        @out.puts ""
+      end
       @written = false
     rescue Channel::ClosedError
       # Ignore
@@ -102,35 +106,6 @@ class Zap::Reporter
       @update_channel.send 0 unless @update_channel.closed?
     rescue Channel::ClosedError
       # Ignore
-    end
-  end
-
-  class ReporterPrependPipe < IO
-    def initialize(@reporter : Reporter)
-    end
-
-    def read(slice : Bytes)
-      raise "Cannot read from a pipe"
-    end
-
-    def write(slice : Bytes) : Nil
-      @reporter.prepend(slice)
-    end
-  end
-
-  class ReporterFormattedAppendPipe < IO
-    def initialize(@reporter : Reporter, @separator = "\n", @prefix = "\n     ")
-    end
-
-    def read(slice : Bytes)
-      raise "Cannot read from a pipe"
-    end
-
-    def write(slice : Bytes) : Nil
-      str = @prefix + String.new(slice).split(@separator).join(@prefix)
-      @reporter.io_lock.synchronize do
-        @reporter.output << str
-      end
     end
   end
 
@@ -157,7 +132,6 @@ class Zap::Reporter
   end
 
   def header(emoji, str, color = :default)
-    Colorize.reset(@out)
     %( ○ #{emoji} #{str.ljust(25).colorize(color).mode(:bright)})
   end
 

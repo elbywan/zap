@@ -12,7 +12,7 @@ require "./resolvers/resolver"
 require "./resolvers/*"
 require "./installers/installer"
 require "./installers/npm/*"
-require "./reporter"
+require "./reporters/*"
 require "./cli"
 require "./commands/**"
 

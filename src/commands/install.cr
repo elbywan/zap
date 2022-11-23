@@ -5,30 +5,34 @@ module Zap::Commands::Install
     store : Store,
     lockfile : Lockfile,
     pipeline = Pipeline.new,
-    reporter : Reporter = Reporter.new
+    reporter : Reporter = Reporter::Interactive.new
 
-  def self.run(config : Config, install_config : Config::Install)
+  def self.run(config : Config, install_config : Config::Install, *, silent = false)
     realtime = nil
     state = uninitialized State
+    null_io = File.open(File::NULL, "w")
+
     memory = Benchmark.memory {
       project_path = config.prefix
       global_store_path = config.global_store_path
 
-      reporter = Reporter.new
+      reporter = Reporter::Interactive.new
       state = State.new(
         config: config,
         install_config: install_config,
         store: Store.new(global_store_path),
         lockfile: Lockfile.new(project_path, reporter: reporter),
-        reporter: reporter
+        reporter: silent ? Reporter::Interactive.new(null_io) : reporter
       )
 
-      puts <<-TERM
-      ⚡ #{"Zap".colorize.mode(:bright).mode(:underline)} #{"(v#{VERSION})".colorize.mode(:dim)}
-         #{"project:".colorize(:blue)} #{project_path} • #{"store:".colorize(:blue)} #{global_store_path} • #{"workers:".colorize(:blue)} #{Crystal::Scheduler.nb_of_workers}
-         #{"lockfile:".colorize(:blue)} #{state.lockfile.read_from_disk ? "ok".colorize(:green) : "not found".colorize(:red)}
-      \n
-      TERM
+      unless silent
+        puts <<-TERM
+        ⚡ #{"Zap".colorize.mode(:bright).mode(:underline)} #{"(v#{VERSION})".colorize.mode(:dim)}
+          #{"project:".colorize(:blue)} #{project_path} • #{"store:".colorize(:blue)} #{global_store_path} • #{"workers:".colorize(:blue)} #{Crystal::Scheduler.nb_of_workers}
+          #{"lockfile:".colorize(:blue)} #{state.lockfile.read_from_disk ? "ok".colorize(:green) : "not found".colorize(:red)}
+        \n
+        TERM
+      end
 
       realtime = Benchmark.realtime {
         Resolver::Registry.init(global_store_path)
@@ -72,6 +76,8 @@ module Zap::Commands::Install
                 scripts.run_script(:preinstall, path, state.config)
                 scripts.run_script(:install, path, state.config)
                 scripts.run_script(:postinstall, path, state.config)
+              rescue e
+                raise Exception.new("Error while running install scripts for #{package.name}@#{package.version} at #{path}\n\n#{e.message}", e)
               ensure
                 state.reporter.on_package_built
               end
@@ -89,7 +95,7 @@ module Zap::Commands::Install
             begin
               output_io = Reporter::ReporterFormattedAppendPipe.new(state.reporter)
               scripts.run_script(:preinstall, project_path, state.config, output_io: output_io) { |command|
-                state.reporter.output << "\n   • preinstall #{%(#{command}).colorize.mode(:dim)}\n"
+                state.reporter.output << "\n   • preinstall #({%(#{command}).colorize.mode(:dim)}\n"
               }
               scripts.run_script(:install, project_path, state.config, output_io: output_io) { |command|
                 state.reporter.output << "\n   • install #{%(#{command}).colorize.mode(:dim)}\n"
@@ -114,13 +120,13 @@ module Zap::Commands::Install
           end
         end
 
-        # Do not edit lockfile or package.json files in global mode
-        unless state.config.global
+        # Do not edit lockfile or package.json files in global mode or if the save flag is false
+        unless state.config.global || !state.install_config.save
           # Write lockfile
           state.lockfile.write
 
           # Edit and write the package.json file if the flags have been set in the config
-          if state.install_config.new_packages.size > 0 && state.install_config.save
+          if state.install_config.new_packages.size > 0
             package_json = JSON.parse(File.read(Path.new(project_path).join("package.json"))).as_h
             if deps = main_package.dependencies
               package_json["dependencies"] = JSON::Any.new(deps.inner.transform_values { |v| JSON::Any.new(v) })
@@ -138,7 +144,10 @@ module Zap::Commands::Install
     }
 
     state.reporter.report_done(realtime, memory)
+    null_io.try &.close
   rescue e
-    puts %(❌ #{"Error".colorize(:red).mode(:underline)}: #{e.message})
+    puts %(\n\n❌ #{"Error".colorize(:red).mode(:underline)}: #{e.message})
+    null_io.try &.close
+    exit 3
   end
 end

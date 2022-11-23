@@ -2,7 +2,7 @@ require "crystar"
 
 module Zap::Resolver
   struct TarballUrl < Base
-    def resolve(parent_pkg : Package | Lockfile, *, dependent : Package? = nil, validate_lockfile = false) : Package
+    def resolve(parent_pkg : Package | Lockfile, *, dependent : Package? = nil) : Package
       tarball_url = version.to_s
       store_hash = Digest::SHA1.hexdigest(tarball_url)
       temp_path = Path.new(Dir.tempdir, "zap--tarball-#{store_hash}")
