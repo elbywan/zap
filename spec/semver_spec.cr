@@ -1,23 +1,25 @@
 require "./spec_helper"
 require "./fixtures/semver/*"
-require "../src/semver"
+require "../src/utils/semver"
 
-describe Zap::Semver do
+include Zap::Utils
+
+describe Zap::Utils::Semver do
   describe "equality" do
     EQUALITY_FIXTURES.each { |fixture|
       it "should parse { \"version\": \"#{fixture[0]}\" }" do
-        Zap::Semver.parse(fixture[0]).canonical.should eq(fixture[1])
+        Semver.parse(fixture[0]).canonical.should eq(fixture[1])
       end
 
       fixture[2].each { |v|
         it "should validate #{v} against { \"version\": \"#{fixture[0]}\" }" do
-          semver = Zap::Semver.parse(fixture[0])
+          semver = Semver.parse(fixture[0])
           semver.valid?(v).should be_true
         end
       }
       fixture[3].each { |v|
         it "should reject #{v} against { \"version\": \"#{fixture[0]}\" }" do
-          semver = Zap::Semver.parse(fixture[0])
+          semver = Semver.parse(fixture[0])
           semver.valid?(v).should be_false
         end
       }
@@ -29,11 +31,11 @@ describe Zap::Semver do
       shift_fixture = fixture.size == 2
 
       it "should parse { \"version\": \"#{fixture[0]}\" }" do
-        Zap::Semver.parse(fixture[0]).canonical.should eq(fixture[shift_fixture ? 0 : 1])
+        Semver.parse(fixture[0]).canonical.should eq(fixture[shift_fixture ? 0 : 1])
       end
 
       it "should validate #{fixture[shift_fixture ? 1 : 2]} against { \"version\": \"#{fixture[0]}\" }" do
-        semver = Zap::Semver.parse(fixture[0])
+        semver = Semver.parse(fixture[0])
         semver.valid?(fixture[shift_fixture ? 1 : 2]).should be_true
       end
     }
@@ -48,7 +50,7 @@ describe Zap::Semver do
       # end
 
       it "should reject #{fixture[shift_fixture ? 1 : 2]} against { \"version\": \"#{fixture[0]}\" }" do
-        semver = Zap::Semver.parse(fixture[0])
+        semver = Semver.parse(fixture[0])
         semver.valid?(fixture[shift_fixture ? 1 : 2]).should be_false
       end
     }

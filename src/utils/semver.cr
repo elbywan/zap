@@ -1,6 +1,6 @@
 require "string_scanner"
 
-module Zap::Semver
+module Zap::Utils::Semver
   # -----------------------------------------------------
   # Range Grammar
   #

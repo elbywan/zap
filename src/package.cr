@@ -2,7 +2,7 @@ require "json"
 require "yaml"
 require "colorize"
 require "./package/*"
-require "./semver"
+require "./utils/semver"
 require "./resolvers/resolver"
 
 # A class that represents a package.
@@ -34,7 +34,7 @@ class Zap::Package
   property optional_dependencies : SafeHash(String, String)? = nil
   @[JSON::Field(key: "bundleDependencies")]
   @[YAML::Field(ignore: true)]
-  getter bundle_dependencies : SafeHash(String, String)? = nil
+  getter bundle_dependencies : (SafeHash(String, String) | Bool)? = nil
   @[JSON::Field(key: "peerDependencies")]
   getter peer_dependencies : SafeHash(String, String)? = nil
   @[YAML::Field(ignore: true)]

@@ -4,7 +4,7 @@ require "compress/gzip"
 require "base64"
 require "./resolver"
 require "../package"
-require "../semver"
+require "../utils/semver"
 
 # See: https://github.com/npm/registry/blob/master/docs/responses/package-metadata.md#package-metadata
 ACCEPT_HEADER = "application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*"
@@ -31,7 +31,7 @@ module Zap::Resolver
       on_resolve(pkg, parent_pkg, pkg.version, dependent: dependent)
       pkg
     rescue e
-      raise "Error resolving #{pkg.try &.name || self.package_name} #{pkg.try &.version || self.version} #{e} #{e.backtrace.join("\n")}".colorize(:red).to_s
+      raise "Error resolving #{pkg.try &.name || self.package_name} #{pkg.try &.version || self.version} #{e.message}}"
     end
 
     def store(metadata : Package, &on_downloading) : Bool
@@ -94,12 +94,12 @@ module Zap::Resolver
       range_set = self.version
       cached_package.kind.registry? &&
         (range_set.is_a?(String) && range_set == cached_package.version) ||
-        (range_set.is_a?(Semver::SemverSets) && range_set.valid?(cached_package.version))
+        (range_set.is_a?(Utils::Semver::SemverSets) && range_set.valid?(cached_package.version))
     end
 
     # # PRIVATE ##########################
 
-    private def find_valid_version(manifest_str : String, version : Semver::SemverSets) : Package
+    private def find_valid_version(manifest_str : String, version : Utils::Semver::SemverSets) : Package
       matching = nil
       manifest_parser = JSON::PullParser.new(manifest_str)
       manifest_parser.read_begin_object
@@ -111,7 +111,7 @@ module Zap::Resolver
           loop do
             break if manifest_parser.kind.end_object?
             version_str = manifest_parser.read_string
-            semver = Semver::Comparator.parse(version_str)
+            semver = Utils::Semver::Comparator.parse(version_str)
             if matching.nil? || matching[0] < semver
               if version.valid?(version_str)
                 matching = {semver, manifest_parser.read_raw}

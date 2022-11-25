@@ -6,5 +6,5 @@
 node_modules
 
 
-test.cr
-spec/fixtures/js_project
+/test.cr
+/spec/fixtures/js_project

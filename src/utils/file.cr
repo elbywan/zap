@@ -2,32 +2,34 @@ module Zap::Utils::File
   def self.crawl(
     directory : Path | String,
     *,
-    always_included : Array(String)? = nil,
-    always_excluded : Array(String)? = nil,
-    included : Array(String)? = nil,
-    excluded : Array(String)? = nil,
-    path_prefix = Path.new(directory),
+    always_included : GitIgnore? = nil,
+    always_excluded : GitIgnore? = nil,
+    included : GitIgnore? = nil,
+    excluded : GitIgnore? = nil,
+    path_prefix = Path.new,
     &block : Path -> Bool | Nil
   )
     if Dir.exists?(directory)
       Dir.each_child(directory) do |entry|
+        full_path = Path.new(directory, entry)
+        is_dir = Dir.exists?(full_path)
         entry_path = path_prefix / entry
-        pursue = {
-          if always_included.try &.any? { |pattern| ::File.match?(pattern, entry) }
-            yield entry_path
-          elsif always_excluded.try &.any? { |pattern| ::File.match?(pattern, entry) }
+        pursue = begin
+          if always_included.try &.match? (is_dir ? entry_path / "" : entry_path).to_s
+            yield full_path
+          elsif always_excluded.try &.match? (is_dir ? entry_path / "" : entry_path).to_s
             false
-          elsif included.try &.any? { |pattern| ::File.match?(pattern, entry) }
-            yield entry_path
-          elsif excluded.try &.any? { |pattern| ::File.match?(pattern, entry) }
+          elsif included.try &.match? (is_dir ? entry_path / "" : entry_path).to_s
+            yield full_path
+          elsif excluded.try &.match? (is_dir ? entry_path / "" : entry_path).to_s
             false
           else
-            yield entry_path
-          end,
-        }
-        if Dir.exists?(entry_path) && (pursue.nil? || pursue)
+            true
+          end
+        end
+        if is_dir && (pursue.nil? || pursue)
           crawl(
-            entry_path,
+            full_path,
             always_included: always_included,
             always_excluded: always_excluded,
             included: included,
@@ -40,9 +42,11 @@ module Zap::Utils::File
     end
   end
 
-  ALWAYS_INCLUDED = %w(package.json package-lock.json README LICENSE LICENCE)
+  # See: https://docs.npmjs.com/cli/v9/configuring-npm/package-json#files
+  ALWAYS_INCLUDED = %w(/package.json /README.* /Readme.* /readme.* /LICENSE.* /License.* /license.* /LICENCE.* /Licence.* /licence.*)
   ALWAYS_IGNORED  = %w(.git CVS .svn .hg .lock-wscript .wafpickle-N .*.swp .DS_Store ._* npm-debug.log .npmrc node_modules config.gypi *.orig package-lock.json)
 
+  # Crawl a package and yield directories and files that are not ignored by git and included in the package.json files field.
   def self.crawl_package_files(directory : Path, &block : Path -> Bool | Nil)
     package_json = JSON.parse(::File.read(directory / "package.json"))
     includes = (package_json["files"]?.try(&.as_a.map(&.to_s)) || ["**/*"])
@@ -56,6 +60,13 @@ module Zap::Utils::File
       excludes = ::File.read(directory / ".npmignore").each_line.to_a
     end
 
-    Utils::File.crawl(directory, included: includes, excluded: excludes, always_included: ALWAYS_INCLUDED, always_excluded: ALWAYS_IGNORED, &block)
+    Utils::File.crawl(
+      directory,
+      included: GitIgnore.new(includes),
+      excluded: GitIgnore.new(excludes),
+      always_included: GitIgnore.new(ALWAYS_INCLUDED),
+      always_excluded: GitIgnore.new(ALWAYS_IGNORED),
+      &block
+    )
   end
 end

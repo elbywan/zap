@@ -29,10 +29,13 @@ module Zap::Installers::Npm::Helpers::File
 
     state.reporter.on_installing_package
 
+    # TODO :Double check if this is really needed?
     Utils::File.crawl_package_files(extracted_folder) do |path|
       if ::File.directory?(path)
         relative_dir_path = Path.new(path).relative_to(extracted_folder)
         Dir.mkdir_p(target_path / relative_dir_path)
+        FileUtils.cp_r(path, target_path / relative_dir_path)
+        false
       else
         relative_file_path = Path.new(path).relative_to(extracted_folder)
         Dir.mkdir_p((target_path / relative_file_path).dirname)

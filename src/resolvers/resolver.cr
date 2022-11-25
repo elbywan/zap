@@ -2,7 +2,7 @@ require "../store"
 
 abstract struct Zap::Resolver::Base
   getter package_name : String
-  getter version : String | Semver::SemverSets?
+  getter version : String | Utils::Semver::SemverSets?
   getter state : Commands::Install::State
 
   def initialize(@state, @package_name, @version = "latest")
@@ -57,9 +57,9 @@ module Zap::Resolver
     when .matches?(/^[^@].*\/.*$/)
       Git.new(state, name, "git+https://github.com/#{version_field}")
     else
-      version = Semver.parse(version_field)
+      version = Utils::Semver.parse(version_field)
       raise "Invalid version: #{version_field}" unless version
-      Registry.new(state, name, Semver.parse(version_field))
+      Registry.new(state, name, Utils::Semver.parse(version_field))
     end
   end
 end
