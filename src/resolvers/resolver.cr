@@ -24,6 +24,8 @@ abstract struct Zap::Resolver::Base
     # Infer if the package has install hooks (the npm registry does the job already - but only when listing versions)
     # Also we need that when reading from other sources
     pkg.has_install_script ||= pkg.scripts.try(&.has_install_script?)
+    # Infer if the package has a prepare script - needed to know when to build git dependencies
+    pkg.has_prepare_script ||= pkg.scripts.try(&.has_prepare_script?)
     # Pin the dependency to the locked version
     parent_pkg.pinned_dependencies[pkg.name] = locked_version
   end

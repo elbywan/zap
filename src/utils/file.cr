@@ -69,4 +69,14 @@ module Zap::Utils::File
       &block
     )
   end
+
+  def self.recursively(path : Path | String, relative_path : Path = Path.new, &block : (Path, Path) -> Nil)
+    full_path = path / relative_path
+    yield relative_path, full_path
+    if ::File.directory?(full_path)
+      Dir.each_child(full_path) do |entry|
+        self.recursively(path, relative_path / entry, &block)
+      end
+    end
+  end
 end

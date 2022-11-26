@@ -1,6 +1,6 @@
 module Zap::Installers::Npm::Helpers::Git
   def self.install(dependency : Package, *, installer : Installers::Base, cache : Deque(CacheItem), state : Commands::Install::State) : Deque(CacheItem)?
-    unless cloned_folder = dependency.dist.try &.as(Package::GitDist).cache_key.try { |key| Path.new(Dir.tempdir, key) }
+    unless packed_tarball_path = dependency.dist.try &.as(Package::GitDist).cache_key.try { |key| Path.new(Dir.tempdir, key + ".tgz") }
       raise "Cannot install git dependency #{dependency.name} because the dist.cache_key field is missing."
     end
 
@@ -9,17 +9,8 @@ module Zap::Installers::Npm::Helpers::Git
 
     state.reporter.on_installing_package
 
-    Utils::File.crawl_package_files(cloned_folder) do |path|
-      if ::File.directory?(path)
-        relative_dir_path = Path.new(path).relative_to(cloned_folder)
-        Dir.mkdir_p(target_path / relative_dir_path)
-        FileUtils.cp_r(path, target_path)
-        false
-      else
-        relative_file_path = Path.new(path).relative_to(cloned_folder)
-        Dir.mkdir_p((target_path / relative_file_path).dirname)
-        ::File.copy(path, target_path / relative_file_path)
-      end
+    ::File.open(packed_tarball_path, "r") do |tarball|
+      Utils::TarGzip.unpack_to(tarball, target_path)
     end
 
     installer.on_install(dependency, target_path, state: state)

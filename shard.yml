@@ -14,7 +14,6 @@ crystalline:
 dependencies:
   crystar:
     github: naqvis/crystar
-    branch: master
   term-cursor:
     github: crystal-term/cursor
 

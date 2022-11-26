@@ -37,6 +37,10 @@ class Zap::Package
       !install.nil? || nil
     end
 
+    def has_prepare_script?
+      !prepare.nil? || nil
+    end
+
     def has_self_install_lifecycle?
       !!install ||
         !!prepublish ||

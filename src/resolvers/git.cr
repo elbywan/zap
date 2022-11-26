@@ -23,15 +23,33 @@ module Zap::Resolver
 
     def store(metadata : Package, &on_downloading) : Bool
       cache_key = metadata.dist.as(Package::GitDist).cache_key
-      path = Path.new(Dir.tempdir, cache_key)
-      return false if ::File.directory?(path)
+      cloned_folder_path = Path.new(Dir.tempdir, cache_key)
+      tarball_path = Path.new(Dir.tempdir, cache_key + ".tgz")
+      packed = ::File.exists?(tarball_path)
+
+      # If the tarball is there, early return
+      return false if packed
+
+      cloned = ::File.directory?(cloned_folder_path)
       yield
-      @git_url.clone(path)
-      Zap::Commands::Install.run(
-        state.config.copy_with(prefix: path.to_s, global: false, silent: true),
-        Config::Install.new
-      )
+      # Clone the repo and run the prepare script if needed
+      begin
+        @state.reporter.on_packing_package
+        unless cloned
+          @git_url.clone(cloned_folder_path)
+          prepare_package(cloned_folder_path) if metadata.has_prepare_script
+        end
+        # Pack the package into a tarball and remove the cloned folder
+        pack_package(cloned_folder_path, tarball_path)
+      ensure
+        @state.reporter.on_package_packed
+      end
+      # FileUtils.rm_rf(cloned_folder_path)
       true
+    rescue e
+      FileUtils.rm_rf(cloned_folder_path) if cloned_folder_path
+      FileUtils.rm_rf(tarball_path) if tarball_path
+      raise e
     end
 
     def is_lockfile_cache_valid?(cached_package : Package) : Bool
@@ -60,11 +78,14 @@ module Zap::Resolver
         # NOTE: If a package being installed through git contains a prepare script,
         # its dependencies and devDependencies will be installed, and the prepare script will be run,
         # before the package is packaged and installed.
-        if fresh_clone && pkg.scripts.try &.prepare
-          Zap::Commands::Install.run(
-            state.config.copy_with(prefix: path.to_s, global: false, silent: true),
-            Config::Install.new
-          )
+        if fresh_clone
+          begin
+            @state.reporter.on_packing_package
+            prepare_package(path) if pkg.scripts.try &.prepare
+            pack_package(path, Path.new(Dir.tempdir, cache_key + ".tgz"))
+          ensure
+            @state.reporter.on_package_packed
+          end
         end
       }
     end
@@ -76,20 +97,22 @@ module Zap::Resolver
       )
     end
 
-    # TODO : lot of tar.gzip helper functions…
-    # private def pack_package(package_path : Path)
-    #   Utils::File.crawl_package_files(package_path) do |path|
-    #     if ::File.directory?(path)
-    #       relative_dir_path = Path.new(path).relative_to(package_path)
-    #       Dir.mkdir_p(target_path / relative_dir_path)
-    #       FileUtils.cp_r(path, target_path / relative_dir_path)
-    #       false
-    #     else
-    #       relative_file_path = Path.new(path).relative_to(package_path)
-    #       Dir.mkdir_p((target_path / relative_file_path).dirname)
-    #       ::File.copy(path, target_path / relative_file_path)
-    #     end
-    #   end
-    # end
+    private def pack_package(package_path : Path, target_path : Path)
+      Compress::Gzip::Writer.open(::File.new(target_path.to_s, "w"), sync_close: true) do |gzip|
+        tar_writer = Crystar::Writer.new(gzip, sync_close: true)
+        Utils::File.crawl_package_files(package_path) do |path|
+          full_path = Path.new(path)
+          relative_path = full_path.relative_to(package_path)
+          if ::File.directory?(full_path)
+            Utils::TarGzip.pack_folder(full_path, tar_writer)
+            false
+          else
+            Utils::TarGzip.pack_file(relative_path, full_path, tar_writer)
+          end
+        end
+      ensure
+        tar_writer.try &.close
+      end
+    end
   end
 end

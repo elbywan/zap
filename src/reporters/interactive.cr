@@ -18,6 +18,8 @@ class Zap::Reporter::Interactive < Zap::Reporter
     @resolved_packages = Atomic(Int32).new(0)
     @downloading_packages = Atomic(Int32).new(0)
     @downloaded_packages = Atomic(Int32).new(0)
+    @packing_packages = Atomic(Int32).new(0)
+    @packed_packages = Atomic(Int32).new(0)
     @installing_packages = Atomic(Int32).new(0)
     @installed_packages = Atomic(Int32).new(0)
     @building_packages = Atomic(Int32).new(0)
@@ -45,6 +47,16 @@ class Zap::Reporter::Interactive < Zap::Reporter
 
   def on_package_downloaded
     @downloaded_packages.add(1)
+    update()
+  end
+
+  def on_packing_package
+    @packing_packages.add(1)
+    update()
+  end
+
+  def on_package_packed
+    @packed_packages.add(1)
     update()
   end
 
@@ -113,16 +125,20 @@ class Zap::Reporter::Interactive < Zap::Reporter
     @io_lock.synchronize do
       @out << @cursor.clear_lines(@lines.get, :up)
       @out << String.new(bytes)
+      @out << "\n"
       @out.flush
     end
+    update
   end
 
   def prepend(str : String)
     @io_lock.synchronize do
       @out << @cursor.clear_lines(@lines.get, :up)
       @out << str
+      @out << "\n"
       @out.flush
     end
+    update
   end
 
   def log(str : String)
@@ -145,12 +161,16 @@ class Zap::Reporter::Interactive < Zap::Reporter
         @io_lock.synchronize do
           @out << @cursor.clear_lines(@lines.get, :up)
           @out << header("🔍", "Resolving…", :yellow) + %([#{@resolved_packages.get}/#{@resolving_packages.get}])
+          @lines.set(1)
           if (downloading = @downloading_packages.get) > 0
             @out << "\n"
             @out << header("📡", "Downloading…", :cyan) + %([#{@downloaded_packages.get}/#{downloading}])
-            @lines.set(2)
-          else
-            @lines.set(1)
+            @lines.add(1)
+          end
+          if (packing = @packing_packages.get) > 0
+            @out << "\n"
+            @out << header("🎁", "Packing…") + %([#{@packed_packages.get}/#{packing}])
+            @lines.add(1)
           end
           @out.flush
         end

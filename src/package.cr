@@ -43,6 +43,8 @@ class Zap::Package
   getter cpu : Array(String)? = nil
   @[JSON::Field(key: "hasInstallScript")]
   property has_install_script : Bool? = nil
+  @[JSON::Field(ignore: true)]
+  property has_prepare_script : Bool? = nil
 
   #######################
   # Npm specific fields #

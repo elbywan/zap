@@ -36,7 +36,7 @@ module Zap::Resolver
     private def extract_tarball_to_temp(tar_path, temp_path)
       unless Dir.exists?(temp_path)
         ::File.open(tar_path) do |io|
-          TarGzip.unpack(io) do |entry, file_path, io|
+          Utils::TarGzip.unpack(io) do |entry, file_path, io|
             if (entry.flag === Crystar::DIR)
               Dir.mkdir_p(temp_path / file_path)
             else

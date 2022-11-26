@@ -24,7 +24,7 @@ struct Zap::Store
 
   def store_tarball(name : String, version : String, io : IO)
     init_package(name, version)
-    TarGzip.unpack(io) do |entry, file_path, io|
+    Utils::TarGzip.unpack(io) do |entry, file_path, io|
       if (entry.flag === Crystar::DIR)
         store_package_dir(name, version, file_path)
       else
