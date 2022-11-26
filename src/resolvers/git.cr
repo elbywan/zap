@@ -24,7 +24,7 @@ module Zap::Resolver
     def store(metadata : Package, &on_downloading) : Bool
       cache_key = metadata.dist.as(Package::GitDist).cache_key
       cloned_folder_path = Path.new(Dir.tempdir, cache_key)
-      tarball_path = Path.new(Dir.tempdir, cache_key + ".tgz")
+      tarball_path = @state.store.package_path(@package_name, cache_key + ".tgz")
       packed = ::File.exists?(tarball_path)
 
       # If the tarball is there, early return
@@ -44,7 +44,7 @@ module Zap::Resolver
       ensure
         @state.reporter.on_package_packed
       end
-      # FileUtils.rm_rf(cloned_folder_path)
+      FileUtils.rm_rf(cloned_folder_path)
       true
     rescue e
       FileUtils.rm_rf(cloned_folder_path) if cloned_folder_path
@@ -82,7 +82,8 @@ module Zap::Resolver
           begin
             @state.reporter.on_packing_package
             prepare_package(path) if pkg.scripts.try &.prepare
-            pack_package(path, Path.new(Dir.tempdir, cache_key + ".tgz"))
+            pack_package(path, @state.store.package_path(@package_name, cache_key + ".tgz"))
+            FileUtils.rm_rf(path)
           ensure
             @state.reporter.on_package_packed
           end

@@ -69,7 +69,7 @@ module Zap::Resolver
       client_pool.client &.get(tarball_url) do |response|
         raise "Invalid status code from #{tarball_url} (#{response.status_code})" unless response.status_code == 200
         IO::Digest.new(response.body_io, algorithm_instance).try do |io|
-          state.store.store_tarball(package_name, version, io)
+          state.store.store_unpacked_tarball(package_name, version, io)
 
           computed_hash = io.final
           if unsupported_algorithm

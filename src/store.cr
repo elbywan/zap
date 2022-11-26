@@ -22,7 +22,7 @@ struct Zap::Store
     Dir.delete(package_path(name, version))
   end
 
-  def store_tarball(name : String, version : String, io : IO)
+  def store_unpacked_tarball(name : String, version : String, io : IO)
     init_package(name, version)
     Utils::TarGzip.unpack(io) do |entry, file_path, io|
       if (entry.flag === Crystar::DIR)

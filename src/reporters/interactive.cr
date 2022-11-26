@@ -148,6 +148,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
   end
 
   def header(emoji, str, color = :default)
+    Colorize.reset(@out)
     %( ○ #{emoji} #{str.ljust(25).colorize(color).mode(:bright)})
   end
 
