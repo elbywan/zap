@@ -28,8 +28,8 @@ module Zap::Commands::Install
       unless config.silent
         puts <<-TERM
         ⚡ #{"Zap".colorize.mode(:bright).mode(:underline)} #{"(v#{VERSION})".colorize.mode(:dim)}
-          #{"project:".colorize(:blue)} #{project_path} • #{"store:".colorize(:blue)} #{global_store_path} • #{"workers:".colorize(:blue)} #{Crystal::Scheduler.nb_of_workers}
-          #{"lockfile:".colorize(:blue)} #{state.lockfile.read_from_disk ? "ok".colorize(:green) : "not found".colorize(:red)}
+           #{"project:".colorize(:blue)} #{project_path} • #{"store:".colorize(:blue)} #{global_store_path} • #{"workers:".colorize(:blue)} #{Crystal::Scheduler.nb_of_workers}
+           #{"lockfile:".colorize(:blue)} #{state.lockfile.read_from_disk ? "ok".colorize(:green) : "not found".colorize(:red)}
         \n
         TERM
       end
