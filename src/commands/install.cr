@@ -7,7 +7,7 @@ module Zap::Commands::Install
     pipeline = Pipeline.new,
     reporter : Reporter = Reporter::Interactive.new
 
-  def self.run(config : Config, install_config : Config::Install, *, silent = false)
+  def self.run(config : Config, install_config : Config::Install, *, reporter : Reporter? = nil)
     realtime = nil
     state = uninitialized State
     null_io = File.open(File::NULL, "w")
@@ -16,16 +16,16 @@ module Zap::Commands::Install
       project_path = config.prefix
       global_store_path = config.global_store_path
 
-      reporter = Reporter::Interactive.new
+      reporter ||= config.silent ? Reporter::Interactive.new(null_io) : Reporter::Interactive.new
       state = State.new(
         config: config,
         install_config: install_config,
         store: Store.new(global_store_path),
         lockfile: Lockfile.new(project_path, reporter: reporter),
-        reporter: silent ? Reporter::Interactive.new(null_io) : reporter
+        reporter: reporter
       )
 
-      unless silent
+      unless config.silent
         puts <<-TERM
         ⚡ #{"Zap".colorize.mode(:bright).mode(:underline)} #{"(v#{VERSION})".colorize.mode(:dim)}
           #{"project:".colorize(:blue)} #{project_path} • #{"store:".colorize(:blue)} #{global_store_path} • #{"workers:".colorize(:blue)} #{Crystal::Scheduler.nb_of_workers}

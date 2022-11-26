@@ -4,8 +4,8 @@ module Zap::Resolver
   struct TarballUrl < Base
     def resolve(parent_pkg : Package | Lockfile, *, dependent : Package? = nil) : Package
       tarball_url = version.to_s
-      store_hash = Digest::SHA1.hexdigest(tarball_url)
-      temp_path = Path.new(Dir.tempdir, "zap--tarball-#{store_hash}")
+      store_hash = Digest::SHA1.hexdigest("zap--tarball-#{tarball_url}")
+      temp_path = Path.new(Dir.tempdir, store_hash)
       # TODO: a dedicated pool?
       unless Dir.exists?(temp_path)
         download_tarball(tarball_url, temp_path)

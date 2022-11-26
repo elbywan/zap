@@ -30,18 +30,27 @@ module Zap::Installers::Npm::Helpers::File
     state.reporter.on_installing_package
 
     # TODO :Double check if this is really needed?
-    Utils::File.crawl_package_files(extracted_folder) do |path|
-      if ::File.directory?(path)
-        relative_dir_path = Path.new(path).relative_to(extracted_folder)
-        Dir.mkdir_p(target_path / relative_dir_path)
-        FileUtils.cp_r(path, target_path / relative_dir_path)
-        false
-      else
-        relative_file_path = Path.new(path).relative_to(extracted_folder)
-        Dir.mkdir_p((target_path / relative_file_path).dirname)
-        ::File.copy(path, target_path / relative_file_path)
-      end
-    end
+    #
+    # See: https://docs.npmjs.com/cli/v9/commands/npm-install?v=true#description
+    # If <folder> sits inside the root of your project, its dependencies will be installed
+    # and may be hoisted to the top-level node_modules as they would for other types of dependencies.
+    # If <folder> sits outside the root of your project, npm will not install the package dependencies
+    # in the directory <folder>, but it will create a symlink to <folder>.
+    #
+    # Utils::File.crawl_package_files(extracted_folder) do |path|
+    #   if ::File.directory?(path)
+    #     relative_dir_path = Path.new(path).relative_to(extracted_folder)
+    #     Dir.mkdir_p(target_path / relative_dir_path)
+    #     FileUtils.cp_r(path, target_path / relative_dir_path)
+    #     false
+    #   else
+    #     relative_file_path = Path.new(path).relative_to(extracted_folder)
+    #     Dir.mkdir_p((target_path / relative_file_path).dirname)
+    #     ::File.copy(path, target_path / relative_file_path)
+    #   end
+    # end
+
+    installed = FileUtils.cp_r(extracted_folder, target_path)
 
     installer.on_install(dependency, target_path, state: state)
 

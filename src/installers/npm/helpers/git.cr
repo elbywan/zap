@@ -13,7 +13,7 @@ module Zap::Installers::Npm::Helpers::Git
       if ::File.directory?(path)
         relative_dir_path = Path.new(path).relative_to(cloned_folder)
         Dir.mkdir_p(target_path / relative_dir_path)
-        FileUtils.cp_r(path, target_path / relative_dir_path)
+        FileUtils.cp_r(path, target_path)
         false
       else
         relative_file_path = Path.new(path).relative_to(cloned_folder)
