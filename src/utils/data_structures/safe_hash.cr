@@ -1,3 +1,4 @@
+{% if flag?(:preview_mt) %}
 struct SafeHash(K, V)
   getter inner : Hash(K, V)
   @lock = Mutex.new
@@ -14,7 +15,10 @@ struct SafeHash(K, V)
 
   macro method_missing(call)
     @lock.synchronize do
-      @inner.{{call}}
+      @inner.\{{call}}
     end
   end
 end
+{% else %}
+  alias SafeHash = Hash
+{% end %}

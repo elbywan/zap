@@ -129,13 +129,13 @@ module Zap::Commands::Install
           if state.install_config.new_packages.size > 0
             package_json = JSON.parse(File.read(Path.new(project_path).join("package.json"))).as_h
             if deps = main_package.dependencies
-              package_json["dependencies"] = JSON::Any.new(deps.inner.transform_values { |v| JSON::Any.new(v) })
+              package_json["dependencies"] = JSON::Any.new(deps.transform_values { |v| JSON::Any.new(v) })
             end
             if dev_deps = main_package.dev_dependencies
-              package_json["devDependencies"] = JSON::Any.new(dev_deps.inner.transform_values { |v| JSON::Any.new(v) })
+              package_json["devDependencies"] = JSON::Any.new(dev_deps.transform_values { |v| JSON::Any.new(v) })
             end
             if opt_deps = main_package.optional_dependencies
-              package_json["optionalDependencies"] = JSON::Any.new(opt_deps.inner.transform_values { |v| JSON::Any.new(v) })
+              package_json["optionalDependencies"] = JSON::Any.new(opt_deps.transform_values { |v| JSON::Any.new(v) })
             end
             File.write(Path.new(project_path).join("package.json"), package_json.to_pretty_json)
           end

@@ -135,14 +135,17 @@ module Zap::Fetch
               etag = response.headers["ETag"]?
               body = @cache.get(full_url, etag)
 
+              cache_control_directives = response.headers["Cache-Control"]?.try &.split(/\s*,\s*/)
+              expiry = cache_control_directives.try &.find { |d| d.starts_with?("max-age=") }.try &.split("=")[1]?.try &.to_i?.try &.seconds
+
               if body
-                # close the reusable connection and discard the body
+                # Update the expiry date
+                @cache.set(full_url, body, expiry, etag)
+                # close the reusable connection and discard the response body
                 http.close
                 next
               end
 
-              cache_control_directives = response.headers["Cache-Control"]?.try &.split(/\s*,\s*/)
-              expiry = cache_control_directives.try &.find { |d| d.starts_with?("max-age=") }.try &.split("=")[1]?.try &.to_i?.try &.seconds
               body = @cache.set(full_url, response.body_io.gets_to_end, expiry, etag)
             ensure
               begin

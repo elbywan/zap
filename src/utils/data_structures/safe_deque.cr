@@ -1,3 +1,4 @@
+{% if flag?(:preview_mt) %}
 struct SafeDeque(T)
   property inner : Deque(T)
   @lock = Mutex.new
@@ -14,7 +15,10 @@ struct SafeDeque(T)
 
   macro method_missing(call)
     @lock.synchronize do
-      @inner.{{call}}
+      @inner.\{{call}}
     end
   end
 end
+{% else %}
+  alias SafeDeque = Deque
+{% end %}

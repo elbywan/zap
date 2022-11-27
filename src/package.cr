@@ -280,13 +280,18 @@ class Zap::Package
   # This is to prevent infinite loops when crawling the dependency tree
   protected def already_resolved?(state : Commands::Install::State, resolved_packages : SafeSet(String)) : Bool
     if should_resolve_dependencies?(state)
-      begin
-        resolved_packages.lock.lock
-        return true if resolved_packages.inner.includes?(key)
-        resolved_packages.inner.add(key)
-      ensure
-        resolved_packages.lock.unlock
-      end
+      {% if flag?(:preview_mt) %}
+        begin
+          resolved_packages.lock.lock
+          return true if resolved_packages.inner.includes?(key)
+          resolved_packages.inner.add(key)
+        ensure
+          resolved_packages.lock.unlock
+        end
+      {% else %}
+        return true if resolved_packages.includes?(key)
+        resolved_packages.add(key)
+      {% end %}
     end
     false
   end

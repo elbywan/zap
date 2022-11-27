@@ -1,3 +1,4 @@
+{% if flag?(:preview_mt) %}
 struct SafeArray(T)
   property inner : Array(T)
   @lock = Mutex.new
@@ -14,7 +15,10 @@ struct SafeArray(T)
 
   macro method_missing(call)
     @lock.synchronize do
-      @inner.{{call}}
+      @inner.\{{call}}
     end
   end
 end
+{% else %}
+  alias SafeArray = Array
+{% end %}

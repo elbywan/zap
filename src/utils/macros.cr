@@ -1,5 +1,6 @@
 module Zap::Utils::Macros
   macro safe_getter(name, &block)
+    {% if flag?(:preview_mt) %}
     @{{name.var.id}} : {{name.type}}?
 
     @[JSON::Field(ignore: true)]
@@ -15,6 +16,9 @@ module Zap::Utils::Macros
         value
       end
     end
+    {% else %}
+    getter {{name.var.id}} : {{name.type}} {{block}}
+    {% end %}
   end
 
   macro safe_property(name, &block)
