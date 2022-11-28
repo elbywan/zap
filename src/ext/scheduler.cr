@@ -13,8 +13,8 @@ class Crystal::Scheduler
 
                           workers
                         else
-                          # Use as many number of logical cpu cores as possible
-                          System.cpu_count.to_i32
+                          # Use as many number of logical cpu cores as possible, with a hard cap of 8
+                          {System.cpu_count, 8}.min.to_i32
                         end
       @@nb_of_workers
     end
