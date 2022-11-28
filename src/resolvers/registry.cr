@@ -99,10 +99,11 @@ module Zap::Resolver
 
     # # PRIVATE ##########################
 
-    private def find_valid_version(manifest_str : String, version : Utils::Semver::SemverSets) : Package
+    private def find_valid_version(manifest_str : String, version : Utils::Semver::SemverSets | String | Nil) : Package
       matching = nil
       manifest_parser = JSON::PullParser.new(manifest_str)
       manifest_parser.read_begin_object
+      exact_match = version.nil? || version.is_a?(String) || version.exact_match?
       loop do
         break if manifest_parser.kind.end_object?
         key = manifest_parser.read_object_key
@@ -112,8 +113,11 @@ module Zap::Resolver
             break if manifest_parser.kind.end_object?
             version_str = manifest_parser.read_string
             semver = Utils::Semver::Comparator.parse(version_str)
-            if matching.nil? || matching[0] < semver
-              if version.valid?(version_str)
+            if exact_match && version_str == (version.is_a?(String) ? version : version.to_s)
+              matching = {semver, manifest_parser.read_raw}
+              break
+            elsif matching.nil? || matching[0] < semver
+              if version.as(Utils::Semver::SemverSets).valid?(version_str)
                 matching = {semver, manifest_parser.read_raw}
               else
                 manifest_parser.skip
@@ -140,13 +144,8 @@ module Zap::Resolver
       base_url = @@base_url
 
       begin
-        if version.nil? || version.is_a?(String) || version.exact_match?
-          url = "/#{package_name}/#{version || "latest"}"
-          Package.from_json(client_pool.cached_fetch(url, HEADERS))
-        else
-          manifest = client_pool.cached_fetch("/#{package_name}", HEADERS)
-          find_valid_version(manifest, version)
-        end
+        manifest = client_pool.cached_fetch("/#{package_name}", HEADERS)
+        find_valid_version(manifest, version)
       end
     end
   end
