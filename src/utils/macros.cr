@@ -8,12 +8,12 @@ module Zap::Utils::Macros
     @_{{name.var.id}}_lock = Mutex.new
 
     def {{name.var.id}} : {{name.type}}
-      if (value = @{{name.var.id}}).nil?
-        @{{name.var.id}} = @_{{name.var.id}}_lock.synchronize do
+      @{{name.var.id}} = @_{{name.var.id}}_lock.synchronize do
+        if (value = @{{name.var.id}}).nil?
           {{ yield }}
+        else
+          value
         end
-      else
-        value
       end
     end
     {% else %}
@@ -29,12 +29,12 @@ module Zap::Utils::Macros
     @_{{name.var.id}}_lock = Mutex.new
 
     def {{name.var.id}} : {{name.type}}
-      if (  value = @{{name.var.id}}).nil?
-        @{{name.var.id}} = @_{{name.var.id}}_lock.synchronize do
+      @{{name.var.id}} = @_{{name.var.id}}_lock.synchronize do
+        if (value = @{{name.var.id}}).nil?
           {{ yield }}
+        else
+          value
         end
-      else
-        value
       end
     end
     def {{name.var.id}}=({{name.var.id}} : {{name.type}})

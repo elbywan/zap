@@ -9,3 +9,4 @@ node_modules
 /test.cr
 /spec/fixtures/js_project
 /spec/fixtures/nextjs-blog
+/spec/fixtures/create-react-app
