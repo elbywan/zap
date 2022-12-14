@@ -21,8 +21,8 @@ class Zap::Package
   #######################
   # Ref: https://docs.npmjs.com/cli/v9/configuring-npm/package-json
 
-  getter name : String
-  getter version : String
+  getter! name : String
+  getter! version : String
   getter bin : (String | Hash(String, String))? = nil
   @[YAML::Field(ignore: true)]
   property dependencies : SafeHash(String, String)? = nil
