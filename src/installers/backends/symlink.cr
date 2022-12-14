@@ -4,11 +4,11 @@ module Zap::Backend
       src_path, dest_path, exists = Backend.prepare(dependency, target, store: store)
       return false if exists
       yield
-      pipeline = Pipeline.new
-      Backend.recursively(src_path, dest_path, pipeline: pipeline) do |src, dest|
-        File.symlink(src, dest)
-      end
-      pipeline.await
+      Pipeline.new.wrap { |pipeline|
+        Backend.recursively(src_path, dest_path, pipeline: pipeline) do |src, dest|
+          File.symlink(src, dest)
+        end
+      }
       true
     end
   end

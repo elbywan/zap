@@ -4,11 +4,11 @@ module Zap::Backend
       src_path, dest_path, exists = Backend.prepare(dependency, target, store: store)
       return false if exists
       yield
-      pipeline = Pipeline.new
-      Backend.recursively(src_path, dest_path, pipeline) do |src, dest|
-        LibC.copyfile(src.to_s, dest.to_s, nil, LibC::COPYFILE_CLONE_FORCE | LibC::COPYFILE_ALL)
-      end
-      pipeline.await
+      Pipeline.new.wrap { |pipeline|
+        Backend.recursively(src_path, dest_path, pipeline) do |src, dest|
+          LibC.copyfile(src.to_s, dest.to_s, nil, LibC::COPYFILE_CLONE_FORCE | LibC::COPYFILE_ALL)
+        end
+      }
       true
     end
   end

@@ -55,13 +55,15 @@ class Zap::Pipeline
         # Ignore
       rescue ex
         @mutex.synchronize do
-          @end_channel.send(ex)
-          @end_channel.close
+          unless @end_channel.closed?
+            @end_channel.send(ex)
+            @end_channel.close
+          end
         end
       ensure
         @mutex.synchronize do
           @counter -= 1
-          if @counter == 0
+          if @counter == 0 && !@end_channel.closed?
             @end_channel.close
           end
         end
@@ -75,10 +77,12 @@ class Zap::Pipeline
     raise possible_exception if possible_exception
   end
 
-  def wrap
+  def wrap(&block : self ->)
     begin
       reset
-      yield self
+      spawn do
+        block.call(self)
+      end
     ensure
       await
     end

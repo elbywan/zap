@@ -5,11 +5,11 @@ module Zap::Backend
       return false if exists
       yield
       # FileUtils.cp_r(src_path, dest_path)
-      pipeline = Pipeline.new
-      Backend.recursively(src_path, dest_path, pipeline: pipeline) do |src, dest|
-        File.copy(src, dest)
-      end
-      pipeline.await
+      Pipeline.new.wrap { |pipeline|
+        Backend.recursively(src_path, dest_path, pipeline: pipeline) do |src, dest|
+          File.copy(src, dest)
+        end
+      }
       true
     end
   end
