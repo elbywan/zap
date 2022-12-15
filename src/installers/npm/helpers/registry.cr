@@ -26,7 +26,11 @@ module Zap::Installers::Npm::Helpers::Registry
     installer.on_install(dependency, leftmost_dir / dependency.name, state: state) if installed
 
     leftmost_cache << dependency
-    subcache = cache.dup
-    subcache << {leftmost_dir / dependency.name / "node_modules", Set(Package).new}
+    updated_cache = cache.dup
+    while (updated_cache.last != leftmost_dir_and_cache)
+      updated_cache.pop
+    end
+    updated_cache << {leftmost_dir / dependency.name / "node_modules", Set(Package).new}
+    updated_cache
   end
 end

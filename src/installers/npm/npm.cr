@@ -22,7 +22,7 @@ module Zap::Installers::Npm
       state.lockfile.pinned_dependencies?.try &.map { |name, version|
         dependency_queue << {
           state.lockfile.pkgs["#{name}@#{version}"],
-          initial_cache.dup,
+          initial_cache,
         }
       }
 
@@ -35,7 +35,7 @@ module Zap::Installers::Npm
           # no subcache = do not process the sub dependencies
           next unless subcache
           # shallow strategy means we only install direct deps at top-level
-          if state.install_config.install_strategy.npm_shallow? && subcache.size == 2 && subcache[0][0] == node_modules
+          if state.install_config.install_strategy.npm_shallow? && subcache.size >= 2 && subcache[0][0] == node_modules
             subcache.shift
           end
           dependency.pinned_dependencies?.try &.each do |name, version|
