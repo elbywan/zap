@@ -138,17 +138,19 @@ module Zap::Fetch
               etag = response.headers["ETag"]?
               # Attempt to extract the body from the cache again but this time with the etag
               body = @cache.get(full_url, etag)
+              if body
+                cache_control_directives, expiry = extract_cache_headers(response)
+                @cache.set(full_url, body, expiry, etag)
+                return body
+              end
             end
-
-            return body if body
 
             http.get(*args, **kwargs) do |response|
               # debug! "[fetch] got response #{url}"
               raise "Invalid status code from #{url} (#{response.status_code})" unless response.status_code == 200
 
               etag = response.headers["ETag"]?
-              cache_control_directives = response.headers["Cache-Control"]?.try &.split(/\s*,\s*/)
-              expiry = cache_control_directives.try &.find { |d| d.starts_with?("max-age=") }.try &.split("=")[1]?.try &.to_i?.try &.seconds
+              cache_control_directives, expiry = extract_cache_headers(response)
               body = @cache.set(full_url, response.body_io.gets_to_end, expiry, etag)
             end
           end
@@ -177,6 +179,12 @@ module Zap::Fetch
         @pool.receive.close
       end
       @pool.close
+    end
+
+    private def extract_cache_headers(response : HTTP::Client::Response)
+      cache_control_directives = response.headers["Cache-Control"]?.try &.split(/\s*,\s*/)
+      expiry = cache_control_directives.try &.find { |d| d.starts_with?("max-age=") }.try &.split("=")[1]?.try &.to_i?.try &.seconds
+      {cache_control_directives, expiry}
     end
   end
 end
