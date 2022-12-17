@@ -31,7 +31,7 @@ module Zap::Resolver
       on_resolve(pkg, parent_pkg, pkg.version, dependent: dependent)
       pkg
     rescue e
-      raise "Error resolving #{pkg.try &.name || self.package_name} #{pkg.try &.version || self.version} #{e.message}}"
+      raise "Error resolving #{pkg.try &.name || self.package_name} #{pkg.try &.version || self.version} #{e.message}"
     end
 
     def store(metadata : Package, &on_downloading) : Bool

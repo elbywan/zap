@@ -115,9 +115,11 @@ module Zap::Fetch
     def cached_fetch(*args, **kwargs, &block) : String
       url = args[0]
       full_url = @base_url + url
-      body = nil
+      # Extract the body from the cache if possible
+      # (will try in memory, then on disk if the expiry date is still valid)
       body = @cache.get(full_url)
       return body if body
+      # Dedupe requests by having an inflight channel for each URL
       if inflight = @inflight[url]?
         inflight.receive
       else
@@ -129,32 +131,25 @@ module Zap::Fetch
             yield http
 
             # debug! "[fetch] got client #{url}"
-            http.get(*args, **kwargs) do |response|
+
+            http.head(*args, **kwargs) do |response|
               # debug! "[fetch] got response #{url}"
               raise "Invalid status code from #{url} (#{response.status_code})" unless response.status_code == 200
               etag = response.headers["ETag"]?
+              # Attempt to extract the body from the cache again but this time with the etag
               body = @cache.get(full_url, etag)
+            end
 
+            return body if body
+
+            http.get(*args, **kwargs) do |response|
+              # debug! "[fetch] got response #{url}"
+              raise "Invalid status code from #{url} (#{response.status_code})" unless response.status_code == 200
+
+              etag = response.headers["ETag"]?
               cache_control_directives = response.headers["Cache-Control"]?.try &.split(/\s*,\s*/)
               expiry = cache_control_directives.try &.find { |d| d.starts_with?("max-age=") }.try &.split("=")[1]?.try &.to_i?.try &.seconds
-
-              if body
-                # Update the expiry date
-                @cache.set(full_url, body, expiry, etag)
-                # close the reusable connection and discard the response body
-                http.close
-                next
-              end
-
               body = @cache.set(full_url, response.body_io.gets_to_end, expiry, etag)
-            ensure
-              begin
-                # drain the body
-                response.body_io.skip_to_end if response && response.body_io && !response.body_io.closed?
-              rescue
-                # ignore errors
-                http.close
-              end
             end
           end
         ensure
