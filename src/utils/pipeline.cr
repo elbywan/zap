@@ -78,13 +78,14 @@ class Zap::Pipeline
   end
 
   def wrap(&block : self ->)
-    begin
-      reset
-      spawn do
-        block.call(self)
-      end
-    ensure
-      await
-    end
+    reset
+    block.call(self)
+    await
+  end
+
+  def self.wrap(&block : Pipeline ->)
+    pipeline = self.new
+    block.call(pipeline)
+    pipeline.await
   end
 end
