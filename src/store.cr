@@ -28,15 +28,15 @@ struct Zap::Store
       if (entry.flag === Crystar::DIR)
         store_package_dir(name, version, file_path)
       else
-        store_package_file(name, version, file_path, entry.io)
+        store_package_file(name, version, file_path, entry.io, permissions: entry.mode)
       end
     end
   end
 
-  def store_package_file(package_name : String, package_version : String, relative_file_path : String | Path, file_io : IO)
+  def store_package_file(package_name : String, package_version : String, relative_file_path : String | Path, file_io : IO, permissions : Int64 = DEFAULT_CREATE_PERMISSIONS)
     file_path = package_path(package_name, package_version) / relative_file_path
     Dir.mkdir_p(file_path.dirname)
-    File.open(file_path, "w") do |file|
+    File.open(file_path, "w", perm: permissions) do |file|
       IO.copy file_io, file
     end
   end

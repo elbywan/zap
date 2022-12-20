@@ -20,7 +20,7 @@ module Zap::Utils::TarGzip
         Dir.mkdir_p(destination / file_path)
       else
         Dir.mkdir_p(destination / file_path.dirname)
-        ::File.write(destination / file_path, io)
+        ::File.write(destination / file_path, io, perm: entry.mode)
       end
     end
   end
