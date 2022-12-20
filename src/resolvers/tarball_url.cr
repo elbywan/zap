@@ -1,5 +1,3 @@
-require "crystar"
-
 module Zap::Resolver
   struct TarballUrl < Base
     def resolve(parent_pkg : Package | Lockfile, *, dependent : Package? = nil) : Package

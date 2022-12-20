@@ -19,7 +19,9 @@ module Zap::Commands::Install
       reporter ||= config.silent ? Reporter::Interactive.new(null_io) : Reporter::Interactive.new
       state = State.new(
         config: config,
-        install_config: install_config,
+        install_config: config.global ? install_config.copy_with(
+          install_strategy: Config::InstallStrategy::NPM_Shallow
+        ) : install_config,
         store: Store.new(global_store_path),
         lockfile: Lockfile.new(project_path, reporter: reporter),
         reporter: reporter
@@ -40,7 +42,6 @@ module Zap::Commands::Install
         state.reporter.report_resolver_updates
         main_package = begin
           if state.config.global
-            # TODO: implement global install without arguments
             Package.new
           else
             Package.init(Path.new(project_path))

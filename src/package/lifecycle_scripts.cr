@@ -52,7 +52,7 @@ class Zap::Package
         output = output_io || IO::Memory.new
         # See: https://docs.npmjs.com/cli/v9/commands/npm-run-script
         env = {
-          "PATH" => config.bin_path + Process::PATH_DELIMITER + config.node_path + Process::PATH_DELIMITER + ENV["PATH"],
+          "PATH" => config.bin_path + Process::PATH_DELIMITER + ENV["PATH"],
         }
         yield command
         status = Process.run(command, **args, shell: true, env: env, chdir: chdir, output: output, error: output)

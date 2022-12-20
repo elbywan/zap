@@ -45,8 +45,6 @@ abstract struct Zap::Resolver::Base
   abstract def is_lockfile_cache_valid?(cached_package : Package) : Bool
 end
 
-require "./registry"
-
 module Zap::Resolver
   def self.make(state : Commands::Install::State, name : String, version_field : String = "latest") : Base
     case version_field
