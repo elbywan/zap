@@ -19,9 +19,10 @@ module Zap::Installers::Npm
       initial_cache : Deque(CacheItem) = Deque(CacheItem).new
       initial_cache << {node_modules, Set(Package).new}
       # initialize the queue with the root dependencies
-      state.lockfile.roots[Lockfile::ROOT].pinned_dependencies?.try &.map { |name, version|
+      # TODO: workspaces!!
+      state.lockfile.roots.values.each &.pinned_dependencies?.try &.map { |name, version|
         dependency_queue << {
-          state.lockfile.pkgs["#{name}@#{version}"],
+          state.lockfile.packages["#{name}@#{version}"],
           initial_cache,
         }
       }
@@ -39,7 +40,7 @@ module Zap::Installers::Npm
             subcache.shift
           end
           dependency.pinned_dependencies?.try &.each do |name, version|
-            dependency_queue << {state.lockfile.pkgs["#{name}@#{version}"], subcache}
+            dependency_queue << {state.lockfile.packages["#{name}@#{version}"], subcache}
           end
         rescue e
           state.reporter.stop

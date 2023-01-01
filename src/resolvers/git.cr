@@ -10,7 +10,7 @@ module Zap::Resolver
     def resolve(parent_pkg : Package | Lockfile::Root, *, dependent : Package? = nil) : Package
       pkg = nil
       if !self.package_name.empty? && (lockfile_version = parent_pkg.pinned_dependencies[self.package_name]?)
-        pkg = state.lockfile.pkgs["#{self.package_name}@#{lockfile_version}"]?
+        pkg = state.lockfile.packages["#{self.package_name}@#{lockfile_version}"]?
         # Validate the lockfile version
         if pkg
           pkg = nil unless pkg.dist.as?(Package::GitDist).try(&.version.== version.to_s)

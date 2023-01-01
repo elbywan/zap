@@ -7,7 +7,6 @@ class Zap::Lockfile
   include Utils::Macros
 
   NAME = ".zap-lock.yml"
-  ROOT = "@root"
 
   class Root
     include JSON::Serializable
@@ -25,12 +24,12 @@ class Zap::Lockfile
     end
   end
 
-  safe_property roots : SafeHash(String, Root) {
-    SafeHash(String, Root).new.tap { |hash|
-      hash[ROOT] = Root.new
-    }
-  }
-  property pkgs : SafeHash(String, Package) = SafeHash(String, Package).new
+  safe_property roots : SafeHash(String, Root) do
+    SafeHash(String, Root).new do |hash, key|
+      hash[key] = Root.new
+    end
+  end
+  property packages : SafeHash(String, Package) = SafeHash(String, Package).new
 
   @[JSON::Field(ignore: true)]
   @[YAML::Field(ignore: true)]
@@ -57,28 +56,31 @@ class Zap::Lockfile
     instance
   end
 
-  def prune(pkg : Package, scope : String = ROOT)
-    self.roots[scope].dependencies = pkg.dependencies
-    self.roots[scope].dev_dependencies = pkg.dev_dependencies
-    self.roots[scope].optional_dependencies = pkg.optional_dependencies
-    self.roots[scope].peer_dependencies = pkg.peer_dependencies
-    all_dependencies =
-      (self.roots[scope].dependencies.try(&.keys) || [] of String) +
-        (self.roots[scope].dev_dependencies.try(&.keys) || [] of String) +
-        (self.roots[scope].optional_dependencies.try(&.keys) || [] of String)
+  def prune
+    # All dependencies from every root
+    all_dependencies = self.roots.values.reduce([] of String) do |acc, root|
+      acc +
+        (root.dependencies.try(&.keys) || [] of String) +
+        (root.dev_dependencies.try(&.keys) || [] of String) +
+        (root.optional_dependencies.try(&.keys) || [] of String)
+    end
 
     pinned_deps = Set(String).new
-    self.roots[scope].pinned_dependencies?.try &.select! { |name, version|
-      key = "#{name}@#{version}"
-      unless keep = all_dependencies.includes?(name)
-        reporter.on_package_removed(key)
-      else
-        pinned_deps << key
+    self.roots.values.each do |root|
+      # Trim pinned dependencies when there are no roots that depend on them
+      root.pinned_dependencies?.try &.select! do |name, version|
+        key = "#{name}@#{version}"
+        unless keep = all_dependencies.includes?(name)
+          reporter.on_package_removed(key)
+        else
+          pinned_deps << key
+        end
+        keep
       end
-      keep
-    }
+    end
 
-    self.pkgs.select! { |name, pkg|
+    # Trim packages that are not pinned to any root
+    self.packages.select! do |name, pkg|
       # Remove empty objects
       if pkg.pinned_dependencies?.try &.size == 0
         pkg.pinned_dependencies = nil
@@ -99,14 +101,21 @@ class Zap::Lockfile
       else
         true
       end
-    }
+    end
   end
 
   def write
     File.write(@lockfile_path.to_s, self.to_yaml)
   end
 
-  def add_dependency(name : String, version : String, type : Symbol, scope : String = Lockfile::ROOT)
+  def set_dependencies(package : Package)
+    self.roots[package.name].dependencies = package.dependencies
+    self.roots[package.name].dev_dependencies = package.dev_dependencies
+    self.roots[package.name].optional_dependencies = package.optional_dependencies
+    self.roots[package.name].peer_dependencies = package.peer_dependencies
+  end
+
+  def add_dependency(name : String, version : String, type : Symbol, scope : String)
     case type
     when :dependencies
       (self.roots[scope].dependencies ||= SafeHash(String, String).new)[name] = version

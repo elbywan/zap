@@ -20,6 +20,7 @@ class Zap::Package
   # Ref: https://docs.npmjs.com/cli/v9/configuring-npm/package-json
 
   getter! name : String
+  protected setter name
   getter! version : String
   getter bin : (String | Hash(String, String))? = nil
   @[YAML::Field(ignore: true)]
@@ -116,15 +117,19 @@ class Zap::Package
   # Constructors #
   ################
 
-  def self.init(path : Path)
+  def self.init(path : Path, *, name_if_nil : String? = nil) : self
     File.open(path / "package.json") do |io|
-      return self.from_json(io)
+      self.from_json(io).tap { |instance|
+        if instance.name?.nil? && name_if_nil
+          instance.name = name_if_nil
+        end
+      }
     end
   rescue
     raise "package.json not found at #{path}"
   end
 
-  def self.init?(path : Path)
+  def self.init?(path : Path) : self | Nil
     return nil unless File.exists?(path / "package.json")
     File.open(path / "package.json") do |io|
       return self.from_json(io)
@@ -133,7 +138,7 @@ class Zap::Package
     nil
   end
 
-  def initialize(@name = "", @version = "")
+  def initialize(@name = "@root", @version = "0.0.0")
   end
 
   ##########

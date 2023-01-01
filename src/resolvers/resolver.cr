@@ -33,7 +33,7 @@ abstract struct Zap::Resolver::Base
 
   def lockfile_cache(pkg : Package | Lockfile::Root, name : String, *, dependent : Package? = nil)
     if pinned_version = pkg.pinned_dependencies?.try &.[name]?
-      cached_pkg = state.lockfile.pkgs[name + "@" + pinned_version]?
+      cached_pkg = state.lockfile.packages[name + "@" + pinned_version]?
       if cached_pkg
         cached_pkg.dependents << (dependent || cached_pkg).key
         cached_pkg
@@ -106,20 +106,20 @@ module Zap::Resolver
     is_direct_dependency = dependent.nil?
     state.reporter.on_resolving_package
     # Add direct dependencies to the lockfile
-    state.lockfile.add_dependency(name, version, type) if is_direct_dependency && type
+    state.lockfile.add_dependency(name, version, type, package.name) if is_direct_dependency && type
     # Multithreaded dependency resolution
     state.pipeline.process do
       # Create the appropriate resolver depending on the version (git, tarball, registry, local folder…)
       resolver = Resolver.make(state, name, version)
       # Attempt to use the package data from the lockfile
-      metadata = resolver.lockfile_cache(is_direct_dependency ? state.lockfile.roots[Lockfile::ROOT] : package, name, dependent: dependent)
+      metadata = resolver.lockfile_cache(is_direct_dependency ? state.lockfile.roots[package.name] : package, name, dependent: dependent)
       # Check if the data from the lockfile is still valid (direct deps can be modified in the package.json file or through the cli)
       if metadata && is_direct_dependency
         metadata = nil unless resolver.is_lockfile_cache_valid?(metadata)
       end
       # end
       # If the package is not in the lockfile or if it is a direct dependency, resolve it
-      metadata ||= resolver.resolve(is_direct_dependency ? state.lockfile.roots[Lockfile::ROOT] : package, dependent: dependent)
+      metadata ||= resolver.resolve(is_direct_dependency ? state.lockfile.roots[package.name] : package, dependent: dependent)
       metadata.optional = (type == :optional_dependencies || nil)
       metadata.match_os_and_cpu!
       # If the package has already been resolved, skip it to prevent infinite loops
@@ -128,7 +128,7 @@ module Zap::Resolver
       # Determine whether the dependencies should be resolved, most of the time they should
       should_resolve_dependencies = metadata.should_resolve_dependencies?(state)
       # Store the package data in the lockfile
-      state.lockfile.pkgs[metadata.key] ||= metadata
+      state.lockfile.packages[metadata.key] ||= metadata
       if should_resolve_dependencies
         # Repeat the process for transitive dependencies
         self.resolve_dependencies(metadata, state: state, dependent: dependent || metadata, resolved_packages: resolved_packages)
@@ -169,7 +169,7 @@ module Zap::Resolver
       inferred_version, inferred_name = parse_new_package(new_dep, state: state)
       # Resolve the package
       resolver = Resolver.make(state, inferred_name, inferred_version || "*")
-      metadata = resolver.resolve(state.lockfile.roots[Lockfile::ROOT]).not_nil!
+      metadata = resolver.resolve(state.lockfile.roots[main_package.name]).not_nil!
       metadata.match_os_and_cpu!
       # Store it in the filesystem, potentially in the global store
       stored = resolver.store(metadata) { state.reporter.on_downloading_package } if metadata
@@ -189,7 +189,7 @@ module Zap::Resolver
         # Save the dependency in the package.json
         main_package.add_dependency(metadata.name, saved_version.not_nil!, type)
         # Save the dependency in the lockfile
-        state.lockfile.add_dependency(name, saved_version.not_nil!, type)
+        state.lockfile.add_dependency(name, saved_version.not_nil!, type, main_package.name)
       end
     rescue e
       state.reporter.stop

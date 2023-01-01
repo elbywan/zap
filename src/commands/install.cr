@@ -46,7 +46,7 @@ module Zap::Commands::Install
           if state.config.global
             Package.new
           else
-            Package.init(Path.new(project_path))
+            Package.init(Path.new(project_path), name_if_nil: "@root")
           end
         end
 
@@ -56,7 +56,8 @@ module Zap::Commands::Install
         state.reporter.stop
 
         # Prune lockfile before installing to cleanup pinned dependencies
-        state.lockfile.prune(main_package)
+        state.lockfile.set_dependencies(main_package)
+        state.lockfile.prune
 
         # Install dependencies to the appropriate node_modules folder
         state.pipeline.reset
