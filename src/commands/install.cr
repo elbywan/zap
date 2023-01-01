@@ -1,3 +1,5 @@
+require "../resolvers/resolver"
+
 module Zap::Commands::Install
   record State,
     config : Config,
@@ -49,7 +51,7 @@ module Zap::Commands::Install
         end
 
         # Crawl, resolve and store dependencies
-        main_package.resolve_dependencies(state: state)
+        Resolver.resolve_dependencies(main_package, state: state)
         state.pipeline.await
         state.reporter.stop
 

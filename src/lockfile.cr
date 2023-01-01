@@ -5,14 +5,31 @@ class Zap::Lockfile
   include JSON::Serializable
   include YAML::Serializable
   include Utils::Macros
-  NAME = ".zap-lock.yml"
 
-  property dependencies : SafeHash(String, String)? = nil
-  property dev_dependencies : SafeHash(String, String)? = nil
-  property optional_dependencies : SafeHash(String, String)? = nil
-  property peer_dependencies : SafeHash(String, String)? = nil
-  safe_property pinned_dependencies : SafeHash(String, String) { SafeHash(String, String).new }
-  getter? pinned_dependencies
+  NAME = ".zap-lock.yml"
+  ROOT = "@root"
+
+  class Root
+    include JSON::Serializable
+    include YAML::Serializable
+    include Utils::Macros
+
+    property dependencies : SafeHash(String, String)? = nil
+    property dev_dependencies : SafeHash(String, String)? = nil
+    property optional_dependencies : SafeHash(String, String)? = nil
+    property peer_dependencies : SafeHash(String, String)? = nil
+    safe_property pinned_dependencies : SafeHash(String, String) { SafeHash(String, String).new }
+    getter? pinned_dependencies
+
+    def initialize
+    end
+  end
+
+  safe_property roots : SafeHash(String, Root) {
+    SafeHash(String, Root).new.tap { |hash|
+      hash[ROOT] = Root.new
+    }
+  }
   property pkgs : SafeHash(String, Package) = SafeHash(String, Package).new
 
   @[JSON::Field(ignore: true)]
@@ -40,18 +57,18 @@ class Zap::Lockfile
     instance
   end
 
-  def prune(pkg : Package)
-    self.dependencies = pkg.dependencies
-    self.dev_dependencies = pkg.dev_dependencies
-    self.optional_dependencies = pkg.optional_dependencies
-    self.peer_dependencies = pkg.peer_dependencies
+  def prune(pkg : Package, scope : String = ROOT)
+    self.roots[scope].dependencies = pkg.dependencies
+    self.roots[scope].dev_dependencies = pkg.dev_dependencies
+    self.roots[scope].optional_dependencies = pkg.optional_dependencies
+    self.roots[scope].peer_dependencies = pkg.peer_dependencies
     all_dependencies =
-      (self.dependencies.try(&.keys) || [] of String) +
-        (self.dev_dependencies.try(&.keys) || [] of String) +
-        (self.optional_dependencies.try(&.keys) || [] of String)
+      (self.roots[scope].dependencies.try(&.keys) || [] of String) +
+        (self.roots[scope].dev_dependencies.try(&.keys) || [] of String) +
+        (self.roots[scope].optional_dependencies.try(&.keys) || [] of String)
 
     pinned_deps = Set(String).new
-    self.pinned_dependencies?.try &.select! { |name, version|
+    self.roots[scope].pinned_dependencies?.try &.select! { |name, version|
       key = "#{name}@#{version}"
       unless keep = all_dependencies.includes?(name)
         reporter.on_package_removed(key)
@@ -89,20 +106,20 @@ class Zap::Lockfile
     File.write(@lockfile_path.to_s, self.to_yaml)
   end
 
-  def add_dependency(name : String, version : String, type : Symbol)
+  def add_dependency(name : String, version : String, type : Symbol, scope : String = Lockfile::ROOT)
     case type
     when :dependencies
-      (self.dependencies ||= SafeHash(String, String).new)[name] = version
-      self.dev_dependencies.try &.delete(name)
-      self.optional_dependencies.try &.delete(name)
+      (self.roots[scope].dependencies ||= SafeHash(String, String).new)[name] = version
+      self.roots[scope].dev_dependencies.try &.delete(name)
+      self.roots[scope].optional_dependencies.try &.delete(name)
     when :optional_dependencies
-      (self.optional_dependencies ||= SafeHash(String, String).new)[name] = version
-      self.dependencies.try &.delete(name)
-      self.dev_dependencies.try &.delete(name)
+      (self.roots[scope].optional_dependencies ||= SafeHash(String, String).new)[name] = version
+      self.roots[scope].dependencies.try &.delete(name)
+      self.roots[scope].dev_dependencies.try &.delete(name)
     when :dev_dependencies
-      (self.dev_dependencies ||= SafeHash(String, String).new)[name] = version
-      self.dependencies.try &.delete(name)
-      self.optional_dependencies.try &.delete(name)
+      (self.roots[scope].dev_dependencies ||= SafeHash(String, String).new)[name] = version
+      self.roots[scope].dependencies.try &.delete(name)
+      self.roots[scope].optional_dependencies.try &.delete(name)
     else
       raise "Wrong dependency type: #{type}"
     end

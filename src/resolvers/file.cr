@@ -1,6 +1,6 @@
 module Zap::Resolver
   struct File < Base
-    def resolve(parent_pkg : Package | Lockfile, *, dependent : Package? = nil) : Package
+    def resolve(parent_pkg : Package | Lockfile::Root, *, dependent : Package? = nil) : Package
       path = Path.new version.to_s.split("file:").last
       absolute_path = path.expand(state.config.prefix)
       if Dir.exists? absolute_path

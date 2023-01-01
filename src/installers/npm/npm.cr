@@ -19,7 +19,7 @@ module Zap::Installers::Npm
       initial_cache : Deque(CacheItem) = Deque(CacheItem).new
       initial_cache << {node_modules, Set(Package).new}
       # initialize the queue with the root dependencies
-      state.lockfile.pinned_dependencies?.try &.map { |name, version|
+      state.lockfile.roots[Lockfile::ROOT].pinned_dependencies?.try &.map { |name, version|
         dependency_queue << {
           state.lockfile.pkgs["#{name}@#{version}"],
           initial_cache,

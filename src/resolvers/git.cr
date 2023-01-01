@@ -7,7 +7,7 @@ module Zap::Resolver
       @git_url = Utils::GitUrl.new(@version.to_s, @state.reporter)
     end
 
-    def resolve(parent_pkg : Package | Lockfile, *, dependent : Package? = nil) : Package
+    def resolve(parent_pkg : Package | Lockfile::Root, *, dependent : Package? = nil) : Package
       pkg = nil
       if !self.package_name.empty? && (lockfile_version = parent_pkg.pinned_dependencies[self.package_name]?)
         pkg = state.lockfile.pkgs["#{self.package_name}@#{lockfile_version}"]?
