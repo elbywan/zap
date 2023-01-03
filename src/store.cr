@@ -19,7 +19,7 @@ struct Zap::Store
   end
 
   def remove_package(name : String, version : String)
-    Dir.delete(package_path(name, version))
+    FileUtils.rm_rf(package_path(name, version))
   end
 
   def store_unpacked_tarball(name : String, version : String, io : IO)

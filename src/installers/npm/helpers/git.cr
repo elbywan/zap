@@ -5,6 +5,7 @@ module Zap::Installers::Npm::Helpers::Git
     end
 
     target_path = cache.last[0] / dependency.name
+    Dir.mkdir_p(target_path.dirname)
     FileUtils.rm_rf(target_path) if ::File.directory?(target_path)
 
     state.reporter.on_installing_package

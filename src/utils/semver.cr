@@ -202,7 +202,7 @@ module Zap::Utils::Semver
     forward_missing_to @comparator_sets
   end
 
-  def self.parse(str : String)
+  def self.parse(str : String) : SemverSets
     range_set = SemverSets.new
 
     if (str.empty? || str === "*")
@@ -228,7 +228,7 @@ module Zap::Utils::Semver
     range_set
   end
 
-  private def self.parse_range(scanner : StringScanner)
+  private def self.parse_range(scanner : StringScanner) : ComparatorSet
     comparator_set = ComparatorSet.new
 
     loop do

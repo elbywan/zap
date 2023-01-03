@@ -3,7 +3,9 @@ module Zap::Installers::Npm::Helpers::Tarball
     unless temp_path = dependency.dist.try &.as(Package::TarballDist).path
       raise "Cannot install file dependency #{dependency.name} because the dist.path field is missing."
     end
+
     target = cache.last[0]
+    Dir.mkdir_p(target)
 
     installed = Backend.install(dependency: dependency, target: target, store: state.store, backend: :copy) {
       state.reporter.on_installing_package

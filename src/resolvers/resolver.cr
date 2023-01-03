@@ -48,6 +48,11 @@ end
 
 module Zap::Resolver
   def self.make(state : Commands::Install::State, name : String, version_field : String = "latest") : Base
+    # Check if the package is a known workspace
+    if workspace = state.workspaces.find { |w| w.package.name == name && Utils::Semver.parse(version_field).try &.valid?(w.package.version) }
+      return File.new(state, name, "file:#{workspace.path.relative_to?(state.config.prefix)}")
+    end
+
     case version_field
     when .starts_with?("git://"), .starts_with?("git+ssh://"), .starts_with?("git+http://"), .starts_with?("git+https://"), .starts_with?("git+file://")
       Git.new(state, name, version_field)
@@ -72,7 +77,7 @@ module Zap::Resolver
       self.resolve_new_packages(package, state: state)
     end
 
-    # If we are in the root package or if the packages has not been saved in the lockfile
+    # If we are in a root package or if the packages have not been saved in the lockfile
     if is_main_package || !package.pinned_dependencies? || package.pinned_dependencies.empty?
       # We crawl the regular dependencies fields to lock the versions
       NamedTuple.new(
@@ -117,7 +122,6 @@ module Zap::Resolver
       if metadata && is_direct_dependency
         metadata = nil unless resolver.is_lockfile_cache_valid?(metadata)
       end
-      # end
       # If the package is not in the lockfile or if it is a direct dependency, resolve it
       metadata ||= resolver.resolve(is_direct_dependency ? state.lockfile.roots[package.name] : package, dependent: dependent)
       metadata.optional = (type == :optional_dependencies || nil)
@@ -142,12 +146,12 @@ module Zap::Resolver
       # Report the package as downloaded if it was stored
       state.reporter.on_package_downloaded if stored
     rescue e
-      # Do not stop the world for optional dependencies
       if type != :optional_dependencies && !metadata.try(&.optional)
+        # Error unless the dependency is optional
         state.reporter.stop
         package_in_error = "#{name}@#{version}"
         state.reporter.error(e, package_in_error.colorize.bold.to_s)
-        exit(1)
+        raise e
       else
         # Silently ignore optional dependencies
         metadata.try { |pkg| package.pinned_dependencies?.try &.delete(pkg.name) }
@@ -194,7 +198,7 @@ module Zap::Resolver
     rescue e
       state.reporter.stop
       state.reporter.error(e, new_dep)
-      exit(1)
+      raise e
     end
   end
 

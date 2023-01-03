@@ -54,6 +54,9 @@ class Zap::CLI
     parser.on("--no-save", "Prevents saving to dependencies") do |path|
       @command_config = @command_config.copy_with(save: false)
     end
+    parser.on("--ignore-scripts", "If true, does not run scripts specified in package.json files") do
+      @command_config = @command_config.copy_with(ignore_scripts: true)
+    end
 
     parser.unknown_args do |pkgs|
       @command_config.new_packages.concat(pkgs)

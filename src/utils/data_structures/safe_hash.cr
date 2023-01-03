@@ -7,6 +7,10 @@ struct SafeHash(K, V)
     @inner = Hash(K, V).new(*args, **kwargs)
   end
 
+  def initialize(*args, **kwargs, &block : Hash(K, V), K -> V)
+    @inner = Hash(K, V).new(*args, **kwargs, &block)
+  end
+
   def synchronize
     @lock.synchronize do
       yield @inner

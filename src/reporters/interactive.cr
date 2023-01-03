@@ -24,8 +24,8 @@ class Zap::Reporter::Interactive < Zap::Reporter
     @installed_packages = Atomic(Int32).new(0)
     @building_packages = Atomic(Int32).new(0)
     @built_packages = Atomic(Int32).new(0)
-    @added_packages = SafeArray(String).new
-    @removed_packages = SafeArray(String).new
+    @added_packages = SafeSet(String).new
+    @removed_packages = SafeSet(String).new
     @update_channel = Channel(Int32?).new
     @cursor = Term::Cursor
   end
@@ -93,7 +93,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
       @update_channel.close
       if @written
         Colorize.reset(@out)
-        @out.flush
+        # @out.flush
         @out.puts ""
       end
       @written = false
@@ -126,7 +126,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
       @out << @cursor.clear_lines(@lines.get, :up)
       @out << String.new(bytes)
       @out << "\n"
-      @out.flush
+      # @out.flush
     end
     update
   end
@@ -136,7 +136,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
       @out << @cursor.clear_lines(@lines.get, :up)
       @out << str
       @out << "\n"
-      @out.flush
+      # @out.flush
     end
     update
   end
@@ -173,7 +173,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
             @out << header("🎁", "Packing…") + %([#{@packed_packages.get}/#{packing}])
             @lines.add(1)
           end
-          @out.flush
+          # @out.flush
         end
       end
     end
@@ -188,7 +188,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
         @io_lock.synchronize do
           @out << @cursor.clear_line
           @out << header("💽", "Installing…", :magenta) + %([#{@installed_packages.get}/#{@installing_packages.get}])
-          @out.flush
+          # @out.flush
         end
       end
     end
@@ -203,7 +203,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
         @io_lock.synchronize do
           @out << @cursor.clear_line
           @out << header("🏗️", "Building…", :light_red) + %([#{@built_packages.get}/#{@building_packages.get}])
-          @out.flush
+          # @out.flush
         end
       end
     end

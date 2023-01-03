@@ -10,7 +10,6 @@ module Zap::Utils::TarGzip
           yield entry, file_path, entry.io
         end
       end
-      gzip.skip_to_end if io.peek.try(&.size.> 0)
     end
   end
 

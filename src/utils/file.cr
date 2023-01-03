@@ -50,8 +50,18 @@ module Zap::Utils::File
   def self.crawl_package_files(directory : Path, &block : Path -> Bool | Nil)
     package_json = JSON.parse(::File.read(directory / "package.json"))
     includes = (package_json["files"]?.try(&.as_a.map(&.to_s)) || ["**/*"])
+    # Include the file specified in the main field
     if main = package_json["main"]?.try(&.as_s)
-      includes << main
+      includes << main.gsub(/^\.\//, "/")
+    end
+    # Include the files specified in the bin field
+    if bin = package_json["bin"]?
+      case bin
+      when .as_s?
+        includes << bin.as_s.gsub(/^\.\//, "/")
+      when .as_h?
+        includes.concat bin.as_h.values.map(&.to_s).map { |path| path.gsub(/^\.\//, "/") }
+      end
     end
     excludes = [] of String
     if ::File.readable?(directory / ".gitignore")

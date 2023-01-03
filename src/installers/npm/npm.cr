@@ -7,25 +7,30 @@ module Zap::Installers::Npm
   class Installer < Base
     def install
       @installed_packages_with_hooks = [] of {Package, Path}
-      # create the root node modules folder
       node_modules = Path.new(state.config.node_modules)
-      Dir.mkdir_p(node_modules)
 
       # process each dependency breadth-first
-      # dependency_queue stores:
-      # - [0]: dependencies of the current level
-      # - [1]: a cache which contains the path/dependencies of every previous level
+      # dependency_queue contains:
+      # - item[0]: dependencies of the current level
+      # - item[1]: a cache which contains the path/dependencies of every previous level
       dependency_queue = Deque({Package, Deque(CacheItem)}).new
-      initial_cache : Deque(CacheItem) = Deque(CacheItem).new
-      initial_cache << {node_modules, Set(Package).new}
-      # initialize the queue with the root dependencies
-      # TODO: workspaces!!
-      state.lockfile.roots.values.each &.pinned_dependencies?.try &.map { |name, version|
-        dependency_queue << {
-          state.lockfile.packages["#{name}@#{version}"],
-          initial_cache,
+
+      # initialize the queue with all the root dependencies
+      root_cache = {node_modules, Set(Package).new}
+      state.lockfile.roots.each do |name, root|
+        workspace = state.workspaces.find { |w| w.package.name == name }
+        initial_cache : Deque(CacheItem) = Deque(CacheItem).new
+        initial_cache << root_cache
+        if workspace
+          initial_cache << {workspace.path / "node_modules", Set(Package).new}
+        end
+        root.pinned_dependencies?.try &.map { |name, version|
+          dependency_queue << {
+            state.lockfile.packages["#{name}@#{version}"],
+            initial_cache,
+          }
         }
-      }
+      end
 
       # BFS loop
       while dependency_item = dependency_queue.shift?
@@ -36,6 +41,7 @@ module Zap::Installers::Npm
           # no subcache = do not process the sub dependencies
           next unless subcache
           # shallow strategy means we only install direct deps at top-level
+          # TODO: workspaces support for this install strategy
           if state.install_config.install_strategy.npm_shallow? && subcache.size >= 2 && subcache[0][0] == node_modules
             subcache.shift
           end
@@ -103,7 +109,7 @@ module Zap::Installers::Npm
       # …npm will default the install command to compile using node-gyp via node-gyp rebuild"
       # See: https://docs.npmjs.com/cli/v9/using-npm/scripts#npm-install
       if !dependency.scripts.try &.install && File.exists?(Path.new(install_folder, "binding.gyp"))
-        (dependency.scripts ||= Zap::Package::LifecycleScripts.new).install = "node gyp rebuild"
+        (dependency.scripts ||= Zap::Package::LifecycleScripts.new).install = "node-gyp rebuild"
       end
 
       if dependency.scripts.try &.install

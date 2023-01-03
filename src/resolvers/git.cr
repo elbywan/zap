@@ -99,6 +99,7 @@ module Zap::Resolver
     end
 
     private def pack_package(package_path : Path, target_path : Path)
+      Dir.mkdir_p(target_path.dirname) # Create folder if needed
       Compress::Gzip::Writer.open(::File.new(target_path.to_s, "w"), sync_close: true) do |gzip|
         tar_writer = Crystar::Writer.new(gzip, sync_close: true)
         Utils::File.crawl_package_files(package_path) do |path|

@@ -103,7 +103,7 @@ module Zap::Fetch
             break yield client
           rescue e
             client.close
-            sleep 0.5.seconds
+            sleep 0.5.seconds * retry_count
             raise e if retry_count >= retry_attempts
           end
         end

@@ -40,6 +40,9 @@ class Zap::Package
   property scripts : LifecycleScripts? = nil
   getter os : Array(String)? = nil
   getter cpu : Array(String)? = nil
+  # See: https://github.com/npm/rfcs/blob/main/implemented/0026-workspaces.md
+  @[YAML::Field(ignore: true)]
+  getter workspaces : Array(String)? = nil
 
   #######################
   # Npm specific fields #

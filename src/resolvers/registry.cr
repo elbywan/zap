@@ -68,9 +68,11 @@ module Zap::Resolver
 
       client_pool.client &.get(tarball_url) do |response|
         raise "Invalid status code from #{tarball_url} (#{response.status_code})" unless response.status_code == 200
-        IO::Digest.new(response.body_io, algorithm_instance).try do |io|
+
+        IO::Digest.new(response.body_io, algorithm_instance).tap do |io|
           state.store.store_unpacked_tarball(package_name, version, io)
 
+          io.skip_to_end
           computed_hash = io.final
           if unsupported_algorithm
             if computed_hash.hexstring != shasum
@@ -83,6 +85,9 @@ module Zap::Resolver
               raise "integrity mismatch for #{tarball_url} (#{integrity})"
             end
           end
+        rescue e
+          state.store.remove_package(package_name, version)
+          raise e
         ensure
           io.try &.close
         end
