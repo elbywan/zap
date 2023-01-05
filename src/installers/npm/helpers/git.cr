@@ -17,7 +17,8 @@ module Zap::Installers::Npm::Helpers::Git
     installer.on_install(dependency, target_path, state: state)
 
     cache.last[1] << dependency
+    cache.last[2] << dependency.name
     subcache = cache.dup
-    subcache << {target_path / "node_modules", Set(Package).new}
+    subcache << {target_path / "node_modules", Set(Package).new, Set(String).new}
   end
 end

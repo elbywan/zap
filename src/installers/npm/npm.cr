@@ -2,7 +2,7 @@ require "../backends/*"
 require "./helpers/*"
 
 module Zap::Installers::Npm
-  alias CacheItem = {Path, Set(Package)}
+  alias CacheItem = {Path, Set(Package), Set(String)}
 
   class Installer < Base
     def install
@@ -12,17 +12,17 @@ module Zap::Installers::Npm
       # process each dependency breadth-first
       # dependency_queue contains:
       # - item[0]: dependencies of the current level
-      # - item[1]: a cache which contains the path/dependencies of every previous level
+      # - item[1]: a cache which contains the path & installed packages of parent folders
       dependency_queue = Deque({Package, Deque(CacheItem)}).new
 
       # initialize the queue with all the root dependencies
-      root_cache = {node_modules, Set(Package).new}
+      root_cache = {node_modules, Set(Package).new, Set(String).new}
       state.lockfile.roots.each do |name, root|
         workspace = state.workspaces.find { |w| w.package.name == name }
         initial_cache : Deque(CacheItem) = Deque(CacheItem).new
         initial_cache << root_cache
         if workspace
-          initial_cache << {workspace.path / "node_modules", Set(Package).new}
+          initial_cache << {workspace.path / "node_modules", Set(Package).new, Set(String).new}
         end
         root.pinned_dependencies?.try &.map { |name, version|
           dependency_queue << {
@@ -67,7 +67,9 @@ module Zap::Installers::Npm
       when .git?
         Helpers::Git.install(dependency, installer: self, cache: cache, state: state)
       when .registry?
-        Helpers::Registry.install(dependency, installer: self, cache: cache, state: state)
+        cache_item = Helpers::Registry.find_cache_item(dependency, cache: cache)
+        return unless cache_item
+        Helpers::Registry.install(dependency, cache_item, installer: self, cache: cache, state: state)
       end
     end
 
@@ -76,12 +78,11 @@ module Zap::Installers::Npm
       # Copy binary files if they are declared in the package.json
       if bin = dependency.bin
         is_direct_dependency = dependency.is_direct_dependency?
-        root_bin_dir = Path.new(state.config.bin_path)
-        Dir.mkdir_p(root_bin_dir)
+        Dir.mkdir_p(state.config.bin_path)
         if bin.is_a?(Hash)
           bin.each do |name, path|
             bin_name = name.split("/").last
-            bin_path = Path.new(root_bin_dir, bin_name)
+            bin_path = Utils::File.join(state.config.bin_path, bin_name)
             if !File.exists?(bin_path) || is_direct_dependency
               File.delete?(bin_path)
               File.symlink(Path.new(path).expand(install_folder), bin_path)
@@ -90,7 +91,7 @@ module Zap::Installers::Npm
           end
         else
           bin_name = dependency.name.split("/").last
-          bin_path = Path.new(root_bin_dir, bin_name)
+          bin_path = Utils::File.join(state.config.bin_path, bin_name)
           if !File.exists?(bin_path) || is_direct_dependency
             File.delete?(bin_path)
             File.symlink(Path.new(bin).expand(install_folder), bin_path)
@@ -108,7 +109,7 @@ module Zap::Installers::Npm
       # "If there is a binding.gyp file in the root of your package and you haven't defined your own install or preinstall scripts…
       # …npm will default the install command to compile using node-gyp via node-gyp rebuild"
       # See: https://docs.npmjs.com/cli/v9/using-npm/scripts#npm-install
-      if !dependency.scripts.try &.install && File.exists?(Path.new(install_folder, "binding.gyp"))
+      if !dependency.scripts.try &.install && File.exists?(Utils::File.join(install_folder, "binding.gyp"))
         (dependency.scripts ||= Zap::Package::LifecycleScripts.new).install = "node-gyp rebuild"
       end
 

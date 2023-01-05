@@ -1,36 +1,38 @@
 module Zap::Installers::Npm::Helpers::Registry
-  def self.install(dependency : Package, *, installer : Installers::Base, cache : Deque(CacheItem), state : Commands::Install::State) : Deque(CacheItem)?
-    leftmost_dir_and_cache : CacheItem? = nil
-    cache.reverse_each { |path, pkgs_at_path|
-      if pkgs_at_path.includes?(dependency)
-        leftmost_dir_and_cache = nil
+  def self.find_cache_item(dependency : Package, cache : Deque(CacheItem)) : CacheItem?
+    cache_item : CacheItem? = nil
+    cache.reverse_each { |path, pkgs_at_path, pkg_names_at_path|
+      if pkg_names_at_path.includes?(dependency.name)
+        cache_item = nil if pkgs_at_path.includes?(dependency)
         break
       end
-      break if pkgs_at_path.any? { |pkg| pkg.name == dependency.name }
-      leftmost_dir_and_cache = {path, pkgs_at_path}
+      cache_item = {path, pkgs_at_path, pkg_names_at_path}
     }
+    cache_item
+  end
 
-    # Already hoisted
-    return if !leftmost_dir_and_cache
-    leftmost_dir, leftmost_cache = leftmost_dir_and_cache
+  def self.install(dependency : Package, cache_item : CacheItem, *, installer : Installers::Base, cache : Deque(CacheItem), state : Commands::Install::State) : Deque(CacheItem)?
+    target_directory, target_cache, target_names_cache = cache_item
 
     installed = begin
-      Backend.install(dependency: dependency, target: leftmost_dir, store: state.store, backend: state.install_config.file_backend) {
+      Backend.install(dependency: dependency, target: target_directory, store: state.store, backend: state.install_config.file_backend) {
         state.reporter.on_installing_package
       }
-    rescue
+    rescue ex
+      state.reporter.log(%(#{(dependency.name + "@" + dependency.version).colorize(:yellow)} Failed to install with #{state.install_config.file_backend} backend: #{ex.message}))
       # Fallback to the widely supported "plain copy" backend
-      Backend.install(dependency: dependency, target: leftmost_dir, store: state.store, backend: :copy) { }
+      Backend.install(dependency: dependency, target: target_directory, store: state.store, backend: Backend::Backends::Copy) { }
     end
 
-    installer.on_install(dependency, leftmost_dir / dependency.name, state: state) if installed
+    installer.on_install(dependency, target_directory / dependency.name, state: state) if installed
 
-    leftmost_cache << dependency
+    target_cache << dependency
+    target_names_cache << dependency.name
     updated_cache = cache.dup
-    while (updated_cache.last != leftmost_dir_and_cache)
+    while (updated_cache.last != cache_item)
       updated_cache.pop
     end
-    updated_cache << {leftmost_dir / dependency.name / "node_modules", Set(Package).new}
+    updated_cache << {target_directory / dependency.name / "node_modules", Set(Package).new, Set(String).new}
     updated_cache
   end
 end

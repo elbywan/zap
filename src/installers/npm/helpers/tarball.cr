@@ -14,7 +14,8 @@ module Zap::Installers::Npm::Helpers::Tarball
     installer.on_install(dependency, target / dependency.name, state: state) if installed
 
     cache.last[1] << dependency
+    cache.last[2] << dependency.name
     subcache = cache.dup
-    subcache << {target / dependency.name / "node_modules", Set(Package).new}
+    subcache << {target / dependency.name / "node_modules", Set(Package).new, Set(String).new}
   end
 end

@@ -148,6 +148,12 @@ class Zap::Package
   # Public #
   ##########
 
+  def ==(other : self)
+    self.key == other.key
+  end
+
+  def_hash @name, @version
+
   def add_dependency(name : String, version : String, type : Symbol)
     case type
     when :dependencies

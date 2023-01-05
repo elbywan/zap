@@ -89,4 +89,8 @@ module Zap::Utils::File
       end
     end
   end
+
+  def self.join(*paths : Path | String) : String
+    paths.map(&.to_s).join(::Path::SEPARATORS[0])
+  end
 end

@@ -18,7 +18,12 @@ require "./commands/**"
 module Zap
   VERSION = {{ `shards version`.stringify }}.chomp
 
-  config, command_config = CLI.new.parse
+  begin
+    config, command_config = CLI.new.parse
+  rescue e
+    puts e.message
+    exit 1
+  end
 
   Log = ::Log.for("zap")
   ::Log.setup_from_env

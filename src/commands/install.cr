@@ -82,11 +82,9 @@ module Zap::Commands::Install
         state.lockfile.prune
 
         # Install dependencies to the appropriate node_modules folder
-        state.pipeline.reset
         state.reporter.report_installer_updates
         installer = Installers::Npm::Installer.new(state)
         installer.install
-        state.pipeline.await
         state.reporter.stop
 
         # Run install hooks
@@ -177,6 +175,6 @@ module Zap::Commands::Install
   rescue e
     puts %(\n\n❌ #{"Error(s):".colorize(:red).mode(:underline).mode(:bold)} #{e.message})
     null_io.try &.close
-    exit 1
+    exit 2
   end
 end

@@ -1,5 +1,6 @@
 require "term-cursor"
 require "./reporter"
+require "../utils/timers"
 
 class Zap::Reporter::Interactive < Zap::Reporter
   @lock = Mutex.new
@@ -28,6 +29,9 @@ class Zap::Reporter::Interactive < Zap::Reporter
     @removed_packages = SafeSet(String).new
     @update_channel = Channel(Int32?).new
     @cursor = Term::Cursor
+    @debounced_update = Utils::Debounce.new(0.01.seconds) do
+      update_action
+    end
   end
 
   def on_resolving_package
@@ -90,15 +94,28 @@ class Zap::Reporter::Interactive < Zap::Reporter
 
   def stop
     @lock.synchronize do
+      @debounced_update.abort
+      @update_channel.send 0 if @written
+      Fiber.yield
       @update_channel.close
       if @written
         Colorize.reset(@out)
-        # @out.flush
+        @out.flush
         @out.puts ""
       end
       @written = false
     rescue Channel::ClosedError
       # Ignore
+    end
+  end
+
+  def warning(error : Exception, location : String? = "")
+    @lock.synchronize do
+      @out << header("⚠️", "Warning", :yellow) + location
+      @out << "\n"
+      @out << "\n   • #{error.message}".colorize(:yellow)
+      @out << "\n"
+      Zap::Log.debug { error.backtrace?.try &.map { |line| "\t#{line}" }.join("\n").colorize(:yellow) }
     end
   end
 
@@ -113,9 +130,14 @@ class Zap::Reporter::Interactive < Zap::Reporter
   end
 
   def update
+    @debounced_update.call
+  end
+
+  private def update_action
     @lock.synchronize do
+      return if @update_channel.closed?
       @written = true
-      @update_channel.send 0 unless @update_channel.closed?
+      @update_channel.send 0
     rescue Channel::ClosedError
       # Ignore
     end
@@ -126,7 +148,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
       @out << @cursor.clear_lines(@lines.get, :up)
       @out << String.new(bytes)
       @out << "\n"
-      # @out.flush
+      @out.flush
     end
     update
   end
@@ -136,7 +158,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
       @out << @cursor.clear_lines(@lines.get, :up)
       @out << str
       @out << "\n"
-      # @out.flush
+      @out.flush
     end
     update
   end
@@ -173,7 +195,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
             @out << header("🎁", "Packing…") + %([#{@packed_packages.get}/#{packing}])
             @lines.add(1)
           end
-          # @out.flush
+          @out.flush
         end
       end
     end
@@ -185,10 +207,11 @@ class Zap::Reporter::Interactive < Zap::Reporter
       loop do
         msg = @update_channel.receive?
         break if msg.nil?
+        next if @installing_packages.get == 0
         @io_lock.synchronize do
           @out << @cursor.clear_line
           @out << header("💽", "Installing…", :magenta) + %([#{@installed_packages.get}/#{@installing_packages.get}])
-          # @out.flush
+          @out.flush
         end
       end
     end
@@ -203,7 +226,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
         @io_lock.synchronize do
           @out << @cursor.clear_line
           @out << header("🏗️", "Building…", :light_red) + %([#{@built_packages.get}/#{@building_packages.get}])
-          # @out.flush
+          @out.flush
         end
       end
     end
@@ -246,7 +269,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
         @out << ("took " + realtime.total_seconds.humanize + "s • ").colorize.mode(:dim)
       end
       if memory
-        @out << ("memory usage " + memory.humanize + "B").colorize.mode(:dim)
+        @out << ("total memory allocated " + memory.humanize + "B").colorize.mode(:dim)
       end
       @out << "\n"
     end
