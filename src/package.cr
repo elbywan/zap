@@ -241,6 +241,26 @@ class Zap::Package
     dependents.size == 1 && dependents.first == key
   end
 
+  def self.get_pkg_version_from_json(json_path : Path | String) : String?
+    return unless File.readable? json_path
+    File.open(json_path) do |io|
+      pull_parser = JSON::PullParser.new(io)
+      pull_parser.read_begin_object
+      loop do
+        break if pull_parser.kind.end_object?
+        key = pull_parser.read_object_key
+        if key === "version"
+          break pull_parser.read_string
+        else
+          pull_parser.skip
+        end
+      end
+    rescue e
+      puts "Error parsing #{json_path}: #{e}"
+    ensure
+    end
+  end
+
   ############
   # Internal #
   ############

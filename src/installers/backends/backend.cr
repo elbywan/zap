@@ -15,13 +15,13 @@ module Zap::Backend
       {% if flag?(:darwin) %}
         Backend::CloneFile.install(dependency, target, store: store, &on_installing)
       {% else %}
-        raise "The clonefile file backend is not supported on this platform"
+        raise "The clonefile backend is not supported on this platform"
       {% end %}
     when .copy_file?
       {% if flag?(:darwin) %}
-      Backend::CopyFile.install(dependency, target, store: store, &on_installing)
+        Backend::CopyFile.install(dependency, target, store: store, &on_installing)
       {% else %}
-        raise "The copyfile file backend is not supported on this platform"
+        raise "The copyfile backend is not supported on this platform"
       {% end %}
     when .hardlink?
       Backend::Hardlink.install(dependency, target, store: store, &on_installing)
@@ -111,32 +111,12 @@ module Zap::Backend
   #   end
   # end
 
-  protected def self.pkg_version_from_json(json_path : String) : String?
-    return unless File.readable? json_path
-    File.open(json_path) do |io|
-      pull_parser = JSON::PullParser.new(io)
-      pull_parser.read_begin_object
-      loop do
-        break if pull_parser.kind.end_object?
-        key = pull_parser.read_object_key
-        if key === "version"
-          break pull_parser.read_string
-        else
-          pull_parser.skip
-        end
-      end
-    rescue e
-      puts "Error parsing #{json_path}: #{e}"
-    ensure
-    end
-  end
-
   protected def self.prepare(dependency : Package, node_modules : Path | String, *, store : Store, mkdir_parent = false) : {Path, Path, Bool}
     src_path = store.package_path(dependency.name, dependency.version)
     dest_path = node_modules / dependency.name
     if exists = Dir.exists?(dest_path)
       pkg_json_path = Utils::File.join(dest_path, "package.json")
-      existing_version = self.pkg_version_from_json(pkg_json_path)
+      existing_version = Package.get_pkg_version_from_json(pkg_json_path)
       if existing_version != dependency.version
         FileUtils.rm_rf(dest_path)
         exists = false

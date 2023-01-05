@@ -10,7 +10,7 @@ module Zap::Workspaces
     end
 
     ([] of Workspace).tap do |workspaces|
-      #
+      #################
       # Gitignore rules from: https://git-scm.com/docs/gitignore
       # Slower - this crawls the whole directory tree
       #################
@@ -29,7 +29,7 @@ module Zap::Workspaces
       #   }
       # end
 
-      #
+      #####################
       # Globs rules from: https://crystal-lang.org/api/File.html#match?(pattern:String,path:Path|String):Bool-class-method
       # Faster but slighly less possibilities in terms of patterns (no exclusion for instance)
       #####################
