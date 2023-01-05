@@ -12,15 +12,17 @@ module Zap::Backend
   def self.install(*, dependency : Package, target : Path | String, backend : Backends, store : Store, &on_installing) : Bool?
     case backend
     when .clone_file?
-      {% unless flag?(:darwin) %}
-        raise "clonefile not supported on this platform"
+      {% if flag?(:darwin) %}
+        Backend::CloneFile.install(dependency, target, store: store, &on_installing)
+      {% else %}
+        raise "The clonefile file backend is not supported on this platform"
       {% end %}
-      Backend::CloneFile.install(dependency, target, store: store, &on_installing)
     when .copy_file?
-      {% unless flag?(:darwin) %}
-        raise "copyfile not supported on this platform"
-      {% end %}
+      {% if flag?(:darwin) %}
       Backend::CopyFile.install(dependency, target, store: store, &on_installing)
+      {% else %}
+        raise "The copyfile file backend is not supported on this platform"
+      {% end %}
     when .hardlink?
       Backend::Hardlink.install(dependency, target, store: store, &on_installing)
     when .copy?
