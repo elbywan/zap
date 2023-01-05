@@ -2,6 +2,8 @@ require "http/client"
 require "json"
 
 module Zap::Fetch
+  CACHE_DIR = ".fetch_cache"
+
   abstract class Cache
     abstract def get(url : String, etag : String?) : String?
     abstract def set(url : String, value : String, expiry : Time::Span?, etag : String?) : Nil
@@ -44,7 +46,7 @@ module Zap::Fetch
       @path : Path
 
       def initialize(global_store_path)
-        @path = Path.new(global_store_path, ".fetch_cache")
+        @path = Path.new(global_store_path, CACHE_DIR)
         Dir.mkdir_p(@path)
       end
 

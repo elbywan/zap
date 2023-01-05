@@ -28,5 +28,8 @@ module Zap
   Log = ::Log.for("zap")
   ::Log.setup_from_env
 
-  Commands::Install.run(config, command_config)
+  case command_config
+  when Config::Install
+    Commands::Install.run(config, command_config)
+  end
 end

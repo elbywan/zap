@@ -1,7 +1,9 @@
 require "option_parser"
 
 class Zap::CLI
-  def initialize(@config : Config = Config.new, @command_config : Config::CommandConfig = Config::Install.new)
+  getter! command_config : Config::CommandConfig?
+
+  def initialize(@config : Config = Config.new, @command_config : Config::CommandConfig? = Config::Install.new)
   end
 
   def parse
@@ -9,6 +11,21 @@ class Zap::CLI
     OptionParser.new do |parser|
       command(["install", "i", "add"], "This command installs a package and any packages that it depends on") do
         on_install(parser)
+      end
+
+      parser.on("store", "Global store commands") do
+        @command_config = nil
+        parser.on("clear", "Clears the stored packages") do
+          puts "💣 Nuking store at: [#{@config.global_store_path}] ..."
+          FileUtils.rm_rf(@config.global_store_path)
+          puts "💥 Done!"
+        end
+        parser.on("clear-http-cache", "Clears the cached registry responses") do
+          http_cache_path = Path.new(@config.global_store_path) / Fetch::CACHE_DIR
+          puts "💣 Nuking http cache at: [#{http_cache_path}] ..."
+          FileUtils.rm_rf(http_cache_path)
+          puts "💥 Done!"
+        end
       end
 
       # Common options
@@ -40,22 +57,22 @@ class Zap::CLI
     @command_config = Config::Install.new
     parser.banner = "Usage: zap install [packages]"
     parser.on("-D", "--save-dev", "Package will appear in your devDependencies") do
-      @command_config = @command_config.copy_with(save_dev: true)
+      @command_config = command_config.copy_with(save_dev: true)
     end
     parser.on("-P", "--save-prod", "Package will appear in your dependencies") do
-      @command_config = @command_config.copy_with(save_prod: true)
+      @command_config = command_config.copy_with(save_prod: true)
     end
     parser.on("-O", "--save-optional", "Package will appear in your optionalDependencies") do
-      @command_config = @command_config.copy_with(save_optional: true)
+      @command_config = command_config.copy_with(save_optional: true)
     end
     parser.on("-E", "--save-exact", "PSaved dependencies will be configured with an exact version rather than using npm's default semver range operator") do |path|
-      @command_config = @command_config.copy_with(save_exact: true)
+      @command_config = command_config.copy_with(save_exact: true)
     end
     parser.on("--no-save", "Prevents saving to dependencies") do
-      @command_config = @command_config.copy_with(save: false)
+      @command_config = command_config.copy_with(save: false)
     end
     parser.on("--ignore-scripts", "If true, does not run scripts specified in package.json files") do
-      @command_config = @command_config.copy_with(ignore_scripts: true)
+      @command_config = command_config.copy_with(ignore_scripts: true)
     end
     parser.on(
       "--file-backend BACKEND",
@@ -69,11 +86,11 @@ class Zap::CLI
         - symlink
       DESCRIPTION
     ) do |backend|
-      @command_config = @command_config.copy_with(file_backend: Backend::Backends.parse(backend))
+      @command_config = command_config.copy_with(file_backend: Backend::Backends.parse(backend))
     end
 
     parser.unknown_args do |pkgs|
-      @command_config.new_packages.concat(pkgs)
+      command_config.new_packages.concat(pkgs)
     end
   end
 end
