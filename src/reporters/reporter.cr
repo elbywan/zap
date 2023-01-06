@@ -27,7 +27,7 @@ abstract class Zap::Reporter
     end
 
     def write(slice : Bytes) : Nil
-      if !@first_write
+      if @first_write
         @first_write = false
         @reporter.io_lock.synchronize do
           @reporter.output << @prefix
