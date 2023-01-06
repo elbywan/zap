@@ -4,7 +4,7 @@ module Zap::Installers::Npm::Helpers::Git
       raise "Cannot install git dependency #{dependency.name} because the dist.cache_key field is missing."
     end
 
-    target_path = cache.last[0] / dependency.name
+    target_path = cache.last.node_modules / dependency.name
     Dir.mkdir_p(target_path.dirname)
     FileUtils.rm_rf(target_path) if ::File.directory?(target_path)
 
@@ -15,10 +15,6 @@ module Zap::Installers::Npm::Helpers::Git
     end
 
     installer.on_install(dependency, target_path, state: state)
-
-    cache.last[1] << dependency
-    cache.last[2] << dependency.name
-    subcache = cache.dup
-    subcache << {target_path / "node_modules", Set(Package).new, Set(String).new}
+    Helpers.prepare_cache(dependency, target_path, cache)
   end
 end

@@ -4,7 +4,7 @@ module Zap::Installers::Npm::Helpers::Tarball
       raise "Cannot install file dependency #{dependency.name} because the dist.path field is missing."
     end
 
-    target = cache.last[0]
+    target = cache.last.node_modules
     Dir.mkdir_p(target)
 
     installed = Backend.install(dependency: dependency, target: target, store: state.store, backend: :copy) {
@@ -12,10 +12,6 @@ module Zap::Installers::Npm::Helpers::Tarball
     }
 
     installer.on_install(dependency, target / dependency.name, state: state) if installed
-
-    cache.last[1] << dependency
-    cache.last[2] << dependency.name
-    subcache = cache.dup
-    subcache << {target / dependency.name / "node_modules", Set(Package).new, Set(String).new}
+    Helpers.prepare_cache(dependency, target / dependency.name, cache)
   end
 end

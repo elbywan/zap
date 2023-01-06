@@ -14,18 +14,18 @@ module Zap::Installers::Npm::Helpers::File
     state.reporter.on_installing_package
     relative_path = dist.link
     relative_path = Path.new(relative_path)
-    target_path = cache.last[0] / dependency.name
+    target_path = cache.last.node_modules / dependency.name
     Dir.mkdir_p(target_path.dirname)
     FileUtils.rm_rf(target_path) if ::File.directory?(target_path)
     ::File.symlink(relative_path.expand(state.config.prefix), target_path)
     installer.on_install(dependency, target_path, state: state)
-    cache.last[1] << dependency
-    cache.last[2] << dependency.name
+    cache.last.installed_packages << dependency
+    cache.last.installed_packages_names << dependency.name
     nil
   end
 
   def self.install_tarball(dependency : Package, dist : Package::TarballDist, *, installer : Installers::Base, cache : Deque(CacheItem), state : Commands::Install::State) : Deque(CacheItem)?
-    target_path = cache.last[0] / dependency.name
+    target_path = cache.last.node_modules / dependency.name
     Dir.mkdir_p(target_path.dirname)
     FileUtils.rm_rf(target_path) if ::File.directory?(target_path)
     extracted_folder = Path.new(dist.path)
@@ -54,12 +54,7 @@ module Zap::Installers::Npm::Helpers::File
     # end
 
     installed = FileUtils.cp_r(extracted_folder, target_path)
-
     installer.on_install(dependency, target_path, state: state)
-
-    cache.last[1] << dependency
-    cache.last[2] << dependency.name
-    subcache = cache.dup
-    subcache << {target_path / "node_modules", Set(Package).new, Set(String).new}
+    Helpers.prepare_cache(dependency, target_path, cache)
   end
 end

@@ -1,8 +1,18 @@
 require "../backends/*"
-require "./helpers/*"
+require "./helpers"
 
 module Zap::Installers::Npm
-  alias CacheItem = {Path, Set(Package), Set(String)}
+  # A cache item is comprised of:
+  # - node_modules: the path to the node_modules folder
+  # - installed_packages: the set of packages already installed in this folder
+  # - installed_packages_names: the names of the packages for faster indexing
+  # - is_root: whether this is a root node_modules folder
+  # alias CacheItem = {Path, Set(Package), Set(String), Bool}
+  record CacheItem,
+    node_modules : Path,
+    installed_packages : Set(Package) = Set(Package).new,
+    installed_packages_names : Set(String) = Set(String).new,
+    root : Bool = false
 
   class Installer < Base
     def install
@@ -16,13 +26,13 @@ module Zap::Installers::Npm
       dependency_queue = Deque({Package, Deque(CacheItem)}).new
 
       # initialize the queue with all the root dependencies
-      root_cache = {node_modules, Set(Package).new, Set(String).new}
+      root_cache = CacheItem.new(node_modules: node_modules, root: true)
       state.lockfile.roots.each do |name, root|
         workspace = state.workspaces.find { |w| w.package.name == name }
         initial_cache : Deque(CacheItem) = Deque(CacheItem).new
         initial_cache << root_cache
         if workspace
-          initial_cache << {workspace.path / "node_modules", Set(Package).new, Set(String).new}
+          initial_cache << CacheItem.new(node_modules: workspace.path / "node_modules", root: true)
         end
         root.pinned_dependencies?.try &.map { |name, version|
           dependency_queue << {
@@ -41,16 +51,17 @@ module Zap::Installers::Npm
           # no subcache = do not process the sub dependencies
           next unless subcache
           # shallow strategy means we only install direct deps at top-level
-          # TODO: workspaces support for this install strategy
-          if state.install_config.install_strategy.npm_shallow? && subcache.size >= 2 && subcache[0][0] == node_modules
-            subcache.shift
+          if state.install_config.install_strategy.npm_shallow?
+            while (subcache[0].root)
+              subcache.shift
+            end
           end
           dependency.pinned_dependencies?.try &.each do |name, version|
             dependency_queue << {state.lockfile.packages["#{name}@#{version}"], subcache}
           end
         rescue e
           state.reporter.stop
-          parent_path = cache.try &.last[0]
+          parent_path = cache.try &.last.node_modules
           package_in_error = "#{dependency.name}@#{dependency.version}" if dependency
           state.reporter.error(e, package_in_error.colorize.bold.to_s + " at " + parent_path.colorize.dim.to_s)
           exit 2
