@@ -138,7 +138,7 @@ module Zap::Resolver
         self.resolve_dependencies(metadata, state: state, dependent: dependent || metadata, resolved_packages: resolved_packages)
         # Print deprecation warningq
         if deprecated = metadata.deprecated
-          state.reporter.log(%(#{(metadata.not_nil!.name + "@" + metadata.not_nil!.version).colorize(:yellow)} #{deprecated}))
+          state.reporter.log(%(#{(metadata.not_nil!.name + "@" + metadata.not_nil!.version).colorize.yellow} #{deprecated}))
         end
       end
       # Attempt to store the package in the filesystem or in the cache if needed

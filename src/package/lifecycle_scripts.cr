@@ -41,8 +41,12 @@ class Zap::Package
       !prepare.nil? || nil
     end
 
+    SELF_LIFECYCLE_SCRIPTS = %i(preinstall install postinstall prepublish preprepare prepare postprepare)
+
     def has_self_install_lifecycle?
-      !!install ||
+      !!preinstall ||
+        !!install ||
+        !!postinstall ||
         !!prepublish ||
         !!prepare
     end

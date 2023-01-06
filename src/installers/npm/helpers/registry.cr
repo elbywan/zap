@@ -17,7 +17,7 @@ module Zap::Installers::Npm::Helpers::Registry
         state.reporter.on_installing_package
       }
     rescue ex
-      state.reporter.log(%(#{(dependency.name + "@" + dependency.version).colorize(:yellow)} Failed to install with #{state.install_config.file_backend} backend: #{ex.message}))
+      state.reporter.log(%(#{(dependency.name + "@" + dependency.version).colorize.yellow} Failed to install with #{state.install_config.file_backend} backend: #{ex.message}))
       # Fallback to the widely supported "plain copy" backend
       Backend.install(dependency: dependency, target: cache_item.node_modules, store: state.store, backend: Backend::Backends::Copy) { }
     end

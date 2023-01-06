@@ -17,6 +17,8 @@ abstract class Zap::Reporter
   end
 
   class ReporterFormattedAppendPipe < IO
+    @first_write = true
+
     def initialize(@reporter : Reporter, @separator = "\n", @prefix = "\n     ")
     end
 
@@ -25,7 +27,13 @@ abstract class Zap::Reporter
     end
 
     def write(slice : Bytes) : Nil
-      str = @prefix + String.new(slice).split(@separator).join(@prefix)
+      if !@first_write
+        @first_write = false
+        @reporter.io_lock.synchronize do
+          @reporter.output << @prefix
+        end
+      end
+      str = String.new(slice).split(@separator).join(@prefix)
       @reporter.io_lock.synchronize do
         @reporter.output << str
       end

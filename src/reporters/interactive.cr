@@ -113,9 +113,9 @@ class Zap::Reporter::Interactive < Zap::Reporter
     @lock.synchronize do
       @out << header("⚠️", "Warning", :yellow) + location
       @out << "\n"
-      @out << "\n   • #{error.message}".colorize(:yellow)
+      @out << "\n   • #{error.message}".colorize.yellow
       @out << "\n"
-      Zap::Log.debug { error.backtrace?.try &.map { |line| "\t#{line}" }.join("\n").colorize(:yellow) }
+      Zap::Log.debug { error.backtrace?.try &.map { |line| "\t#{line}" }.join("\n").colorize.yellow }
     end
   end
 
@@ -123,9 +123,9 @@ class Zap::Reporter::Interactive < Zap::Reporter
     @lock.synchronize do
       @out << header("❌", "Error!", :red) + location
       @out << "\n"
-      @out << "\n   • #{error.message}".colorize(:red)
+      @out << "\n   • #{error.message}".colorize.red
       @out << "\n"
-      Zap::Log.debug { error.backtrace.map { |line| "\t#{line}" }.join("\n").colorize(:red) }
+      Zap::Log.debug { error.backtrace.map { |line| "\t#{line}" }.join("\n").colorize.red }
     end
   end
 
@@ -171,7 +171,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
 
   def header(emoji, str, color = :default)
     Colorize.reset(@out)
-    %( ○ #{emoji} #{str.ljust(25).colorize(color).mode(:bright)})
+    %( ○ #{emoji} #{str.ljust(25).colorize(color).bright})
   end
 
   def report_resolver_updates
@@ -251,14 +251,14 @@ class Zap::Reporter::Interactive < Zap::Reporter
         all_packages.map { |pkg_key, added|
           parts = pkg_key.split("@")
           {
-            parts[...-1].join("@").colorize.mode(:bold).to_s + (" " + parts.last).colorize.mode(:dim).to_s,
+            parts[...-1].join("@").colorize.bold.to_s + (" " + parts.last).colorize.dim.to_s,
             added,
           }
         }.sort_by(&.[0]).each do |pkg_key, added|
           if added
-            @out << "   #{"＋".colorize(:green).mode(:bold)} #{pkg_key}\n"
+            @out << "   #{"＋".colorize.green.bold} #{pkg_key}\n"
           else
-            @out << "   #{"－".colorize(:red).mode(:bold)} #{pkg_key}\n"
+            @out << "   #{"－".colorize.red.bold} #{pkg_key}\n"
           end
         end
         @out << "\n"
@@ -266,10 +266,10 @@ class Zap::Reporter::Interactive < Zap::Reporter
 
       @out << header("👌", "Done!", :green)
       if realtime
-        @out << ("took " + realtime.total_seconds.humanize + "s • ").colorize.mode(:dim)
+        @out << ("took " + realtime.total_seconds.humanize + "s • ").colorize.dim
       end
       if memory
-        @out << ("total memory allocated " + memory.humanize + "B").colorize.mode(:dim)
+        @out << ("total memory allocated " + memory.humanize + "B").colorize.dim
       end
       @out << "\n"
     end
@@ -278,7 +278,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
   protected def self.format_pkg_keys(pkgs)
     pkgs.map { |pkg_key|
       parts = pkg_key.split("@")
-      parts[...-1].join("@").colorize.mode(:bold).to_s + ("@" + parts.last).colorize.mode(:dim).to_s
+      parts[...-1].join("@").colorize.bold.to_s + ("@" + parts.last).colorize.dim.to_s
     }.sort!
   end
 end

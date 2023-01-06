@@ -108,7 +108,7 @@ class Zap::Lockfile
     File.write(@lockfile_path.to_s, self.to_yaml)
   end
 
-  def set_dependencies(package : Package)
+  def set_root(package : Package)
     self.roots[package.name].dependencies = package.dependencies
     self.roots[package.name].dev_dependencies = package.dev_dependencies
     self.roots[package.name].optional_dependencies = package.optional_dependencies

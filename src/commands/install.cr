@@ -25,9 +25,9 @@ module Zap::Commands::Install
 
       unless config.silent
         puts <<-TERM
-        ⚡ #{"Zap".colorize.mode(:bright).mode(:underline)} #{"(v#{VERSION})".colorize.mode(:dim)}
-           #{"project:".colorize(:blue)} #{project_path} • #{"store:".colorize(:blue)} #{global_store_path} • #{"workers:".colorize(:blue)} #{Crystal::Scheduler.nb_of_workers}
-           #{"lockfile:".colorize(:blue)} #{lockfile.read_from_disk ? "ok".colorize(:green) : "not found".colorize(:red)}
+        ⚡ #{"Zap".colorize.bold.underline} #{"(v#{VERSION})".colorize.dim}
+           #{"project:".colorize.blue} #{project_path} • #{"store:".colorize.blue} #{global_store_path} • #{"workers:".colorize.blue} #{Crystal::Scheduler.nb_of_workers}
+           #{"lockfile:".colorize.blue} #{lockfile.read_from_disk ? "ok".colorize.green : "not found".colorize.red}
         TERM
       end
 
@@ -47,7 +47,7 @@ module Zap::Commands::Install
 
         if workspaces.size > 0
           puts <<-TERM
-             #{"scope".colorize(:blue)}: #{workspaces.size} packages • #{"workspaces:".colorize(:blue)} #{workspaces.map(&.package.name).join(", ")}
+             #{"scope".colorize.blue}: #{workspaces.size} packages • #{"workspaces:".colorize.blue} #{workspaces.map(&.package.name).join(", ")}
           TERM
         end
 
@@ -75,9 +75,9 @@ module Zap::Commands::Install
         state.reporter.stop
 
         # Prune lockfile before installing to cleanup pinned dependencies
-        state.lockfile.set_dependencies(main_package)
+        state.lockfile.set_root(main_package)
         workspaces.each do |workspace|
-          state.lockfile.set_dependencies(workspace.package)
+          state.lockfile.set_root(workspace.package)
         end
         state.lockfile.prune
 
@@ -87,7 +87,7 @@ module Zap::Commands::Install
         installer.install
         state.reporter.stop
 
-        # Run install hooks
+        # Run package.json hooks for the installed packages
         if !state.install_config.ignore_scripts && installer.installed_packages_with_hooks.size > 0
           state.pipeline.reset
           # Process hooks in parallel
@@ -112,38 +112,13 @@ module Zap::Commands::Install
           state.reporter.stop
         end
 
-        # Run package.json install hooks
-        # TODO: workspaces support
-        if !state.install_config.ignore_scripts
-          main_package.scripts.try do |scripts|
-            if scripts.has_self_install_lifecycle?
-              state.reporter.output << state.reporter.header("⏳", "Hooks") + "\n"
-              begin
-                output_io = Reporter::ReporterFormattedAppendPipe.new(state.reporter)
-                scripts.run_script(:preinstall, project_path, state.config, output_io: output_io) { |command|
-                  state.reporter.output << "\n   • preinstall #({%(#{command}).colorize.mode(:dim)}\n"
-                }
-                scripts.run_script(:install, project_path, state.config, output_io: output_io) { |command|
-                  state.reporter.output << "\n   • install #{%(#{command}).colorize.mode(:dim)}\n"
-                }
-                scripts.run_script(:postinstall, project_path, state.config, output_io: output_io) { |command|
-                  state.reporter.output << "\n   • postinstall #{%(#{command}).colorize.mode(:dim)}\n"
-                }
-                scripts.run_script(:prepublish, project_path, state.config, output_io: output_io) { |command|
-                  state.reporter.output << "\n   • prepublish #{%(#{command}).colorize.mode(:dim)}\n"
-                }
-                scripts.run_script(:preprepare, project_path, state.config, output_io: output_io) { |command|
-                  state.reporter.output << "\n   • preprepare #{%(#{command}).colorize.mode(:dim)}\n"
-                }
-                scripts.run_script(:prepare, project_path, state.config, output_io: output_io) { |command|
-                  state.reporter.output << "\n   • prepare #{%(#{command}).colorize.mode(:dim)}\n"
-                }
-                scripts.run_script(:postprepare, project_path, state.config, output_io: output_io) { |command|
-                  state.reporter.output << "\n   • postprepare #{%(#{command}).colorize.mode(:dim)}\n"
-                }
-                state.reporter.output << "\n"
-              end
-            end
+        # Run package.json hooks for the workspace packages
+        unless state.install_config.ignore_scripts
+          targets = workspaces.map { |workspace| {workspace.package, workspace.path.to_s} }.tap { |targets| targets << {main_package, project_path} }
+          ran_once = false
+
+          targets.each do |package, path|
+            ran_once = run_root_package_install_lifecycle_scripts(package, path, state, print_hooks: !ran_once)
           end
         end
 
@@ -173,8 +148,28 @@ module Zap::Commands::Install
     state.reporter.report_done(realtime, memory)
     null_io.try &.close
   rescue e
-    puts %(\n\n❌ #{"Error(s):".colorize(:red).mode(:underline).mode(:bold)} #{e.message})
+    puts %(\n\n❌ #{"Error(s):".colorize.red.bold}\n#{e.message})
     null_io.try &.close
     exit 2
   end
+
+  def self.run_root_package_install_lifecycle_scripts(package : Package, chdir : String, state : State, *, print_hooks = false) : Bool?
+    package.scripts.try do |scripts|
+      if scripts.has_self_install_lifecycle?
+        if print_hooks
+          state.reporter.output << state.reporter.header("⏳", "Hooks") + "\n"
+        end
+        output_io = Reporter::ReporterFormattedAppendPipe.new(state.reporter)
+        Package::LifecycleScripts::SELF_LIFECYCLE_SCRIPTS.each do |script|
+          scripts.run_script(script, chdir, state.config, output_io: output_io) { |command|
+            state.reporter.output << "\n   • #{package.name.colorize.bold} #{script.colorize.cyan} #{%(#{command}).colorize.dim}\n"
+          }
+        end
+        state.reporter.output << "\n"
+        return true
+      end
+    end
+  end
+
+  false
 end
