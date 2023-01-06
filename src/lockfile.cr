@@ -57,17 +57,14 @@ class Zap::Lockfile
   end
 
   def prune
-    # All dependencies from every root
-    all_dependencies = self.roots.values.reduce([] of String) do |acc, root|
-      acc +
-        (root.dependencies.try(&.keys) || [] of String) +
-        (root.dev_dependencies.try(&.keys) || [] of String) +
-        (root.optional_dependencies.try(&.keys) || [] of String)
-    end
-
     pinned_deps = Set(String).new
     self.roots.values.each do |root|
-      # Trim pinned dependencies when there are no roots that depend on them
+      # All dependencies from the root
+      all_dependencies =
+        (root.dependencies.try(&.keys) || [] of String) +
+          (root.dev_dependencies.try(&.keys) || [] of String) +
+          (root.optional_dependencies.try(&.keys) || [] of String)
+      # Trim pinned dependencies that are not referenced in the package json file
       root.pinned_dependencies?.try &.select! do |name, version|
         key = "#{name}@#{version}"
         unless keep = all_dependencies.includes?(name)

@@ -42,7 +42,7 @@ class Zap::Package
   getter cpu : Array(String)? = nil
   # See: https://github.com/npm/rfcs/blob/main/implemented/0026-workspaces.md
   @[YAML::Field(ignore: true)]
-  getter workspaces : Array(String)? = nil
+  getter workspaces : Array(String)? | {packages: Array(String)?, nohoist: Array(String)?} = nil
 
   #######################
   # Npm specific fields #

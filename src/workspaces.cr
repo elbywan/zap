@@ -4,12 +4,18 @@ require "./utils/git"
 module Zap::Workspaces
   record Workspace, package : Package, path : Path
 
-  def self.crawl(package : Package, config : Config) : Array(Workspace)
-    if (workspaces_field = package.workspaces).nil?
-      return [] of Workspace
-    end
+  class_getter no_hoist : Array(String)? = nil
 
-    ([] of Workspace).tap do |workspaces|
+  def self.crawl(package : Package, config : Config) : Array(Workspace)
+    workspaces = [] of Workspace
+    return workspaces if (workspaces_field = package.workspaces).nil?
+    if workspaces_field.is_a?(NamedTuple)
+      @@no_hoist = workspaces_field["nohoist"]
+      workspaces_field = workspaces_field["packages"]
+    end
+    return workspaces if workspaces_field.nil?
+
+    workspaces.tap do |workspaces|
       #################
       # Gitignore rules from: https://git-scm.com/docs/gitignore
       # Slower - this crawls the whole directory tree

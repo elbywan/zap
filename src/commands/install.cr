@@ -81,9 +81,30 @@ module Zap::Commands::Install
         end
         state.lockfile.prune
 
+        # Do not edit lockfile or package.json files in global mode or if the save flag is false
+        unless state.config.global || !state.install_config.save
+          # Write lockfile
+          state.lockfile.write
+
+          # Edit and write the package.json file if the flags have been set in the config
+          if state.install_config.new_packages.size > 0
+            package_json = JSON.parse(File.read(Path.new(project_path).join("package.json"))).as_h
+            if deps = main_package.dependencies
+              package_json["dependencies"] = JSON::Any.new(deps.transform_values { |v| JSON::Any.new(v) })
+            end
+            if dev_deps = main_package.dev_dependencies
+              package_json["devDependencies"] = JSON::Any.new(dev_deps.transform_values { |v| JSON::Any.new(v) })
+            end
+            if opt_deps = main_package.optional_dependencies
+              package_json["optionalDependencies"] = JSON::Any.new(opt_deps.transform_values { |v| JSON::Any.new(v) })
+            end
+            File.write(Path.new(project_path).join("package.json"), package_json.to_pretty_json)
+          end
+        end
+
         # Install dependencies to the appropriate node_modules folder
         state.reporter.report_installer_updates
-        installer = Installers::Npm::Installer.new(state)
+        installer = Installers::Npm::Installer.new(state, main_package)
         installer.install
         state.reporter.stop
 
@@ -119,27 +140,6 @@ module Zap::Commands::Install
 
           targets.each do |package, path|
             ran_once = run_root_package_install_lifecycle_scripts(package, path, state, print_hooks: !ran_once)
-          end
-        end
-
-        # Do not edit lockfile or package.json files in global mode or if the save flag is false
-        unless state.config.global || !state.install_config.save
-          # Write lockfile
-          state.lockfile.write
-
-          # Edit and write the package.json file if the flags have been set in the config
-          if state.install_config.new_packages.size > 0
-            package_json = JSON.parse(File.read(Path.new(project_path).join("package.json"))).as_h
-            if deps = main_package.dependencies
-              package_json["dependencies"] = JSON::Any.new(deps.transform_values { |v| JSON::Any.new(v) })
-            end
-            if dev_deps = main_package.dev_dependencies
-              package_json["devDependencies"] = JSON::Any.new(dev_deps.transform_values { |v| JSON::Any.new(v) })
-            end
-            if opt_deps = main_package.optional_dependencies
-              package_json["optionalDependencies"] = JSON::Any.new(opt_deps.transform_values { |v| JSON::Any.new(v) })
-            end
-            File.write(Path.new(project_path).join("package.json"), package_json.to_pretty_json)
           end
         end
       }

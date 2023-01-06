@@ -1,5 +1,13 @@
 module Zap::Installers::Npm::Helpers::Registry
-  def self.find_cache_item(dependency : Package, cache : Deque(CacheItem)) : CacheItem?
+  def self.hoist(dependency : Package, cache : Deque(CacheItem), ancestors : Array(Package)) : CacheItem?
+    if Workspaces.no_hoist
+      logical_path = "#{ancestors.map(&.name).join("/")}/#{dependency.name}"
+      do_not_hoist = Workspaces.no_hoist.try &.any? { |pattern|
+        ::File.match?(pattern, logical_path)
+      }
+      return cache.last if do_not_hoist
+    end
+
     cache_item : CacheItem? = nil
     cache.reverse_each { |item|
       if item.installed_packages_names.includes?(dependency.name)

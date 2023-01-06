@@ -3,11 +3,10 @@ require "./helpers"
 
 module Zap::Installers::Npm
   # A cache item is comprised of:
-  # - node_modules: the path to the node_modules folder
+  # - node_modules: the path to a node_modules folder
   # - installed_packages: the set of packages already installed in this folder
   # - installed_packages_names: the names of the packages for faster indexing
   # - is_root: whether this is a root node_modules folder
-  # alias CacheItem = {Path, Set(Package), Set(String), Bool}
   record CacheItem,
     node_modules : Path,
     installed_packages : Set(Package) = Set(Package).new,
@@ -23,7 +22,8 @@ module Zap::Installers::Npm
       # dependency_queue contains:
       # - item[0]: dependencies of the current level
       # - item[1]: a cache which contains the path & installed packages of parent folders
-      dependency_queue = Deque({Package, Deque(CacheItem)}).new
+      # - item[2]: a chain of parent dependencies ultimately leading to this dependency
+      dependency_queue = Deque({Package, Deque(CacheItem), Array(Package)}).new
 
       # initialize the queue with all the root dependencies
       root_cache = CacheItem.new(node_modules: node_modules, root: true)
@@ -35,9 +35,11 @@ module Zap::Installers::Npm
           initial_cache << CacheItem.new(node_modules: workspace.path / "node_modules", root: true)
         end
         root.pinned_dependencies?.try &.map { |name, version|
+          pkg = state.lockfile.packages["#{name}@#{version}"]
           dependency_queue << {
-            state.lockfile.packages["#{name}@#{version}"],
+            pkg,
             initial_cache,
+            workspace ? [workspace.package] : [main_package] of Package,
           }
         }
       end
@@ -45,9 +47,9 @@ module Zap::Installers::Npm
       # BFS loop
       while dependency_item = dependency_queue.shift?
         begin
-          dependency, cache = dependency_item
+          dependency, cache, ancestors = dependency_item
           # install a dependency and get the new cache to pass to the subdeps
-          subcache = install_dependency(dependency, cache: cache)
+          subcache = install_dependency(dependency, cache: cache, ancestors: ancestors)
           # no subcache = do not process the sub dependencies
           next unless subcache
           # shallow strategy means we only install direct deps at top-level
@@ -57,19 +59,20 @@ module Zap::Installers::Npm
             end
           end
           dependency.pinned_dependencies?.try &.each do |name, version|
-            dependency_queue << {state.lockfile.packages["#{name}@#{version}"], subcache}
+            dependency_queue << {state.lockfile.packages["#{name}@#{version}"], subcache, ancestors.dup.push(dependency)}
           end
         rescue e
           state.reporter.stop
           parent_path = cache.try &.last.node_modules
-          package_in_error = "#{dependency.name}@#{dependency.version}" if dependency
+          ancestors = ancestors ? ancestors.map { |a| a.name + "@" + a.version }.join(" > ") + " > " : ""
+          package_in_error = "#{ancestors}#{dependency.name}@#{dependency.version}" if dependency
           state.reporter.error(e, package_in_error.colorize.bold.to_s + " at " + parent_path.colorize.dim.to_s)
           exit 2
         end
       end
     end
 
-    def install_dependency(dependency : Package, *, cache : Deque(CacheItem)) : Deque(CacheItem)?
+    def install_dependency(dependency : Package, *, cache : Deque(CacheItem), ancestors : Array(Package)) : Deque(CacheItem)?
       case dependency.kind
       when .tarball_file?, .link?
         Helpers::File.install(dependency, installer: self, cache: cache, state: state)
@@ -78,7 +81,7 @@ module Zap::Installers::Npm
       when .git?
         Helpers::Git.install(dependency, installer: self, cache: cache, state: state)
       when .registry?
-        cache_item = Helpers::Registry.find_cache_item(dependency, cache: cache)
+        cache_item = Helpers::Registry.hoist(dependency, cache: cache, ancestors: ancestors)
         return unless cache_item
         Helpers::Registry.install(dependency, cache_item, installer: self, cache: cache, state: state)
       end
