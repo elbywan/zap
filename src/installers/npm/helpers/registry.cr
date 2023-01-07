@@ -1,4 +1,4 @@
-module Zap::Installers::Npm::Helpers::Registry
+module Zap::Installer::Npm::Helpers::Registry
   def self.hoist(dependency : Package, cache : Deque(CacheItem), ancestors : Array(Package)) : CacheItem?
     if Workspaces.no_hoist
       logical_path = "#{ancestors.map(&.name).join("/")}/#{dependency.name}"
@@ -19,7 +19,7 @@ module Zap::Installers::Npm::Helpers::Registry
     cache_item
   end
 
-  def self.install(dependency : Package, cache_item : CacheItem, *, installer : Installers::Base, cache : Deque(CacheItem), state : Commands::Install::State) : Deque(CacheItem)?
+  def self.install(dependency : Package, cache_item : CacheItem, *, installer : Zap::Installer::Base, cache : Deque(CacheItem), state : Commands::Install::State) : Deque(CacheItem)?
     installed = begin
       Backend.install(dependency: dependency, target: cache_item.node_modules, store: state.store, backend: state.install_config.file_backend) {
         state.reporter.on_installing_package

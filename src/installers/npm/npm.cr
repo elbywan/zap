@@ -1,7 +1,7 @@
 require "../backends/*"
 require "./helpers"
 
-module Zap::Installers::Npm
+module Zap::Installer::Npm
   # A cache item is comprised of:
   # - node_modules: the path to a node_modules folder
   # - installed_packages: the set of packages already installed in this folder
@@ -89,6 +89,12 @@ module Zap::Installers::Npm
 
     # Actions to perform after the dependency has been freshly installed.
     def on_install(dependency : Package, install_folder : Path, *, state : Commands::Install::State)
+      # Store package metadata
+      unless File.symlink?(install_folder)
+        File.open(install_folder / METADATA_FILE_NAME, "w") do |f|
+          f.print dependency.key
+        end
+      end
       # Copy binary files if they are declared in the package.json
       if bin = dependency.bin
         is_direct_dependency = dependency.is_direct_dependency?

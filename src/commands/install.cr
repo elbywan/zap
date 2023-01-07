@@ -104,7 +104,7 @@ module Zap::Commands::Install
 
         # Install dependencies to the appropriate node_modules folder
         state.reporter.report_installer_updates
-        installer = Installers::Npm::Installer.new(state, main_package)
+        installer = Installer::Npm::Installer.new(state, main_package)
         installer.install
         state.reporter.stop
 

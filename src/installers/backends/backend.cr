@@ -114,15 +114,7 @@ module Zap::Backend
   protected def self.prepare(dependency : Package, node_modules : Path | String, *, store : Store, mkdir_parent = false) : {Path, Path, Bool}
     src_path = store.package_path(dependency.name, dependency.version)
     dest_path = node_modules / dependency.name
-    if exists = Dir.exists?(dest_path)
-      pkg_json_path = Utils::File.join(dest_path, "package.json")
-      existing_version = Package.get_pkg_version_from_json(pkg_json_path)
-      if existing_version != dependency.version
-        FileUtils.rm_rf(dest_path)
-        exists = false
-      end
-    end
-    exists = Dir.exists?(dest_path)
+    exists = Installer.package_already_installed?(dependency, dest_path)
     Dir.mkdir_p(mkdir_parent ? dest_path.dirname : dest_path) unless exists
     {src_path, dest_path, exists}
   end

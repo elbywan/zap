@@ -1,4 +1,4 @@
-module Zap::Installers::Npm::Helpers
+module Zap::Installer::Npm::Helpers
   def self.prepare_cache(dependency : Package, target_path : Path, cache : Deque(CacheItem)) : Deque(CacheItem)
     cache.last.installed_packages << dependency
     cache.last.installed_packages_names << dependency.name
