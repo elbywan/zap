@@ -14,6 +14,7 @@ require "./installers/npm/*"
 require "./reporters/*"
 require "./cli"
 require "./commands/**"
+require "./constants"
 
 module Zap
   VERSION = {{ `shards version`.stringify }}.chomp
@@ -22,7 +23,7 @@ module Zap
     config, command_config = CLI.new.parse
   rescue e
     puts e.message
-    exit 1
+    exit ErrorCodes::EARLY_EXIT.to_i32
   end
 
   Log = ::Log.for("zap")

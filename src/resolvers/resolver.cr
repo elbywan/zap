@@ -151,7 +151,8 @@ module Zap::Resolver
         state.reporter.stop
         package_in_error = "#{name}@#{version}"
         state.reporter.error(e, package_in_error.colorize.bold.to_s)
-        raise e
+        # raise e
+        exit ErrorCodes::RESOLVER_ERROR.to_i32
       else
         # Silently ignore optional dependencies
         metadata.try { |pkg| package.pinned_dependencies?.try &.delete(pkg.name) }

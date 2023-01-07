@@ -8,17 +8,28 @@ struct Zap::Store
     Path.new(@global_store_path, "#{name}@#{version}")
   end
 
-  def package_exists?(name : String, version : String)
-    Dir.exists? package_path(name, version)
+  def package_metadata_path(name : String, version : String)
+    Path.new(@global_store_path, "#{name}@#{version}.metadata")
+  end
+
+  def package_is_cached?(name : String, version : String)
+    File.exists?(package_metadata_path(name, version)) &&
+      Dir.exists?(package_path(name, version))
   end
 
   def init_package(name : String, version : String)
     path = package_path(name, version)
     FileUtils.rm_rf(path) if Dir.exists?(path)
+    File.delete?(package_metadata_path(name, version))
     Dir.mkdir_p(path)
   end
 
+  def seal_package(name : String, version : String)
+    File.touch(package_metadata_path(name, version))
+  end
+
   def remove_package(name : String, version : String)
+    File.delete?(package_metadata_path(name, version))
     FileUtils.rm_rf(package_path(name, version))
   end
 
@@ -31,6 +42,7 @@ struct Zap::Store
         store_package_file(name, version, file_path, entry.io, permissions: entry.mode)
       end
     end
+    seal_package(name, version)
   end
 
   def store_package_file(package_name : String, package_version : String, relative_file_path : String | Path, file_io : IO, permissions : Int64 = DEFAULT_CREATE_PERMISSIONS)

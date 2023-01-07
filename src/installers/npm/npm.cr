@@ -64,10 +64,10 @@ module Zap::Installers::Npm
         rescue e
           state.reporter.stop
           parent_path = cache.try &.last.node_modules
-          ancestors = ancestors ? ancestors.map { |a| a.name + "@" + a.version }.join(" > ") + " > " : ""
-          package_in_error = "#{ancestors}#{dependency.name}@#{dependency.version}" if dependency
-          state.reporter.error(e, package_in_error.colorize.bold.to_s + " at " + parent_path.colorize.dim.to_s)
-          exit 2
+          ancestors = ancestors ? ancestors.map { |a| a.name + "@" + a.version }.join("~>") : ""
+          package_in_error = dependency ? "#{dependency.name}@#{dependency.version}" : ""
+          state.reporter.error(e, "#{package_in_error.colorize.bold} (#{ancestors}) at #{parent_path.colorize.dim}")
+          exit ErrorCodes::INSTALLER_ERROR.to_i32
         end
       end
     end

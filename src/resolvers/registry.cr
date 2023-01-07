@@ -36,7 +36,7 @@ module Zap::Resolver
 
     def store(metadata : Package, &on_downloading) : Bool
       raise "Resolver::Registry has not been initialized" unless client_pool = @@client_pool
-      return false if state.store.package_exists?(metadata.name, metadata.version)
+      return false if state.store.package_is_cached?(metadata.name, metadata.version)
 
       yield
 

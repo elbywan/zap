@@ -150,7 +150,7 @@ module Zap::Commands::Install
   rescue e
     puts %(\n\n❌ #{"Error(s):".colorize.red.bold}\n#{e.message})
     null_io.try &.close
-    exit 2
+    exit ErrorCodes::INSTALL_COMMAND_FAILED.to_i32
   end
 
   def self.run_root_package_install_lifecycle_scripts(package : Package, chdir : String, state : State, *, print_hooks = false) : Bool?
