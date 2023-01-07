@@ -57,10 +57,25 @@ class Zap::Package
   # Lockfile specific fields #
   ############################
 
+  record Alias, name : String, version : String do
+    include JSON::Serializable
+    include YAML::Serializable
+    getter name : String
+    getter version : String
+
+    def to_s(io)
+      io << "npm:#{name}@#{version}"
+    end
+
+    def key
+      "#{name}@#{version}"
+    end
+  end
+
   @[JSON::Field(ignore: true)]
-  safe_getter pinned_dependencies : SafeHash(String, String) { SafeHash(String, String).new }
+  safe_getter pinned_dependencies : SafeHash(String, String | Alias) { SafeHash(String, String | Alias).new }
   getter? pinned_dependencies
-  setter pinned_dependencies : SafeHash(String, String)?
+  setter pinned_dependencies : SafeHash(String, String | Alias)?
 
   @[JSON::Field(ignore: true)]
   safe_getter dependents : SafeSet(String) { SafeSet(String).new }

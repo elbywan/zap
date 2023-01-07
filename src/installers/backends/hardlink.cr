@@ -1,7 +1,7 @@
 module Zap::Backend
   module Hardlink
-    def self.install(dependency : Package, target : Path, *, store : Store, &on_installing) : Bool
-      src_path, dest_path, exists = Backend.prepare(dependency, target, store: store)
+    def self.install(dependency : Package, target : Path, *, store : Store, aliased_name : String? = nil, &on_installing) : Bool
+      src_path, dest_path, exists = Backend.prepare(dependency, target, store: store, aliased_name: aliased_name)
       return false if exists
       yield
       Pipeline.wrap do |pipeline|

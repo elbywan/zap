@@ -1,19 +1,20 @@
 module Zap::Installer::Npm::Helpers::File
-  def self.install(dependency : Package, *, installer : Zap::Installer::Base, cache : Deque(CacheItem), state : Commands::Install::State) : Deque(CacheItem)?
+  def self.install(dependency : Package, *, installer : Zap::Installer::Base, cache : Deque(CacheItem), state : Commands::Install::State, aliased_name : String?) : Deque(CacheItem)?
     case dist = dependency.dist
     when Package::LinkDist
-      install_link(dependency, dist, installer: installer, cache: cache, state: state)
+      install_link(dependency, dist, installer: installer, cache: cache, state: state, aliased_name: aliased_name)
     when Package::TarballDist
-      install_tarball(dependency, dist, installer: installer, cache: cache, state: state)
+      install_tarball(dependency, dist, installer: installer, cache: cache, state: state, aliased_name: aliased_name)
     else
       raise "Unknown dist type: #{dist}"
     end
   end
 
-  def self.install_link(dependency : Package, dist : Package::LinkDist, *, installer : Zap::Installer::Base, cache : Deque(CacheItem), state : Commands::Install::State) : Deque(CacheItem)?
+  def self.install_link(dependency : Package, dist : Package::LinkDist, *, installer : Zap::Installer::Base, cache : Deque(CacheItem), state : Commands::Install::State, aliased_name : String?) : Deque(CacheItem)?
     relative_path = dist.link
     link_source = Path.new(relative_path).expand(state.config.prefix)
-    target_path = cache.last.node_modules / dependency.name
+    install_folder = aliased_name || dependency.name
+    target_path = cache.last.node_modules / install_folder
     exists = ::File.symlink?(target_path) && ::File.real_path(target_path) == link_source.to_s
     unless exists
       state.reporter.on_installing_package
@@ -23,12 +24,13 @@ module Zap::Installer::Npm::Helpers::File
       installer.on_install(dependency, target_path, state: state)
     end
     cache.last.installed_packages << dependency
-    cache.last.installed_packages_names << dependency.name
+    cache.last.installed_packages_names << (aliased_name || dependency.name)
     nil
   end
 
-  def self.install_tarball(dependency : Package, dist : Package::TarballDist, *, installer : Zap::Installer::Base, cache : Deque(CacheItem), state : Commands::Install::State) : Deque(CacheItem)?
-    target_path = cache.last.node_modules / dependency.name
+  def self.install_tarball(dependency : Package, dist : Package::TarballDist, *, installer : Zap::Installer::Base, cache : Deque(CacheItem), state : Commands::Install::State, aliased_name : String?) : Deque(CacheItem)?
+    install_folder = aliased_name || dependency.name
+    target_path = cache.last.node_modules / install_folder
     exists = Zap::Installer.package_already_installed?(dependency, target_path)
     unless exists
       Dir.mkdir_p(target_path.dirname)
@@ -59,6 +61,6 @@ module Zap::Installer::Npm::Helpers::File
       FileUtils.cp_r(extracted_folder, target_path)
       installer.on_install(dependency, target_path, state: state)
     end
-    Helpers.prepare_cache(dependency, target_path, cache)
+    Helpers.prepare_cache(dependency, target_path, cache, aliased_name)
   end
 end

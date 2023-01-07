@@ -5,18 +5,20 @@ abstract struct Zap::Resolver::Base
   getter package_name : String
   getter version : String | Utils::Semver::SemverSets?
   getter state : Commands::Install::State
+  getter aliased_name : String?
 
-  def initialize(@state, @package_name, @version = "latest")
+  def initialize(@state, @package_name, @version = "latest", @aliased_name = nil)
   end
 
   def on_resolve(pkg : Package, parent_pkg : Package | Lockfile::Root, locked_version : String, *, dependent : Package?)
     pkg.dependents << (dependent || pkg).key
+    aliased_name = @aliased_name
     if parent_pkg.is_a?(Lockfile::Root)
       # For direct dependencies: check if the package is freshly added since the last install and report accordingly
-      if version = parent_pkg.pinned_dependencies[pkg.name]?
+      if version = parent_pkg.pinned_dependencies[aliased_name || pkg.name]?
         if locked_version != version
-          state.reporter.on_package_added(pkg.key)
-          state.reporter.on_package_removed(pkg.name + "@" + version)
+          state.reporter.on_package_added("#{aliased_name.try(&.+("@npm:"))}#{pkg.key}")
+          state.reporter.on_package_removed("#{aliased_name || pkg.name}@#{version}")
         end
       else
         state.reporter.on_package_added(pkg.key)
@@ -28,12 +30,21 @@ abstract struct Zap::Resolver::Base
     # Infer if the package has a prepare script - needed to know when to build git dependencies
     pkg.has_prepare_script ||= pkg.scripts.try(&.has_prepare_script?)
     # Pin the dependency to the locked version
-    parent_pkg.pinned_dependencies[pkg.name] = locked_version
+    if aliased_name
+      parent_pkg.pinned_dependencies[aliased_name] = Package::Alias.new(name: pkg.name, version: locked_version)
+    else
+      parent_pkg.pinned_dependencies[pkg.name] = locked_version
+    end
   end
 
-  def lockfile_cache(pkg : Package | Lockfile::Root, name : String, *, dependent : Package? = nil)
-    if pinned_version = pkg.pinned_dependencies?.try &.[name]?
-      cached_pkg = state.lockfile.packages[name + "@" + pinned_version]?
+  def get_lockfile_cache(pkg : Package | Lockfile::Root, name : String, *, dependent : Package? = nil)
+    if pinned_dependency = pkg.pinned_dependencies?.try &.[name]?
+      if pinned_dependency.is_a?(Package::Alias)
+        packages_ref = pinned_dependency.key
+      else
+        packages_ref = "#{name}@#{pinned_dependency}"
+      end
+      cached_pkg = state.lockfile.packages[packages_ref]?
       if cached_pkg
         cached_pkg.dependents << (dependent || cached_pkg).key
         cached_pkg
@@ -48,24 +59,40 @@ end
 
 module Zap::Resolver
   def self.make(state : Commands::Install::State, name : String, version_field : String = "latest") : Base
-    # Check if the package is a known workspace
+    # Check if the package is a workspace
     if workspace = state.workspaces.find { |w| w.package.name == name && Utils::Semver.parse(version_field).try &.valid?(w.package.version) }
+      # Will link the workspace in the parent node_modules folder
       return File.new(state, name, "file:#{workspace.path.relative_to?(state.config.prefix)}")
+    end
+
+    aliased_name = nil
+    if version_field.starts_with?("npm:")
+      stripped_version = version_field[4..]
+      stripped_version.split("@").tap do |parts|
+        aliased_name = name
+        if parts[0] == "@"
+          name = parts[0] + parts[1]
+          version_field = parts[2]? || "*"
+        else
+          name = parts[0]
+          version_field = parts[1]? || "*"
+        end
+      end
     end
 
     case version_field
     when .starts_with?("git://"), .starts_with?("git+ssh://"), .starts_with?("git+http://"), .starts_with?("git+https://"), .starts_with?("git+file://")
-      Git.new(state, name, version_field)
+      Git.new(state, name, version_field, aliased_name)
     when .starts_with?("http://"), .starts_with?("https://")
-      TarballUrl.new(state, name, version_field)
+      TarballUrl.new(state, name, version_field, aliased_name)
     when .starts_with?("file:")
-      File.new(state, name, version_field)
+      File.new(state, name, version_field, aliased_name)
     when .matches?(/^[^@].*\/.*$/)
-      Git.new(state, name, "git+https://github.com/#{version_field}")
+      Git.new(state, name, "git+https://github.com/#{version_field}", aliased_name)
     else
       version = Utils::Semver.parse(version_field)
       raise "Invalid version: #{version_field}" unless version
-      Registry.new(state, name, Utils::Semver.parse(version_field))
+      Registry.new(state, name, Utils::Semver.parse(version_field), aliased_name)
     end
   end
 
@@ -101,7 +128,12 @@ module Zap::Resolver
       end
     else
       # Otherwise we use the pinned dependencies
-      package.pinned_dependencies?.try &.each do |name, version|
+      package.pinned_dependencies?.try &.each do |name, version_or_alias|
+        if version_or_alias.is_a?(Package::Alias)
+          version = version_or_alias.to_s
+        else
+          version = version_or_alias
+        end
         self.resolve_dependency(package, name, version, state: state, dependent: dependent, resolved_packages: resolved_packages)
       end
     end
@@ -117,7 +149,7 @@ module Zap::Resolver
       # Create the appropriate resolver depending on the version (git, tarball, registry, local folder…)
       resolver = Resolver.make(state, name, version)
       # Attempt to use the package data from the lockfile
-      metadata = resolver.lockfile_cache(is_direct_dependency ? state.lockfile.roots[package.name] : package, name, dependent: dependent)
+      metadata = resolver.get_lockfile_cache(is_direct_dependency ? state.lockfile.roots[package.name] : package, name, dependent: dependent)
       # Check if the data from the lockfile is still valid (direct deps can be modified in the package.json file or through the cli)
       if metadata && is_direct_dependency
         metadata = nil unless resolver.is_lockfile_cache_valid?(metadata)

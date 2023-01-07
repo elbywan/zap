@@ -2,15 +2,21 @@ module Zap::Resolver
   @git_url : Utils::GitUrl
 
   struct Git < Base
-    def initialize(@state, @package_name, @version = "latest")
+    def initialize(@state, @package_name, @version = "latest", @aliased_name = nil)
       super
       @git_url = Utils::GitUrl.new(@version.to_s, @state.reporter)
     end
 
     def resolve(parent_pkg : Package | Lockfile::Root, *, dependent : Package? = nil) : Package
       pkg = nil
-      if !self.package_name.empty? && (lockfile_version = parent_pkg.pinned_dependencies[self.package_name]?)
-        pkg = state.lockfile.packages["#{self.package_name}@#{lockfile_version}"]?
+      lockfile_ref = aliased_name || self.package_name
+      if !lockfile_ref.empty? && (lockfile_version_or_alias = parent_pkg.pinned_dependencies[lockfile_ref]?)
+        if lockfile_version_or_alias.is_a?(String)
+          packages_ref = "#{self.package_name}@#{lockfile_version_or_alias}"
+        else
+          packages_ref = lockfile_version_or_alias.key
+        end
+        pkg = state.lockfile.packages[packages_ref]?
         # Validate the lockfile version
         if pkg
           pkg = nil unless pkg.dist.as?(Package::GitDist).try(&.version.== version.to_s)
@@ -81,10 +87,13 @@ module Zap::Resolver
         if fresh_clone
           begin
             @state.reporter.on_packing_package
-            prepare_package(path) if pkg.scripts.try &.prepare
+            if pkg.scripts.try &.has_install_from_git_related_scripts?
+              prepare_package(path)
+              pkg.scripts.try &.run_script(:build, path, state.config)
+            end
+            pkg.scripts.try &.run_script(:prepack, path, state.config)
             pack_package(path, @state.store.package_path(@package_name, cache_key + ".tgz"))
             FileUtils.rm_rf(path)
-          ensure
             @state.reporter.on_package_packed
           end
         end

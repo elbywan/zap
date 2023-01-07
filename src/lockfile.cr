@@ -17,7 +17,9 @@ class Zap::Lockfile
     property dev_dependencies : SafeHash(String, String)? = nil
     property optional_dependencies : SafeHash(String, String)? = nil
     property peer_dependencies : SafeHash(String, String)? = nil
-    safe_property pinned_dependencies : SafeHash(String, String) { SafeHash(String, String).new }
+    safe_property pinned_dependencies : SafeHash(String, String | Package::Alias) {
+      SafeHash(String, String | Package::Alias).new
+    }
     getter? pinned_dependencies
 
     def initialize
@@ -66,7 +68,7 @@ class Zap::Lockfile
           (root.optional_dependencies.try(&.keys) || [] of String)
       # Trim pinned dependencies that are not referenced in the package json file
       root.pinned_dependencies?.try &.select! do |name, version|
-        key = "#{name}@#{version}"
+        key = version.is_a?(String) ? "#{name}@#{version}" : version.key
         unless keep = all_dependencies.includes?(name)
           reporter.on_package_removed(key)
         else

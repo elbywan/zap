@@ -5,6 +5,8 @@ class Zap::Package
 
     Utils::Macros.define_field_accessors
 
+    getter build : String?
+
     getter preinstall : String?
     property install : String?
     getter postinstall : String?
@@ -39,6 +41,16 @@ class Zap::Package
 
     def has_prepare_script?
       !prepare.nil? || nil
+    end
+
+    # See https://docs.npmjs.com/cli/v8/configuring-npm/package-json#git-urls-as-dependencies
+    def has_install_from_git_related_scripts?
+      !!build ||
+        !!prepare ||
+        !!prepack ||
+        !!preinstall ||
+        !!install ||
+        !!postinstall
     end
 
     SELF_LIFECYCLE_SCRIPTS = %i(preinstall install postinstall prepublish preprepare prepare postprepare)

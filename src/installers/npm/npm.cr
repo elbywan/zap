@@ -2,6 +2,16 @@ require "../backends/*"
 require "./helpers"
 
 module Zap::Installer::Npm
+  record DependencyItem,
+    # the dependency to install
+    dependency : Package,
+    # a cache of all the possible install locations
+    cache : Deque(CacheItem),
+    # the list of ancestors of this dependency
+    ancestors : Array(Package),
+    # eventually the name alias
+    alias : String?
+
   # A cache item is comprised of:
   # - node_modules: the path to a node_modules folder
   # - installed_packages: the set of packages already installed in this folder
@@ -19,11 +29,7 @@ module Zap::Installer::Npm
       node_modules = Path.new(state.config.node_modules)
 
       # process each dependency breadth-first
-      # dependency_queue contains:
-      # - item[0]: dependencies of the current level
-      # - item[1]: a cache which contains the path & installed packages of parent folders
-      # - item[2]: a chain of parent dependencies ultimately leading to this dependency
-      dependency_queue = Deque({Package, Deque(CacheItem), Array(Package)}).new
+      dependency_queue = Deque(DependencyItem).new
 
       # initialize the queue with all the root dependencies
       root_cache = CacheItem.new(node_modules: node_modules, root: true)
@@ -34,22 +40,23 @@ module Zap::Installer::Npm
         if workspace
           initial_cache << CacheItem.new(node_modules: workspace.path / "node_modules", root: true)
         end
-        root.pinned_dependencies?.try &.map { |name, version|
-          pkg = state.lockfile.packages["#{name}@#{version}"]
-          dependency_queue << {
-            pkg,
-            initial_cache,
-            workspace ? [workspace.package] : [main_package] of Package,
-          }
+        root.pinned_dependencies?.try &.map { |name, version_or_alias|
+          pkg = state.lockfile.packages[version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key]
+          dependency_queue << DependencyItem.new(
+            dependency: pkg,
+            cache: initial_cache,
+            ancestors: workspace ? [workspace.package] : [main_package] of Package,
+            alias: version_or_alias.is_a?(Package::Alias) ? name : nil,
+          )
         }
       end
 
       # BFS loop
       while dependency_item = dependency_queue.shift?
         begin
-          dependency, cache, ancestors = dependency_item
+          dependency = dependency_item.dependency
           # install a dependency and get the new cache to pass to the subdeps
-          subcache = install_dependency(dependency, cache: cache, ancestors: ancestors)
+          subcache = install_dependency(dependency, cache: dependency_item.cache, ancestors: dependency_item.ancestors, aliased_name: dependency_item.alias)
           # no subcache = do not process the sub dependencies
           next unless subcache
           # shallow strategy means we only install direct deps at top-level
@@ -58,32 +65,38 @@ module Zap::Installer::Npm
               subcache.shift
             end
           end
-          dependency.pinned_dependencies?.try &.each do |name, version|
-            dependency_queue << {state.lockfile.packages["#{name}@#{version}"], subcache, ancestors.dup.push(dependency)}
+          dependency.pinned_dependencies?.try &.each do |name, version_or_alias|
+            pkg = state.lockfile.packages[version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key]
+            dependency_queue << DependencyItem.new(
+              dependency: pkg,
+              cache: subcache,
+              ancestors: dependency_item.ancestors.dup.push(dependency),
+              alias: version_or_alias.is_a?(Package::Alias) ? name : nil,
+            )
           end
         rescue e
           state.reporter.stop
-          parent_path = cache.try &.last.node_modules
-          ancestors = ancestors ? ancestors.map { |a| a.name + "@" + a.version }.join("~>") : ""
-          package_in_error = dependency ? "#{dependency.name}@#{dependency.version}" : ""
+          parent_path = dependency_item.cache.last.node_modules
+          ancestors = dependency_item.ancestors ? dependency_item.ancestors.map { |a| a.name + "@" + a.version }.join("~>") : ""
+          package_in_error = dependency ? "#{dependency_item.alias.try &.+(":")}#{dependency.name}@#{dependency.version}" : ""
           state.reporter.error(e, "#{package_in_error.colorize.bold} (#{ancestors}) at #{parent_path.colorize.dim}")
           exit ErrorCodes::INSTALLER_ERROR.to_i32
         end
       end
     end
 
-    def install_dependency(dependency : Package, *, cache : Deque(CacheItem), ancestors : Array(Package)) : Deque(CacheItem)?
+    def install_dependency(dependency : Package, *, cache : Deque(CacheItem), ancestors : Array(Package), aliased_name : String?) : Deque(CacheItem)?
       case dependency.kind
       when .tarball_file?, .link?
-        Helpers::File.install(dependency, installer: self, cache: cache, state: state)
+        Helpers::File.install(dependency, installer: self, cache: cache, state: state, aliased_name: aliased_name)
       when .tarball_url?
-        Helpers::Tarball.install(dependency, installer: self, cache: cache, state: state)
+        Helpers::Tarball.install(dependency, installer: self, cache: cache, state: state, aliased_name: aliased_name)
       when .git?
-        Helpers::Git.install(dependency, installer: self, cache: cache, state: state)
+        Helpers::Git.install(dependency, installer: self, cache: cache, state: state, aliased_name: aliased_name)
       when .registry?
-        cache_item = Helpers::Registry.hoist(dependency, cache: cache, ancestors: ancestors)
+        cache_item = Helpers::Registry.hoist(dependency, cache: cache, ancestors: ancestors, aliased_name: aliased_name)
         return unless cache_item
-        Helpers::Registry.install(dependency, cache_item, installer: self, cache: cache, state: state)
+        Helpers::Registry.install(dependency, cache_item, installer: self, cache: cache, state: state, aliased_name: aliased_name)
       end
     end
 

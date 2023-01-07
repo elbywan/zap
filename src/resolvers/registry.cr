@@ -97,9 +97,10 @@ module Zap::Resolver
 
     def is_lockfile_cache_valid?(cached_package : Package) : Bool
       range_set = self.version
-      cached_package.kind.registry? &&
+      cached_package.kind.registry? && (
         (range_set.is_a?(String) && range_set == cached_package.version) ||
-        (range_set.is_a?(Utils::Semver::SemverSets) && range_set.valid?(cached_package.version))
+          (range_set.is_a?(Utils::Semver::SemverSets) && range_set.valid?(cached_package.version))
+      )
     end
 
     # # PRIVATE ##########################
