@@ -8,23 +8,9 @@ module Zap::Resolver
     end
 
     def resolve(parent_pkg : Package | Lockfile::Root, *, dependent : Package? = nil) : Package
-      pkg = nil
-      lockfile_ref = aliased_name || self.package_name
-      if !lockfile_ref.empty? && (lockfile_version_or_alias = parent_pkg.pinned_dependencies[lockfile_ref]?)
-        if lockfile_version_or_alias.is_a?(String)
-          packages_ref = "#{self.package_name}@#{lockfile_version_or_alias}"
-        else
-          packages_ref = lockfile_version_or_alias.key
-        end
-        pkg = state.lockfile.packages[packages_ref]?
-        # Validate the lockfile version
-        if pkg
-          pkg = nil unless pkg.dist.as?(Package::GitDist).try(&.version.== version.to_s)
-        end
+      fetch_metadata.tap do |pkg|
+        on_resolve(pkg, parent_pkg, pkg.dist.as(Package::GitDist).commit_hash, dependent: dependent)
       end
-      pkg ||= fetch_metadata
-      on_resolve(pkg, parent_pkg, pkg.dist.as(Package::GitDist).commit_hash, dependent: dependent)
-      pkg
     end
 
     def store(metadata : Package, &on_downloading) : Bool
@@ -59,7 +45,7 @@ module Zap::Resolver
     end
 
     def is_lockfile_cache_valid?(cached_package : Package) : Bool
-      false
+      !!cached_package.dist.as?(Package::GitDist).try(&.version.== version.to_s)
     end
 
     private def fetch_metadata
