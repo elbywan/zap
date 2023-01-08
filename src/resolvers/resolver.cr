@@ -59,10 +59,23 @@ end
 
 module Zap::Resolver
   def self.make(state : Commands::Install::State, name : String, version_field : String = "latest") : Base
+    # Partial implementation of the pnpm workspace protocol
+    # Does not support aliases for the moment
+    # https://pnpm.io/workspaces#workspace-protocol-workspace
+    if (workspace_protocol = version_field.starts_with?("workspace:"))
+      version_field = version_field[10..]
+    end
+
     # Check if the package is a workspace
-    if workspace = state.workspaces.find { |w| w.package.name == name && Utils::Semver.parse(version_field).try &.valid?(w.package.version) }
-      # Will link the workspace in the parent node_modules folder
-      return File.new(state, name, "file:#{workspace.path.relative_to?(state.config.prefix)}")
+    if workspace = state.workspaces.find { |w| w.package.name == name }
+      if Utils::Semver.parse(version_field).try &.valid?(workspace.package.version)
+        # Will link the workspace in the parent node_modules folder
+        return File.new(state, name, "file:#{workspace.path.relative_to?(state.config.prefix)}")
+      elsif workspace_protocol
+        raise "Workspace #{name} does not match version #{version_field}"
+      end
+    elsif workspace_protocol
+      raise "Workspace #{name} not found"
     end
 
     aliased_name = nil
