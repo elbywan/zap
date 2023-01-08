@@ -135,8 +135,9 @@ class Zap::Package
   # Constructors #
   ################
 
-  def self.init(path : Path, *, name_if_nil : String? = nil) : self
-    File.open(path / "package.json") do |io|
+  def self.init(path : Path, *, append_filename : Bool = true, name_if_nil : String? = nil) : self
+    full_path = append_filename ? path / "package.json" : path
+    File.open(full_path) do |io|
       self.from_json(io).tap { |instance|
         if instance.name?.nil? && name_if_nil
           instance.name = name_if_nil
@@ -144,12 +145,13 @@ class Zap::Package
       }
     end
   rescue
-    raise "package.json not found at #{path}"
+    raise "package.json not found at #{full_path}"
   end
 
-  def self.init?(path : Path) : self | Nil
-    return nil unless File.exists?(path / "package.json")
-    File.open(path / "package.json") do |io|
+  def self.init?(path : Path, *, append_filename : Bool = true) : self | Nil
+    full_path = append_filename ? path / "package.json" : path
+    return nil unless File.exists?(full_path)
+    File.open(full_path) do |io|
       return self.from_json(io)
     end
   rescue

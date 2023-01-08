@@ -164,7 +164,7 @@ module Zap::Resolver
       # Determine whether the dependencies should be resolved, most of the time they should
       should_resolve_dependencies = metadata.should_resolve_dependencies?(state)
       # Store the package data in the lockfile
-      state.lockfile.packages[metadata.key] ||= metadata
+      state.lockfile.packages[metadata.key] = metadata
       if should_resolve_dependencies
         # Repeat the process for transitive dependencies
         self.resolve_dependencies(metadata, state: state, dependent: dependent || metadata, resolved_packages: resolved_packages)

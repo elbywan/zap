@@ -149,6 +149,7 @@ module Zap::Commands::Install
     null_io.try &.close
   rescue e
     puts %(\n\n❌ #{"Error(s):".colorize.red.bold}\n#{e.message})
+    Zap::Log.debug { e.backtrace.map { |line| "\t#{line}" }.join("\n").colorize.red }
     null_io.try &.close
     exit ErrorCodes::INSTALL_COMMAND_FAILED.to_i32
   end

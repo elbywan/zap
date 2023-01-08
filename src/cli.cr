@@ -16,13 +16,13 @@ class Zap::CLI
       parser.on("store", "Global store commands") do
         @command_config = nil
         parser.on("clear", "Clears the stored packages") do
-          puts "💣 Nuking store at: [#{@config.global_store_path}] ..."
+          puts "💣 Nuking store at [#{@config.global_store_path}] ..."
           FileUtils.rm_rf(@config.global_store_path)
           puts "💥 Done!"
         end
         parser.on("clear-http-cache", "Clears the cached registry responses") do
           http_cache_path = Path.new(@config.global_store_path) / Fetch::CACHE_DIR
-          puts "💣 Nuking http cache at: [#{http_cache_path}] ..."
+          puts "💣 Nuking http cache at [#{http_cache_path}] ..."
           FileUtils.rm_rf(http_cache_path)
           puts "💥 Done!"
         end

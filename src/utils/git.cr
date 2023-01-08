@@ -56,19 +56,14 @@ module Zap::Utils
         commitish = get_tag_for_semver!(semver)
       end
 
-      if commitish
-        # Get the commit hash
-        dest ||= yield (get_ref_commit?(commitish) || commitish)
-        # Folder already exists, so we can skip cloning
-        return if dest.nil?
-        self.class.run("git clone --quiet --filter=tree:0 #{@base_url} #{dest}", @reporter)
-        self.class.run("git checkout --quiet #{commitish}", @reporter, chdir: dest)
-      else
-        dest ||= yield (get_default_branch? || "main")
-        # Folder already exists, so we can skip cloning
-        return if dest.nil?
-        self.class.run("git clone --quiet #{@base_url} #{dest}", @reporter)
-      end
+      commitish ||= get_default_branch? || "main"
+
+      # Get the commit hash
+      dest ||= yield (get_ref_commit?(commitish) || commitish)
+      # Folder already exists, so we can skip cloning
+      return if dest.nil?
+      self.class.run("git clone --quiet --filter=tree:0 #{@base_url} #{dest}", @reporter)
+      self.class.run("git checkout --quiet #{commitish}", @reporter, chdir: dest)
     end
 
     def clone(dest : (String | Path)? = nil) : Nil
@@ -115,6 +110,7 @@ module Zap::Utils
       else
         output = Process::Redirect::Inherit
       end
+      Zap::Log.debug { "Spawning: #{command_and_args} (#{extra})" }
       status = Process.run(command_and_args[0], **extra, args: command_and_args[1..]? || nil, output: output, error: output)
       unless status.success?
         Fiber.yield
@@ -126,6 +122,7 @@ module Zap::Utils
       command_and_args = command.split(/\s+/)
       stderr = IO::Memory.new
       stdout = IO::Memory.new
+      Zap::Log.debug { "Spawning: #{command_and_args} (#{extra})" }
       status = Process.run(command_and_args[0], **extra, args: command_and_args[1..]? || nil, output: stdout, error: stderr)
       unless status.success?
         raise stderr.to_s
