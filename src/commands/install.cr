@@ -1,4 +1,5 @@
 require "../resolvers/resolver"
+require "../installers/**"
 require "../workspaces"
 
 module Zap::Commands::Install
@@ -27,7 +28,7 @@ module Zap::Commands::Install
         puts <<-TERM
         ⚡ #{"Zap".colorize.bold.underline} #{"(v#{VERSION})".colorize.dim}
            #{"project:".colorize.blue} #{project_path} • #{"store:".colorize.blue} #{global_store_path} • #{"workers:".colorize.blue} #{Crystal::Scheduler.nb_of_workers}
-           #{"lockfile:".colorize.blue} #{lockfile.read_from_disk ? "ok".colorize.green : "not found".colorize.red}
+           #{"lockfile:".colorize.blue} #{lockfile.read_from_disk ? "ok".colorize.green : "not found".colorize.red} • #{"install strategy:".colorize.blue} #{install_config.install_strategy.to_s.downcase}
         TERM
       end
 
@@ -104,7 +105,14 @@ module Zap::Commands::Install
 
         # Install dependencies to the appropriate node_modules folder
         state.reporter.report_installer_updates
-        installer = Installer::Npm::Installer.new(state, main_package)
+        installer = case state.install_config.install_strategy
+                    when .pnpm?
+                      Installer::Pnpm::Installer.new(state, main_package)
+                    when .npm_hoisted?, .npm_shallow?
+                      Installer::Npm::Installer.new(state, main_package)
+                    else
+                      raise "Unsupported install strategy: #{state.install_config.install_strategy}"
+                    end
         installer.install
         state.reporter.stop
 

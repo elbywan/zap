@@ -14,6 +14,7 @@ module Zap::Installer
     if exists = Dir.exists?(path)
       metadata_path = path / METADATA_FILE_NAME
       unless File.readable?(metadata_path)
+        FileUtils.rm_rf(path)
         exists = false
       else
         key = File.read(metadata_path)

@@ -76,6 +76,7 @@ module Zap
     enum InstallStrategy
       NPM_Hoisted
       NPM_Shallow
+      PNPM
     end
 
     # Configuration specific for the install command

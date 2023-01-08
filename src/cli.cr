@@ -74,6 +74,9 @@ class Zap::CLI
     parser.on("--ignore-scripts", "If true, does not run scripts specified in package.json files") do
       @command_config = command_config.copy_with(ignore_scripts: true)
     end
+    parser.on("--install-strategy STRATEGY", "Pick which installation strategy to use.") do |strategy|
+      @command_config = command_config.copy_with(install_strategy: Config::InstallStrategy.parse(strategy))
+    end
     parser.on(
       "--file-backend BACKEND",
       <<-DESCRIPTION

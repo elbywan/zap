@@ -25,7 +25,6 @@ module Zap::Installer::Npm
 
   class Installer < Base
     def install
-      @installed_packages_with_hooks = [] of {Package, Path}
       node_modules = Path.new(state.config.node_modules)
 
       # process each dependency breadth-first
@@ -108,7 +107,7 @@ module Zap::Installer::Npm
           f.print dependency.key
         end
       end
-      # Copy binary files if they are declared in the package.json
+      # Link binary files if they are declared in the package.json
       if bin = dependency.bin
         is_direct_dependency = dependency.is_direct_dependency?
         Dir.mkdir_p(state.config.bin_path)
