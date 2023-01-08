@@ -92,10 +92,10 @@ class Zap::Lockfile
         {% if flag?(:preview_mt) %}
           dependents.inner = dependents.inner & pinned_deps
           pkg.dependents = dependents
-          dependents.inner.size > 0
+          pkg.dependents.inner.size > 0
         {% else %}
           pkg.dependents = dependents & pinned_deps
-          dependents.size > 0
+          pkg.dependents.size > 0
         {% end %}
       else
         true

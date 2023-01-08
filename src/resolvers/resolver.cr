@@ -224,9 +224,7 @@ module Zap::Resolver
           end
         end
         # Save the dependency in the package.json
-        main_package.add_dependency(metadata.name, saved_version.not_nil!, type)
-        # Save the dependency in the lockfile
-        state.lockfile.add_dependency(name, saved_version.not_nil!, type, main_package.name)
+        main_package.add_dependency(inferred_name, saved_version.not_nil!, type)
       end
     rescue e
       state.reporter.stop
@@ -237,40 +235,44 @@ module Zap::Resolver
 
   # Try to detect what kind of target it is
   # See: https://docs.npmjs.com/cli/v9/commands/npm-install?v=true#description
-  private def self.parse_new_package(cli_version : String, *, state : Commands::Install::State) : {String?, String}
-    # 1. npm install <folder>
-    fs_path = Path.new(cli_version).expand
+  # Returns a {version, name} tuple
+  private def self.parse_new_package(cli_input : String, *, state : Commands::Install::State) : {String?, String}
+    fs_path = Path.new(cli_input).expand
     if ::File.directory?(fs_path)
+      # 1. npm install <folder>
       return "file:#{fs_path.relative_to(state.config.prefix)}", ""
       # 2. npm install <tarball file>
     elsif ::File.file?(fs_path) && (fs_path.to_s.ends_with?(".tgz") || fs_path.to_s.ends_with?(".tar.gz") || fs_path.to_s.ends_with?(".tar"))
       return "file:#{fs_path.relative_to(state.config.prefix)}", ""
       # 3. npm install <tarball url>
-    elsif cli_version.starts_with?("https://") || cli_version.starts_with?("http://")
-      return cli_version, ""
-    elsif cli_version.starts_with?("github:")
+    elsif cli_input.starts_with?("https://") || cli_input.starts_with?("http://")
+      return cli_input, ""
+    elsif cli_input.starts_with?("github:")
       # 9. npm install github:<githubname>/<githubrepo>[#<commit-ish>]
-      return "git+https://github.com/#{cli_version[7..]}", ""
-    elsif cli_version.starts_with?("gist:")
+      return "git+https://github.com/#{cli_input[7..]}", ""
+    elsif cli_input.starts_with?("gist:")
       # 10. npm install gist:[<githubname>/]<gistID>[#<commit-ish>|#semver:<semver>]
-      return "git+https://gist.github.com/#{cli_version[5..]}", ""
-    elsif cli_version.starts_with?("bitbucket:")
+      return "git+https://gist.github.com/#{cli_input[5..]}", ""
+    elsif cli_input.starts_with?("bitbucket:")
       # 11. npm install bitbucket:<bitbucketname>/<bitbucketrepo>[#<commit-ish>]
-      return "git+https://bitbucket.org/#{cli_version[10..]}", ""
-    elsif cli_version.starts_with?("gitlab:")
+      return "git+https://bitbucket.org/#{cli_input[10..]}", ""
+    elsif cli_input.starts_with?("gitlab:")
       # 12. npm install gitlab:<gitlabname>/<gitlabrepo>[#<commit-ish>]
-      return "git+https://gitlab.com/#{cli_version[7..]}", ""
-    elsif cli_version.starts_with?("git+") || cli_version.starts_with?("git://") || cli_version.matches?(/^[^@].*\/.*$/)
+      return "git+https://gitlab.com/#{cli_input[7..]}", ""
+    elsif cli_input.starts_with?("git+") || cli_input.starts_with?("git://") || cli_input.matches?(/^[^@].*\/.*$/)
       # 7. npm install <git remote url>
       # 8. npm install <githubname>/<githubrepo>[#<commit-ish>]
-      return cli_version, ""
+      return cli_input, ""
+    elsif (parts = cli_input.split("@npm:")).size > 1
+      # 13. npm install <alias>@npm:<name>
+      return "npm:#{parts[1]}", parts[0]
     else
       # 4. npm install [<@scope>/]<name>
       # 5. npm install [<@scope>/]<name>@<tag>
       # 6. npm install [<@scope>/]<name>@<version range>
-      parts = cli_version.split("@")
-      if parts.size == 1 || (parts.size == 2 && cli_version.starts_with?("@"))
-        return nil, cli_version
+      parts = cli_input.split("@")
+      if parts.size == 1 || (parts.size == 2 && cli_input.starts_with?("@"))
+        return nil, cli_input
       else
         return parts.last, parts[...-1].join("@")
       end
