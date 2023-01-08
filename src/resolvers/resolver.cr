@@ -154,6 +154,7 @@ module Zap::Resolver
       if metadata && is_direct_dependency
         metadata = nil unless resolver.is_lockfile_cache_valid?(metadata)
       end
+      lockfile_cached = !!metadata
       # If the package is not in the lockfile or if it is a direct dependency, resolve it
       metadata ||= resolver.resolve(is_direct_dependency ? state.lockfile.roots[package.name] : package, dependent: dependent)
       metadata.optional = (type == :optional_dependencies || nil)
@@ -168,8 +169,9 @@ module Zap::Resolver
       if should_resolve_dependencies
         # Repeat the process for transitive dependencies
         self.resolve_dependencies(metadata, state: state, dependent: dependent || metadata, resolved_packages: resolved_packages)
-        # Print deprecation warningq
-        if deprecated = metadata.deprecated
+        # Print deprecation warnings unless the package is already in the lockfile
+        # Prevents beeing flooded by logs
+        if deprecated = metadata.deprecated && !lockfile_cached
           state.reporter.log(%(#{(metadata.not_nil!.name + "@" + metadata.not_nil!.version).colorize.yellow} #{deprecated}))
         end
       end
