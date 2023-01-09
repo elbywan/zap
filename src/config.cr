@@ -101,7 +101,8 @@ module Zap
       save_prod : Bool = true,
       save_dev : Bool = false,
       save_optional : Bool = false,
-      lockfile_only : Bool = false do
+      lockfile_only : Bool = false,
+      print_logs : Bool = true do
       # ---- #
       # Body #
       # ---- #

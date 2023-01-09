@@ -232,9 +232,9 @@ class Zap::Reporter::Interactive < Zap::Reporter
     end
   end
 
-  def report_done(realtime, memory)
+  def report_done(realtime, memory, install_config)
     @io_lock.synchronize do
-      if @logs.size > 0
+      if install_config.print_logs && @logs.size > 0
         @out << header("📝", "Logs", :blue)
         @out << "\n"
         separator = "\n   • ".colorize(:default)

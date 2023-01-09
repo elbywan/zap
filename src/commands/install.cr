@@ -153,7 +153,7 @@ module Zap::Commands::Install
       }
     }
 
-    state.reporter.report_done(realtime, memory)
+    state.reporter.report_done(realtime, memory, state.install_config)
     null_io.try &.close
   rescue e
     puts %(\n\n❌ #{"Error(s):".colorize.red.bold}\n#{e.message})
