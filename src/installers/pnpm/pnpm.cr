@@ -25,82 +25,112 @@ module Zap::Installer::Pnpm
       Dir.mkdir_p(modules_store)
       installed_packages = Set(Package).new
 
-      state.lockfile.packages.each do |name, package|
-        install_package(package, modules_store, installed_packages: installed_packages)
-      end
-
       state.lockfile.roots.each do |name, root|
         workspace = state.workspaces.find { |w| w.package.name == name }
         root_path = workspace.try(&.path./ "node_modules") || Path.new(state.config.node_modules)
         Dir.mkdir_p(root_path)
-        root.pinned_dependencies?.try &.each do |name, version_or_alias|
-          package_key = version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key
-          package = state.lockfile.packages[package_key]
-
-          source = begin
-            if package.kind.link?
-              Path.new(package.dist.as(Package::LinkDist).link).expand(state.config.prefix)
-            else
-              modules_store / package_key / "node_modules" / name
-            end
-          end
-          target = root_path / name
-          File.delete?(target)
-          Dir.mkdir_p(target.dirname)
-          File.symlink(source, target)
-
-          # Link binaries
-          self.class.link_binaries(package, package_path: source, target_node_modules: root_path)
-        end
+        install_package(root, modules_store, installed_packages: installed_packages, root_path: root_path)
       end
     end
 
-    def install_package(package : Package, modules_store : Path, *, ancestors : Set(Package) = Set(Package).new, installed_packages : Set(Package)) : Path?
-      return nil if package.kind.link?
+    def install_package(
+      package : Package | Lockfile::Root,
+      modules_store : Path,
+      *,
+      ancestors : Set(Package | Lockfile::Root) = Set(Package | Lockfile::Root).new,
+      installed_packages : Set(Package), root_path : Path? = nil
+    ) : Path
+      if package.is_a?(Package)
+        if package.kind.link?
+          return Path.new(package.dist.as(Package::LinkDist).link).expand(state.config.prefix)
+        end
 
-      # TODO: ALIASES
+        install_path = modules_store / package.key / "node_modules"
+        return install_path / package.name if installed_packages.includes?(package)
+        installed_packages << package
 
-      install_path = modules_store / package.key / "node_modules"
-      return install_path if installed_packages.includes?(package)
-      installed_packages << package
-      Dir.mkdir_p(install_path)
-      case package.kind
-      when .tarball_file?#, .link?
-        Helpers::File.install(package, install_path, installer: self, state: state)
-      when .tarball_url?
-        Helpers::Tarball.install(package, install_path, installer: self, state: state)
-      when .git?
-        Helpers::Git.install(package, install_path, installer: self, state: state)
-      when .registry?
-        Helpers::Registry.install(package, install_path, installer: self, state: state)
+
+        # TODO: ALIASES
+
+
+        # TODO: PEER DEPENDENCIES
+        # Figure it out…
+        #
+        # Collect all peer dependencies from children before installing?
+        # Is it possible to install self only after collecting and installing children?
+        # This would allow to compute the hash based on the sum of all child peer deps in the tree
+        # and then install the package with the right name.
+        #
+        # A -> B (E) -> C  -> D  -(peer)-> E
+        #               C' -> D' -> E (B)
+        #
+        # - For each ancestor in reverse order
+        #    - Check if it satisfies one or more peer dependencies
+        #    - If every dep is satisfied :
+        #      - Create a new folder for this combination of peer dependencies
+        #      - Link the ancestor to this folder
+        # resolved_peers = {} of String => Package
+        # if (peers = package.peer_dependencies) && peers.size > 0
+        #   deepest_provider = nil
+        #   reverse_ancestors = ancestors.to_a.reverse
+        #   reverse_ancestors.each do |ancestor|
+        #     ancestor.pinned_dependencies.each do |name, version_or_alias|
+        #       dependency = state.lockfile.packages[version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key]
+        #       peers.each do |peer_name, peer_range|
+        #         if dependency.name == peer_name && Utils::Semver.parse(peer_range).valid?(dependency.version)
+        #           deepest_provider = dependency
+        #           resolved_peers[peer_name] = dependency
+        #         end
+        #       end
+        #     end
+        #     break if resolved_peers.size == peers.size
+        #   end
+
+        #   peers_hash = Digest::SHA1.hexdigest(resolved_peers.values.map(&.key).join("+"))
+        #   install_path = modules_store / "#{package.key}##{peers_hash}" / "node_modules"
+
+        #   if resolved_peers.size > 0
+        #     reverse_ancestors.each do |ancestor|
+        #       # TODO :(
+        #     end
+        #   end
+        # end
+
+        Dir.mkdir_p(install_path)
+        case package.kind
+        when .tarball_file?#, .link?
+          Helpers::File.install(package, install_path, installer: self, state: state)
+        when .tarball_url?
+          Helpers::Tarball.install(package, install_path, installer: self, state: state)
+        when .git?
+          Helpers::Git.install(package, install_path, installer: self, state: state)
+        when .registry?
+          Helpers::Registry.install(package, install_path, installer: self, state: state)
+        end
+
+
+      else
+        install_path = root_path.not_nil!
       end
-
-      # TODO: PEER DEPENDENCIES
-      # package.peer_dependencies.reduce?
-      # ancestors.to_a.reverse_each do |ancestor|
-      # end
 
       package.pinned_dependencies.each do |name, version_or_alias|
         dependency = state.lockfile.packages[version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key]
 
         # Install the dependency in the .zap folder if it's not already installed
-        unless dependency.in?(ancestors)
-          installed_path = install_package(
-            dependency,
-            modules_store,
-            ancestors: ancestors.dup << package,
-            installed_packages: installed_packages
-          )
+        source = begin
+          if dependency.in?(ancestors)
+            modules_store / dependency.key / "node_modules" / name
+          else
+            install_package(
+              dependency,
+              modules_store,
+              ancestors: ancestors.dup << package,
+              installed_packages: installed_packages
+            )
+          end
         end
 
         # Link it to the parent package
-        source = begin
-          if dependency.kind.link?
-            Path.new(dependency.dist.as(Package::LinkDist).link).expand(state.config.prefix)
-          else
-            modules_store / dependency.key / "node_modules" / name
-          end
-        end
         target = install_path / name
         Dir.mkdir_p(target.dirname)
         File.delete?(target)
@@ -110,7 +140,11 @@ module Zap::Installer::Pnpm
         self.class.link_binaries(dependency, package_path: target, target_node_modules: install_path)
       end
 
-      install_path
+      if package.is_a?(Package)
+        return install_path / package.name
+      else
+        return install_path
+      end
     end
 
     def on_install(dependency : Package, install_folder : Path, *, state : Commands::Install::State)
