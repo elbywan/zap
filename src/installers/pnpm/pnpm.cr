@@ -2,6 +2,35 @@ require "../backends/*"
 
 module Zap::Installer::Pnpm
   class Installer < Base
+    @node_modules : Path
+    @modules_store : Path
+    @hoisted_store : Path
+    @hoist_patterns : Array(Regex)
+    @public_hoist_patterns : Array(Regex)
+
+    DEFAULT_HOIST_PATTERNS = ["*"]
+    DEFAULT_PUBLIC_HOIST_PATTERNS = [
+      "*eslint*", "*prettier*"
+    ]
+    # TODO: move away
+
+    def initialize(
+      @state,
+      @main_package,
+      hoist_patterns = DEFAULT_HOIST_PATTERNS,
+      public_hoist_patterns = DEFAULT_PUBLIC_HOIST_PATTERNS
+    )
+      @node_modules = Path.new(state.config.node_modules)
+      @modules_store = @node_modules / ".zap"
+      Dir.mkdir_p(@modules_store)
+
+      @hoisted_store = @modules_store / "node_modules"
+      Dir.mkdir_p(@hoisted_store)
+
+      @hoist_patterns = hoist_patterns.map { |pattern| Regex.new("^#{Regex.escape(pattern).gsub("\\*", ".*")}$") }
+      @public_hoist_patterns = public_hoist_patterns.map { |pattern| Regex.new("^#{Regex.escape(pattern).gsub("\\*", ".*")}$") }
+    end
+
     def install
       # See: https://github.com/npm/rfcs/blob/main/accepted/0042-isolated-mode.md
       # Install every lockfile pinned_dependency in the node_modules/.zap directory
@@ -20,34 +49,36 @@ module Zap::Installer::Pnpm
       #
       # - Once this is done, symlink every dependency / dev dependency of workspaces in their own node_modules folder
 
-      node_modules = Path.new(state.config.node_modules)
-      modules_store = node_modules / ".zap"
-      Dir.mkdir_p(modules_store)
-      installed_packages = Set(Package).new
+      # installed_packages = Set(Package).new
 
       state.lockfile.roots.each do |name, root|
         workspace = state.workspaces.find { |w| w.package.name == name }
         root_path = workspace.try(&.path./ "node_modules") || Path.new(state.config.node_modules)
         Dir.mkdir_p(root_path)
-        install_package(root, modules_store, installed_packages: installed_packages, root_path: root_path)
+        install_package(
+          root,
+          # installed_packages: installed_packages,
+          root_path: root_path
+        )
       end
     end
 
     def install_package(
       package : Package | Lockfile::Root,
-      modules_store : Path,
       *,
       ancestors : Set(Package | Lockfile::Root) = Set(Package | Lockfile::Root).new,
-      installed_packages : Set(Package), root_path : Path? = nil
-    ) : Path
+      # installed_packages : Set(Package),
+      root_path : Path? = nil
+    ) : Path # { install_path: Path, required_peer_dependencies: Set(Package)? }
+      resolved_peers = nil
       if package.is_a?(Package)
         if package.kind.link?
           return Path.new(package.dist.as(Package::LinkDist).link).expand(state.config.prefix)
         end
 
-        install_path = modules_store / package.key / "node_modules"
-        return install_path / package.name if installed_packages.includes?(package)
-        installed_packages << package
+        # install_path = modules_store / package.key / "node_modules"
+        # return install_path / package.name if installed_packages.includes?(package)
+        # installed_packages << package
 
 
         # TODO: ALIASES
@@ -61,40 +92,39 @@ module Zap::Installer::Pnpm
         # This would allow to compute the hash based on the sum of all child peer deps in the tree
         # and then install the package with the right name.
         #
-        # A -> B (E) -> C  -> D  -(peer)-> E
-        #               C' -> D' -> E (B)
+        # A -> B (E@1.1) -> C  -> D  -(peer)-> E@^1
+        #                   C' -> D' -> E (E@1.1)
         #
         # - For each ancestor in reverse order
         #    - Check if it satisfies one or more peer dependencies
         #    - If every dep is satisfied :
         #      - Create a new folder for this combination of peer dependencies
         #      - Link the ancestor to this folder
-        # resolved_peers = {} of String => Package
-        # if (peers = package.peer_dependencies) && peers.size > 0
-        #   deepest_provider = nil
-        #   reverse_ancestors = ancestors.to_a.reverse
-        #   reverse_ancestors.each do |ancestor|
-        #     ancestor.pinned_dependencies.each do |name, version_or_alias|
-        #       dependency = state.lockfile.packages[version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key]
-        #       peers.each do |peer_name, peer_range|
-        #         if dependency.name == peer_name && Utils::Semver.parse(peer_range).valid?(dependency.version)
-        #           deepest_provider = dependency
-        #           resolved_peers[peer_name] = dependency
-        #         end
-        #       end
-        #     end
-        #     break if resolved_peers.size == peers.size
-        #   end
+        resolved_peers = Set(Package).new
+        if (peers = package.peer_dependencies) && peers.size > 0
+          reverse_ancestors = ancestors.to_a.reverse
+          reverse_ancestors.each do |ancestor|
+            ancestor.pinned_dependencies.each do |name, version_or_alias|
+              dependency = state.lockfile.packages[version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key]
+              peers.each do |peer_name, peer_range|
+                if dependency.name == peer_name && Utils::Semver.parse(peer_range).valid?(dependency.version)
+                  resolved_peers << dependency
+                end
+              end
+            end
+            break if resolved_peers.size == peers.size
+          end
 
-        #   peers_hash = Digest::SHA1.hexdigest(resolved_peers.values.map(&.key).join("+"))
-        #   install_path = modules_store / "#{package.key}##{peers_hash}" / "node_modules"
+          peers_hash = Digest::SHA1.hexdigest(resolved_peers.map(&.key).sort.join("+"))
+          install_path = @modules_store / "#{package.key}+#{peers_hash}" / "node_modules"
+        else
+          install_path = @modules_store / package.key / "node_modules"
+        end
 
-        #   if resolved_peers.size > 0
-        #     reverse_ancestors.each do |ancestor|
-        #       # TODO :(
-        #     end
-        #   end
-        # end
+        # Already installed
+        if File.directory?(install_path)
+          return install_path / package.name
+        end
 
         Dir.mkdir_p(install_path)
         case package.kind
@@ -108,33 +138,61 @@ module Zap::Installer::Pnpm
           Helpers::Registry.install(package, install_path, installer: self, state: state)
         end
 
+        # if @public_hoist_patterns.any?(&.=~ package.name)
+        #   # Hoist to the root node_modules folder
+        #   hoisted_target = @node_modules / package.name
+        #   hoisted_source = install_path / package.name
+        #   if File.exists?(hoisted_target)
+        #     if File.real_path(hoisted_target) != hoisted_source
+        #       File.delete(hoisted_target)
+        #     end
+        #   else
+        #     Dir.mkdir_p(hoisted_target.dirname)
+        #     File.symlink(hoisted_source, hoisted_target)
+        #   end
+        # elsif @hoist_patterns.any?(&.=~ package.name)
+        #   # Hoist to the .zap/node_modules folder
+        #   hoisted_target = @hoisted_store / package.name
+        #   hoisted_source = install_path / package.name
+        #   if File.exists?(hoisted_target)
+        #     if File.real_path(hoisted_target) != hoisted_source
+        #       File.delete(hoisted_target)
+        #     end
+        #   else
+        #     Dir.mkdir_p(hoisted_target.dirname)
+        #     File.symlink(hoisted_source, hoisted_target)
+        #   end
+        # end
 
       else
         install_path = root_path.not_nil!
       end
 
-      package.pinned_dependencies.each do |name, version_or_alias|
-        dependency = state.lockfile.packages[version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key]
+      pinned_packages = package.pinned_dependencies.map do |name, version_or_alias|
+        state.lockfile.packages[version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key]
+      end
 
+      (resolved_peers.try(&.to_a.+ pinned_packages) || pinned_packages).each do |dependency|
         # Install the dependency in the .zap folder if it's not already installed
-        source = begin
-          if dependency.in?(ancestors)
-            modules_store / dependency.key / "node_modules" / name
-          else
-            install_package(
-              dependency,
-              modules_store,
-              ancestors: ancestors.dup << package,
-              installed_packages: installed_packages
-            )
-          end
-        end
+        source = install_package(
+          dependency,
+          ancestors: ancestors.dup << package
+        )
 
         # Link it to the parent package
-        target = install_path / name
+        target = install_path / dependency.name
         Dir.mkdir_p(target.dirname)
-        File.delete?(target)
-        File.symlink(source, target)
+        # Is checking the path faster than always deleting?
+        # File.delete?(target)
+        # File.symlink(source, target)
+        if File.exists?(target)
+          if File.real_path(target) != source
+            File.delete(target)
+            File.symlink(source, target)
+          end
+        else
+          File.symlink(source, target)
+        end
 
         # Link binaries
         self.class.link_binaries(dependency, package_path: target, target_node_modules: install_path)
@@ -169,6 +227,34 @@ module Zap::Installer::Pnpm
 
       if dependency.scripts.try &.install
         @installed_packages_with_hooks << {dependency, install_folder}
+      end
+
+      if @public_hoist_patterns.any?(&.=~ dependency.name)
+        # Hoist to the root node_modules folder
+        hoisted_target = @node_modules / dependency.name
+        hoisted_source = install_folder
+        if File.exists?(hoisted_target)
+          if File.real_path(hoisted_target) != hoisted_source
+            File.delete(hoisted_target)
+            File.symlink(hoisted_source, hoisted_target)
+          end
+        else
+          Dir.mkdir_p(hoisted_target.dirname)
+          File.symlink(hoisted_source, hoisted_target)
+        end
+      elsif @hoist_patterns.any?(&.=~ dependency.name)
+        # Hoist to the .zap/node_modules folder
+        hoisted_target = @hoisted_store / dependency.name
+        hoisted_source = install_folder
+        if File.exists?(hoisted_target)
+          if File.real_path(hoisted_target) != hoisted_source
+            File.delete(hoisted_target)
+            File.symlink(hoisted_source, hoisted_target)
+          end
+        else
+          Dir.mkdir_p(hoisted_target.dirname)
+          File.symlink(hoisted_source, hoisted_target)
+        end
       end
 
       state.reporter.on_package_installed
