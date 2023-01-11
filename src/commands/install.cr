@@ -80,6 +80,9 @@ module Zap::Commands::Install
         workspaces.each do |workspace|
           state.lockfile.set_root(workspace.package)
         end
+        if state.install_config.install_strategy.pnpm?
+          state.lockfile.flag_peer_dependencies(main_package, state)
+        end
         state.lockfile.prune
 
         # Do not edit lockfile or package.json files in global mode or if the save flag is false

@@ -1,6 +1,8 @@
 require "../backends/*"
 
 module Zap::Installer::Pnpm
+  # See: https://github.com/npm/rfcs/blob/main/accepted/0042-isolated-mode.md
+
   class Installer < Base
     @node_modules : Path
     @modules_store : Path
@@ -8,17 +10,16 @@ module Zap::Installer::Pnpm
     @hoist_patterns : Array(Regex)
     @public_hoist_patterns : Array(Regex)
 
-    DEFAULT_HOIST_PATTERNS = ["*"]
+    DEFAULT_HOIST_PATTERNS        = ["*"]
     DEFAULT_PUBLIC_HOIST_PATTERNS = [
-      "*eslint*", "*prettier*"
+      "*eslint*", "*prettier*",
     ]
-    # TODO: move away
 
     def initialize(
       @state,
       @main_package,
-      hoist_patterns = DEFAULT_HOIST_PATTERNS,
-      public_hoist_patterns = DEFAULT_PUBLIC_HOIST_PATTERNS
+      hoist_patterns = main_package.zap_config.try(&.hoist_patterns) || DEFAULT_HOIST_PATTERNS,
+      public_hoist_patterns = main_package.zap_config.try(&.public_hoist_patterns) || DEFAULT_PUBLIC_HOIST_PATTERNS
     )
       @node_modules = Path.new(state.config.node_modules)
       @modules_store = @node_modules / ".zap"
@@ -31,34 +32,19 @@ module Zap::Installer::Pnpm
       @public_hoist_patterns = public_hoist_patterns.map { |pattern| Regex.new("^#{Regex.escape(pattern).gsub("\\*", ".*")}$") }
     end
 
+    alias Ancestors = Set(Package | Lockfile::Root)
+
     def install
-      # See: https://github.com/npm/rfcs/blob/main/accepted/0042-isolated-mode.md
-      # Install every lockfile pinned_dependency in the node_modules/.zap directory
-      # 1. Init. base folder (.zap/[dependency@key]/node_modules/[name]) for each package
-      # 2. Symlink dependencies and peer dependencies
-      #
-      # Draft algo (not sure if it's the best way to do it):
-      # - For each dependency P (initialized with all the pinned dependencies)
-      #   - Ensure that there is no circular dependency (keep a hash of previously installed dependencies?)
-      #   -  Use the right file backend to copy the stored folder to .zap/[dependency@key]/node_modules/[name]
-      #   -  Check if parents satisfy some of the peer dependencies of P
-      #     -  Do black magic and make it work by having different folders for each combination of peer dependencies
-      #     -  Make sure parents link to the right folder based on the peer dependencies
-      #   -  For each dependency D of P
-      #     -  Loop
-      #
-      # - Once this is done, symlink every dependency / dev dependency of workspaces in their own node_modules folder
-
-      # installed_packages = Set(Package).new
-
       state.lockfile.roots.each do |name, root|
         workspace = state.workspaces.find { |w| w.package.name == name }
         root_path = workspace.try(&.path./ "node_modules") || Path.new(state.config.node_modules)
+        ancestors = Ancestors.new
+        ancestors << root
         Dir.mkdir_p(root_path)
         install_package(
           root,
-          # installed_packages: installed_packages,
-          root_path: root_path
+          root_path: root_path,
+          ancestors: ancestors
         )
       end
     end
@@ -66,56 +52,18 @@ module Zap::Installer::Pnpm
     def install_package(
       package : Package | Lockfile::Root,
       *,
-      ancestors : Set(Package | Lockfile::Root) = Set(Package | Lockfile::Root).new,
-      # installed_packages : Set(Package),
+      ancestors : Ancestors = Ancestors.new,
       root_path : Path? = nil
-    ) : Path # { install_path: Path, required_peer_dependencies: Set(Package)? }
+    ) : Path
       resolved_peers = nil
       if package.is_a?(Package)
         if package.kind.link?
           return Path.new(package.dist.as(Package::LinkDist).link).expand(state.config.prefix)
         end
 
-        # install_path = modules_store / package.key / "node_modules"
-        # return install_path / package.name if installed_packages.includes?(package)
-        # installed_packages << package
-
-
-        # TODO: ALIASES
-
-
-        # TODO: PEER DEPENDENCIES
-        # Figure it out…
-        #
-        # Collect all peer dependencies from children before installing?
-        # Is it possible to install self only after collecting and installing children?
-        # This would allow to compute the hash based on the sum of all child peer deps in the tree
-        # and then install the package with the right name.
-        #
-        # A -> B (E@1.1) -> C  -> D  -(peer)-> E@^1
-        #                   C' -> D' -> E (E@1.1)
-        #
-        # - For each ancestor in reverse order
-        #    - Check if it satisfies one or more peer dependencies
-        #    - If every dep is satisfied :
-        #      - Create a new folder for this combination of peer dependencies
-        #      - Link the ancestor to this folder
-        resolved_peers = Set(Package).new
-        if (peers = package.peer_dependencies) && peers.size > 0
-          reverse_ancestors = ancestors.to_a.reverse
-          reverse_ancestors.each do |ancestor|
-            ancestor.pinned_dependencies.each do |name, version_or_alias|
-              dependency = state.lockfile.packages[version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key]
-              peers.each do |peer_name, peer_range|
-                if dependency.name == peer_name && Utils::Semver.parse(peer_range).valid?(dependency.version)
-                  resolved_peers << dependency
-                end
-              end
-            end
-            break if resolved_peers.size == peers.size
-          end
-
-          peers_hash = Digest::SHA1.hexdigest(resolved_peers.map(&.key).sort.join("+"))
+        resolved_peers = resolve_peers(package, ancestors)
+        if resolved_peers && resolved_peers.size > 0
+          peers_hash = Package.hash_peer_dependencies(resolved_peers)
           install_path = @modules_store / "#{package.key}+#{peers_hash}" / "node_modules"
         else
           install_path = @modules_store / package.key / "node_modules"
@@ -128,7 +76,7 @@ module Zap::Installer::Pnpm
 
         Dir.mkdir_p(install_path)
         case package.kind
-        when .tarball_file?#, .link?
+        when .tarball_file? # , .link?
           Helpers::File.install(package, install_path, installer: self, state: state)
         when .tarball_url?
           Helpers::Tarball.install(package, install_path, installer: self, state: state)
@@ -137,33 +85,6 @@ module Zap::Installer::Pnpm
         when .registry?
           Helpers::Registry.install(package, install_path, installer: self, state: state)
         end
-
-        # if @public_hoist_patterns.any?(&.=~ package.name)
-        #   # Hoist to the root node_modules folder
-        #   hoisted_target = @node_modules / package.name
-        #   hoisted_source = install_path / package.name
-        #   if File.exists?(hoisted_target)
-        #     if File.real_path(hoisted_target) != hoisted_source
-        #       File.delete(hoisted_target)
-        #     end
-        #   else
-        #     Dir.mkdir_p(hoisted_target.dirname)
-        #     File.symlink(hoisted_source, hoisted_target)
-        #   end
-        # elsif @hoist_patterns.any?(&.=~ package.name)
-        #   # Hoist to the .zap/node_modules folder
-        #   hoisted_target = @hoisted_store / package.name
-        #   hoisted_source = install_path / package.name
-        #   if File.exists?(hoisted_target)
-        #     if File.real_path(hoisted_target) != hoisted_source
-        #       File.delete(hoisted_target)
-        #     end
-        #   else
-        #     Dir.mkdir_p(hoisted_target.dirname)
-        #     File.symlink(hoisted_source, hoisted_target)
-        #   end
-        # end
-
       else
         install_path = root_path.not_nil!
       end
@@ -278,6 +199,32 @@ module Zap::Installer::Pnpm
           File.delete?(bin_path)
           File.symlink(Path.new(bin).expand(package_path), bin_path)
           File.chmod(bin_path, 0o755)
+        end
+      end
+    end
+
+    private def resolve_peers(package : Package, ancestors : Ancestors) : Set(Package)?
+      peers = Hash(String, String).new
+      if direct_peers = package.peer_dependencies
+        peers.merge!(direct_peers)
+      end
+      if transitive_peers = package.transitive_peer_dependencies
+        transitive_peers.each { |peer| peers[peer] ||= "*" }
+      end
+      if peers.size > 0
+        Set(Package).new.tap do |resolved_peers|
+          reverse_ancestors = ancestors.to_a.reverse
+          reverse_ancestors.each do |ancestor|
+            ancestor.pinned_dependencies.each do |name, version_or_alias|
+              dependency = state.lockfile.get_package(name, version_or_alias)
+              peers.each do |peer_name, peer_range|
+                if dependency.name == peer_name && Utils::Semver.parse(peer_range).valid?(dependency.version)
+                  resolved_peers << dependency
+                end
+              end
+            end
+            break if resolved_peers.size == peers.size
+          end
         end
       end
     end

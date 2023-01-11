@@ -36,6 +36,8 @@ class Zap::Package
   getter bundle_dependencies : (SafeHash(String, String) | Bool)? = nil
   @[JSON::Field(key: "peerDependencies")]
   getter peer_dependencies : SafeHash(String, String)? = nil
+  @[JSON::Field(key: "peerDependenciesMeta")]
+  getter peer_dependencies_meta : SafeHash(String, {optional: Bool?})? = nil
   @[YAML::Field(ignore: true)]
   property scripts : LifecycleScripts? = nil
   getter os : Array(String)? = nil
@@ -87,6 +89,25 @@ class Zap::Package
 
   @[JSON::Field(ignore: true)]
   property has_prepare_script : Bool? = nil
+
+  @[JSON::Field(ignore: true)]
+  @[YAML::Field(ignore: true)] # At some point find a way to memoize this?
+  property transitive_peer_dependencies : Set(String)? = nil
+
+  ##############
+  # Zap config #
+  ##############
+
+  record ZapConfig,
+    hoist_patterns : Array(String)? = nil,
+    public_hoist_patterns : Array(String)? = nil do
+    include JSON::Serializable
+    include YAML::Serializable
+  end
+
+  @[JSON::Field(key: "zap")]
+  @[YAML::Field(ignore: true)]
+  getter zap_config : ZapConfig = ZapConfig.new
 
   ##################
   # Utility fields #
@@ -159,6 +180,15 @@ class Zap::Package
   end
 
   def initialize(@name = "@root", @version = "0.0.0")
+  end
+
+  def after_initialize
+    if meta = peer_dependencies_meta
+      @peer_dependencies ||= SafeHash(String, String).new
+      meta.each do |name, meta|
+        peer_dependencies.not_nil![name] ||= "*"
+      end
+    end
   end
 
   ##########
@@ -276,6 +306,10 @@ class Zap::Package
       puts "Error parsing #{json_path}: #{e}"
     ensure
     end
+  end
+
+  def self.hash_peer_dependencies(peers : Iterable(Package))
+    Digest::SHA1.hexdigest(peers.map(&.key).sort.join("+"))
   end
 
   ############

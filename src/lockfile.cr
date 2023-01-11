@@ -58,6 +58,71 @@ class Zap::Lockfile
     instance
   end
 
+  def get_package(name : String, version_or_alias : String | Package::Alias)
+    packages[version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key]
+  end
+
+  def flag_peer_dependencies(main_package : Package, state : Commands::Install::State)
+    queue = Deque({package: Package, ancestors: Set(Package | Lockfile::Root)}).new(self.packages.size)
+    roots.each do |name, root|
+      root.pinned_dependencies.each do |name, version_or_alias|
+        dependency = get_package(name, version_or_alias)
+        queue << {
+          package:   dependency,
+          ancestors: Set(Package | Lockfile::Root).new << root,
+        }
+      end
+    end
+
+    while (element = queue.shift?)
+      package = element["package"]
+      ancestors = element["ancestors"]
+
+      if package.is_a?(Package) && (peers = package.peer_dependencies) && peers.try(&.size.> 0)
+        peers_hash = peers.dup
+
+        peers_hash.reject! do |peer_name, peer_range|
+          peer_name == package.name ||
+            package.pinned_dependencies.has_key?(peer_name)
+        end
+
+        reverse_ancestors = ancestors.to_a.reverse
+        reverse_ancestors.each do |ancestor|
+          peers_hash.select! do |peer_name, peer_range|
+            if ancestor.is_a?(Package) && ancestor.name == peer_name
+              next false
+            end
+
+            if ancestor.pinned_dependencies.has_key?(peer_name)
+              version_or_alias = ancestor.pinned_dependencies[peer_name]
+              pinned_dep = get_package(peer_name, version_or_alias)
+              if Utils::Semver.parse(peer_range).valid?(pinned_dep.version)
+                next false
+              end
+            end
+
+            if ancestor.is_a?(Package)
+              ancestor.transitive_peer_dependencies ||= Set(String).new
+              ancestor.transitive_peer_dependencies.not_nil! << peer_name
+            end
+
+            true
+          end
+          break if peers_hash.empty?
+        end
+      end
+
+      package.pinned_dependencies.try &.each do |name, version_or_alias|
+        dependency = get_package(name, version_or_alias)
+        next if ancestors.includes?(dependency)
+        queue << {
+          package:   dependency,
+          ancestors: ancestors.dup << package,
+        }
+      end
+    end
+  end
+
   def prune
     pinned_deps = Set(String).new
     self.roots.values.each do |root|
