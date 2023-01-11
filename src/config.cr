@@ -54,7 +54,7 @@ module Zap
     end
 
     getter node_path : String do
-      nodejs = Process.find_executable("node").try { |node_path| File.real_path(node_path) }
+      nodejs = Process.find_executable("node").try { |node_path| File.realpath(node_path) }
       raise "❌ Couldn't find the node executable.\nPlease install node.js and ensure that your PATH environment variable is set correctly." unless nodejs
       Path.new(nodejs).dirname
     end

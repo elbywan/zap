@@ -91,7 +91,6 @@ class Zap::Package
   property has_prepare_script : Bool? = nil
 
   @[JSON::Field(ignore: true)]
-  @[YAML::Field(ignore: true)] # At some point find a way to memoize this?
   property transitive_peer_dependencies : Set(String)? = nil
 
   ##############

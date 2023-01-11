@@ -109,7 +109,14 @@ module Zap::Resolver
     end
   end
 
-  def self.resolve_dependencies(package : Package, *, state : Commands::Install::State, dependent : Package? = nil, resolved_packages = SafeSet(String).new)
+  def self.resolve_dependencies(
+    package : Package,
+    *,
+    state : Commands::Install::State,
+    dependent : Package? = nil,
+    resolved_packages = SafeSet(String).new,
+    ancestors : Set(Package) = Set(Package).new
+  )
     is_main_package = dependent.nil?
 
     # Resolve new packages added from the CLI if we are curently in the root package
@@ -136,7 +143,16 @@ module Zap::Resolver
             # From: https://docs.npmjs.com/cli/v9/configuring-npm/package-json#optionaldependencies
             next if package.optional_dependencies.try &.[name]?
           end
-          self.resolve_dependency(package, name, version, type, state: state, dependent: dependent, resolved_packages: resolved_packages)
+          self.resolve_dependency(
+            package,
+            name,
+            version,
+            type,
+            state: state,
+            dependent: dependent,
+            resolved_packages: resolved_packages,
+            ancestors: ancestors.dup << package
+          )
         end
       end
     else
@@ -147,12 +163,30 @@ module Zap::Resolver
         else
           version = version_or_alias
         end
-        self.resolve_dependency(package, name, version, state: state, dependent: dependent, resolved_packages: resolved_packages)
+        self.resolve_dependency(
+          package,
+          name,
+          version,
+          state: state,
+          dependent: dependent,
+          resolved_packages: resolved_packages,
+          ancestors: ancestors.dup << package
+        )
       end
     end
   end
 
-  private def self.resolve_dependency(package : Package, name : String, version : String, type : Symbol? = nil, *, state : Commands::Install::State, dependent : Package? = nil, resolved_packages : SafeSet(String))
+  private def self.resolve_dependency(
+    package : Package,
+    name : String,
+    version : String,
+    type : Symbol? = nil,
+    *,
+    state : Commands::Install::State,
+    dependent : Package? = nil,
+    resolved_packages : SafeSet(String),
+    ancestors : Set(Package)
+  )
     is_direct_dependency = dependent.nil?
     state.reporter.on_resolving_package
     # Add direct dependencies to the lockfile
@@ -179,12 +213,20 @@ module Zap::Resolver
       should_resolve_dependencies = metadata.should_resolve_dependencies?(state)
       # Store the package data in the lockfile
       state.lockfile.packages[metadata.key] = metadata
+      # Flag transitive dependencies
+      flag_transitive_dependencies(metadata, ancestors)
+      # Repeat the process for transitive dependencies if needed
       if should_resolve_dependencies
-        # Repeat the process for transitive dependencies
-        self.resolve_dependencies(metadata, state: state, dependent: dependent || metadata, resolved_packages: resolved_packages)
+        self.resolve_dependencies(
+          metadata,
+          state: state,
+          dependent: dependent || metadata,
+          resolved_packages: resolved_packages,
+          ancestors: ancestors
+        )
         # Print deprecation warnings unless the package is already in the lockfile
         # Prevents beeing flooded by logs
-        if deprecated = metadata.deprecated && !lockfile_cached
+        if (deprecated = metadata.deprecated) && !lockfile_cached
           state.reporter.log(%(#{(metadata.not_nil!.name + "@" + metadata.not_nil!.version).colorize.yellow} #{deprecated}))
         end
       end
@@ -211,6 +253,37 @@ module Zap::Resolver
   end
 
   # # Private
+
+  private def self.flag_transitive_dependencies(package : Package, ancestors : Set(Package))
+    if (peers = package.peer_dependencies) && peers.try(&.size.> 0)
+      peers_hash = peers.dup
+
+      peers_hash.reject! do |peer_name, peer_range|
+        peer_name == package.name ||
+          package.dependencies.try(&.has_key?(peer_name)) ||
+          package.optional_dependencies.try(&.has_key?(peer_name))
+      end
+
+      reverse_ancestors = ancestors.to_a.reverse
+      reverse_ancestors.each do |ancestor|
+        peers_hash.select! do |peer_name, peer_range|
+          if ancestor.name == peer_name ||
+             ancestor.dependencies.try(&.has_key?(peer_name)) ||
+             package.optional_dependencies.try(&.has_key?(peer_name))
+            next false
+          end
+
+          if ancestor.is_a?(Package)
+            ancestor.transitive_peer_dependencies ||= Set(String).new
+            ancestor.transitive_peer_dependencies.not_nil! << peer_name
+          end
+
+          true
+        end
+        break if peers_hash.empty?
+      end
+    end
+  end
 
   private def self.resolve_new_packages(main_package : Package, *, state : Commands::Install::State)
     # Infer new dependency type based on CLI flags

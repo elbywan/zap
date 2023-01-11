@@ -102,18 +102,7 @@ module Zap::Installer::Pnpm
 
         # Link it to the parent package
         target = install_path / dependency.name
-        Dir.mkdir_p(target.dirname)
-        # Is checking the path faster than always deleting?
-        # File.delete?(target)
-        # File.symlink(source, target)
-        if File.exists?(target)
-          if File.real_path(target) != source
-            File.delete(target)
-            File.symlink(source, target)
-          end
-        else
-          File.symlink(source, target)
-        end
+        self.class.symlink(source, target)
 
         # Link binaries
         self.class.link_binaries(dependency, package_path: target, target_node_modules: install_path)
@@ -154,28 +143,12 @@ module Zap::Installer::Pnpm
         # Hoist to the root node_modules folder
         hoisted_target = @node_modules / dependency.name
         hoisted_source = install_folder
-        if File.exists?(hoisted_target)
-          if File.real_path(hoisted_target) != hoisted_source
-            File.delete(hoisted_target)
-            File.symlink(hoisted_source, hoisted_target)
-          end
-        else
-          Dir.mkdir_p(hoisted_target.dirname)
-          File.symlink(hoisted_source, hoisted_target)
-        end
+        self.class.symlink(hoisted_source, hoisted_target)
       elsif @hoist_patterns.any?(&.=~ dependency.name)
         # Hoist to the .zap/node_modules folder
         hoisted_target = @hoisted_store / dependency.name
         hoisted_source = install_folder
-        if File.exists?(hoisted_target)
-          if File.real_path(hoisted_target) != hoisted_source
-            File.delete(hoisted_target)
-            File.symlink(hoisted_source, hoisted_target)
-          end
-        else
-          Dir.mkdir_p(hoisted_target.dirname)
-          File.symlink(hoisted_source, hoisted_target)
-        end
+        self.class.symlink(hoisted_source, hoisted_target)
       end
 
       state.reporter.on_package_installed
@@ -206,7 +179,13 @@ module Zap::Installer::Pnpm
     private def resolve_peers(package : Package, ancestors : Ancestors) : Set(Package)?
       peers = Hash(String, String).new
       if direct_peers = package.peer_dependencies
-        peers.merge!(direct_peers)
+        peers.merge!(
+          {% if flag?(:preview_mt) %}
+            direct_peers.inner
+          {% else %}
+            direct_peers
+          {% end %}
+        )
       end
       if transitive_peers = package.transitive_peer_dependencies
         transitive_peers.each { |peer| peers[peer] ||= "*" }
@@ -217,15 +196,26 @@ module Zap::Installer::Pnpm
           reverse_ancestors.each do |ancestor|
             ancestor.pinned_dependencies.each do |name, version_or_alias|
               dependency = state.lockfile.get_package(name, version_or_alias)
-              peers.each do |peer_name, peer_range|
-                if dependency.name == peer_name && Utils::Semver.parse(peer_range).valid?(dependency.version)
-                  resolved_peers << dependency
-                end
-              end
+              resolved_peers << dependency if peers.has_key?(dependency.name)
             end
             break if resolved_peers.size == peers.size
           end
         end
+      end
+    end
+
+    protected def self.symlink(source, target)
+      # Is checking the path faster than always deleting?
+      # File.delete?(target)
+      # File.symlink(source, target)
+      if File.exists?(target)
+        if File.realpath(target) != source
+          File.delete(target)
+          File.symlink(source, target)
+        end
+      else
+        Dir.mkdir_p(target.dirname)
+        File.symlink(source, target)
       end
     end
   end

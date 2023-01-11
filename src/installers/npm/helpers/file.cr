@@ -15,7 +15,7 @@ module Zap::Installer::Npm::Helpers::File
     link_source = Path.new(relative_path).expand(state.config.prefix)
     install_folder = aliased_name || dependency.name
     target_path = cache.last.node_modules / install_folder
-    exists = ::File.symlink?(target_path) && ::File.real_path(target_path) == link_source.to_s
+    exists = ::File.symlink?(target_path) && ::File.realpath(target_path) == link_source.to_s
     unless exists
       state.reporter.on_installing_package
       Dir.mkdir_p(target_path.dirname)

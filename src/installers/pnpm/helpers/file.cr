@@ -4,7 +4,7 @@ module Zap::Installer::Pnpm::Helpers::File
     case dist = dependency.dist
     when Package::LinkDist
       link_source = Path.new(dist.link).expand(state.config.prefix)
-      exists = ::File.symlink?(full_path) && ::File.real_path(full_path) == link_source.to_s
+      exists = ::File.symlink?(full_path) && ::File.realpath(full_path) == link_source.to_s
       unless exists
         state.reporter.on_installing_package
         FileUtils.rm_rf(full_path) if ::File.directory?(full_path)
