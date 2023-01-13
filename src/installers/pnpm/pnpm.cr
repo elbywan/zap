@@ -58,6 +58,7 @@ module Zap::Installer::Pnpm
       resolved_peers = nil
       if package.is_a?(Package)
         if package.kind.link?
+          # Links are easy, we just need to return the path
           return Path.new(package.dist.as(Package::LinkDist).link).expand(state.config.prefix)
         end
 
@@ -76,7 +77,7 @@ module Zap::Installer::Pnpm
 
         Dir.mkdir_p(install_path)
         case package.kind
-        when .tarball_file? # , .link?
+        when .tarball_file?
           Helpers::File.install(package, install_path, installer: self, state: state)
         when .tarball_url?
           Helpers::Tarball.install(package, install_path, installer: self, state: state)
@@ -89,11 +90,20 @@ module Zap::Installer::Pnpm
         install_path = root_path.not_nil!
       end
 
+      # pinned_packages = package.pinned_dependencies.map do |name, version_or_alias|
+      #   state.lockfile.packages[version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key]
+      # end
       pinned_packages = package.pinned_dependencies.map do |name, version_or_alias|
-        state.lockfile.packages[version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key]
+        _key = version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key
+        _pkg = state.lockfile.packages[_key]
+        {
+          version_or_alias.is_a?(String) ? _pkg.name : name,
+          state.lockfile.packages[_key],
+        }
       end
 
-      (resolved_peers.try(&.to_a.+ pinned_packages) || pinned_packages).each do |dependency|
+      # ((resolved_peers.try &.to_a.+ pinned_packages) || pinned_packages).each do |dependency|
+      (resolved_peers.try(&.map { |p| {p.name, p} }.+ pinned_packages) || pinned_packages).each do |(name, dependency)|
         # Install the dependency in the .zap folder if it's not already installed
         source = install_package(
           dependency,
@@ -101,7 +111,7 @@ module Zap::Installer::Pnpm
         )
 
         # Link it to the parent package
-        target = install_path / dependency.name
+        target = install_path / name
         self.class.symlink(source, target)
 
         # Link binaries
@@ -196,7 +206,7 @@ module Zap::Installer::Pnpm
           reverse_ancestors.each do |ancestor|
             ancestor.pinned_dependencies.each do |name, version_or_alias|
               dependency = state.lockfile.get_package(name, version_or_alias)
-              resolved_peers << dependency if peers.has_key?(dependency.name)
+              resolved_peers << dependency if peers.has_key?(version_or_alias.is_a?(String) ? dependency.name : name)
             end
             break if resolved_peers.size == peers.size
           end
