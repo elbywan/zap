@@ -65,7 +65,7 @@ class Zap::CLI
     parser.on("-O", "--save-optional", "Package will appear in your optionalDependencies") do
       @command_config = command_config.copy_with(save_optional: true)
     end
-    parser.on("-E", "--save-exact", "PSaved dependencies will be configured with an exact version rather than using npm's default semver range operator") do |path|
+    parser.on("-E", "--save-exact", "Saved dependencies will be configured with an exact version rather than using npm's default semver range operator") do |path|
       @command_config = command_config.copy_with(save_exact: true)
     end
     parser.on("--no-save", "Prevents saving to dependencies") do
