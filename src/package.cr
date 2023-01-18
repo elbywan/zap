@@ -45,6 +45,11 @@ class Zap::Package
   # See: https://github.com/npm/rfcs/blob/main/implemented/0026-workspaces.md
   @[YAML::Field(ignore: true)]
   getter workspaces : Array(String)? | {packages: Array(String)?, nohoist: Array(String)?} = nil
+  # See:
+  # - https://github.com/npm/rfcs/blob/main/accepted/0036-overrides.md
+  # - https://docs.npmjs.com/cli/v8/configuring-npm/package-json#overrides
+  @[YAML::Field(ignore: true)]
+  property overrides : Overrides?
 
   #######################
   # Npm specific fields #
@@ -186,6 +191,18 @@ class Zap::Package
       @peer_dependencies ||= SafeHash(String, String).new
       meta.each do |name, meta|
         peer_dependencies.not_nil![name] ||= "*"
+      end
+    end
+    if override_entries = self.overrides
+      override_entries.each do |name, overrides|
+        overrides.each_with_index do |override, index|
+          if override.specifier.starts_with?("$")
+            dep_name = override.specifier[1..]
+            dependencies_specifier = self.dependencies.try &.[dep_name]?
+            raise "There is no matching for #{override.specifier} in dependencies" unless dependencies_specifier
+            overrides[index] = override.copy_with(specifier: dependencies_specifier)
+          end
+        end
       end
     end
   end

@@ -76,7 +76,7 @@ module Zap::Installer::Npm
         rescue e
           state.reporter.stop
           parent_path = dependency_item.cache.last.node_modules
-          ancestors = dependency_item.ancestors ? dependency_item.ancestors.map { |a| a.name + "@" + a.version }.join("~>") : ""
+          ancestors = dependency_item.ancestors ? dependency_item.ancestors.map { |a| "#{a.name}@#{a.version}" }.join("~>") : ""
           package_in_error = dependency ? "#{dependency_item.alias.try &.+(":")}#{dependency.name}@#{dependency.version}" : ""
           state.reporter.error(e, "#{package_in_error.colorize.bold} (#{ancestors}) at #{parent_path.colorize.dim}")
           exit ErrorCodes::INSTALLER_ERROR.to_i32

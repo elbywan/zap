@@ -68,7 +68,7 @@ module Zap::Resolver
 
     # Check if the package is a workspace
     if workspace = state.workspaces.find { |w| w.package.name == name }
-      if Utils::Semver.parse(version_field).try &.valid?(workspace.package.version)
+      if Utils::Semver.parse(version_field).valid?(workspace.package.version)
         # Will link the workspace in the parent node_modules folder
         return File.new(state, name, "file:#{workspace.path.relative_to?(state.config.prefix)}")
       elsif workspace_protocol
@@ -78,10 +78,12 @@ module Zap::Resolver
       raise "Workspace #{name} not found"
     end
 
+    # Special case for aliases
+    # Extract the aliased name and the version field
     aliased_name = nil
     if version_field.starts_with?("npm:")
       stripped_version = version_field[4..]
-      stripped_version.split("@").tap do |parts|
+      stripped_version.split('@').tap do |parts|
         aliased_name = name
         if parts[0] == "@"
           name = parts[0] + parts[1]
@@ -115,7 +117,8 @@ module Zap::Resolver
     state : Commands::Install::State,
     dependent : Package? = nil,
     resolved_packages = SafeSet(String).new,
-    ancestors : Set(Package) = Set(Package).new
+    ancestors : Set(Package) = Set(Package).new,
+    overrides : Package::Overrides? = nil
   )
     is_main_package = dependent.nil?
 
@@ -151,7 +154,8 @@ module Zap::Resolver
             state: state,
             dependent: dependent,
             resolved_packages: resolved_packages,
-            ancestors: ancestors.dup << package
+            ancestors: ancestors.dup << package,
+            overrides: overrides
           )
         end
       end
@@ -170,7 +174,8 @@ module Zap::Resolver
           state: state,
           dependent: dependent,
           resolved_packages: resolved_packages,
-          ancestors: ancestors.dup << package
+          ancestors: ancestors.dup << package,
+          overrides: overrides
         )
       end
     end
@@ -185,7 +190,8 @@ module Zap::Resolver
     state : Commands::Install::State,
     dependent : Package? = nil,
     resolved_packages : SafeSet(String),
-    ancestors : Set(Package)
+    ancestors : Set(Package),
+    overrides : Package::Overrides?
   )
     is_direct_dependency = dependent.nil?
     state.reporter.on_resolving_package
@@ -204,6 +210,24 @@ module Zap::Resolver
       lockfile_cached = !!metadata
       # If the package is not in the lockfile or if it is a direct dependency, resolve it
       metadata ||= resolver.resolve(is_direct_dependency ? state.lockfile.roots[package.name] : package, dependent: dependent)
+      # Apply overrides
+      if overrides
+        override_specifier = overrides.override_specifier_for(metadata, ancestors)
+        if override_specifier
+          package.pinned_dependencies.delete(metadata.name)
+          next self.resolve_dependency(
+            package,
+            name,
+            override_specifier,
+            type,
+            state: state,
+            dependent: dependent,
+            resolved_packages: resolved_packages,
+            ancestors: ancestors,
+            overrides: overrides
+          )
+        end
+      end
       metadata.optional = (type == :optional_dependencies || nil)
       metadata.match_os_and_cpu!
       # If the package has already been resolved, skip it to prevent infinite loops
@@ -222,12 +246,13 @@ module Zap::Resolver
           state: state,
           dependent: dependent || metadata,
           resolved_packages: resolved_packages,
-          ancestors: ancestors
+          ancestors: ancestors,
+          overrides: overrides
         )
         # Print deprecation warnings unless the package is already in the lockfile
         # Prevents beeing flooded by logs
         if (deprecated = metadata.deprecated) && !lockfile_cached
-          state.reporter.log(%(#{(metadata.not_nil!.name + "@" + metadata.not_nil!.version).colorize.yellow} #{deprecated}))
+          state.reporter.log(%(#{(metadata.not_nil!.name + '@' + metadata.not_nil!.version).colorize.yellow} #{deprecated}))
         end
       end
       # Attempt to store the package in the filesystem or in the cache if needed
@@ -358,11 +383,11 @@ module Zap::Resolver
       # 4. npm install [<@scope>/]<name>
       # 5. npm install [<@scope>/]<name>@<tag>
       # 6. npm install [<@scope>/]<name>@<version range>
-      parts = cli_input.split("@")
-      if parts.size == 1 || (parts.size == 2 && cli_input.starts_with?("@"))
+      parts = cli_input.split('@')
+      if parts.size == 1 || (parts.size == 2 && cli_input.starts_with?('@'))
         return nil, cli_input
       else
-        return parts.last, parts[...-1].join("@")
+        return parts.last, parts[...-1].join('@')
       end
     end
   end

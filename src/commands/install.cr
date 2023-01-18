@@ -68,9 +68,9 @@ module Zap::Commands::Install
         # Crawl, resolve and store dependencies
         state.reporter.report_resolver_updates
         resolved_packages = SafeSet(String).new
-        Resolver.resolve_dependencies(main_package, state: state, resolved_packages: resolved_packages)
+        Resolver.resolve_dependencies(main_package, state: state, resolved_packages: resolved_packages, overrides: main_package.overrides)
         workspaces.each do |workspace|
-          Resolver.resolve_dependencies(workspace.package, state: state, resolved_packages: resolved_packages)
+          Resolver.resolve_dependencies(workspace.package, state: state, resolved_packages: resolved_packages, overrides: main_package.overrides)
         end
         state.pipeline.await
         state.reporter.stop

@@ -35,7 +35,7 @@ module Zap::Utils
       @semver = match["semver"]?
 
       # See: https://git-scm.com/docs/git-clone#_git_urls
-      user_pwd_prefix = @user ? @user.not_nil! + (@password ? ":#{@password}" : "") + "@" : ""
+      user_pwd_prefix = @user ? @user.not_nil! + (@password ? ":#{@password}" : "") + '@' : ""
       full_host = @hostname + (@port ? ":#{@port}" : "")
       case @protocol
       when "git", "ssh"

@@ -183,16 +183,19 @@ class Zap::Reporter::Interactive < Zap::Reporter
         break if msg.nil?
         @io_lock.synchronize do
           @out << @cursor.clear_lines(@lines.get, :up)
-          @out << header("🔍", "Resolving…", :yellow) + %([#{@resolved_packages.get}/#{@resolving_packages.get}])
+          @out << header("🔍", "Resolving…", :yellow)
+          @out << %([#{@resolved_packages.get}/#{@resolving_packages.get}])
           @lines.set(1)
           if (downloading = @downloading_packages.get) > 0
             @out << "\n"
-            @out << header("📡", "Downloading…", :cyan) + %([#{@downloaded_packages.get}/#{downloading}])
+            @out << header("📡", "Downloading…", :cyan)
+            @out << %([#{@downloaded_packages.get}/#{downloading}])
             @lines.add(1)
           end
           if (packing = @packing_packages.get) > 0
             @out << "\n"
-            @out << header("🎁", "Packing…") + %([#{@packed_packages.get}/#{packing}])
+            @out << header("🎁", "Packing…")
+            @out << %([#{@packed_packages.get}/#{packing}])
             @lines.add(1)
           end
           @out.flush
@@ -210,7 +213,8 @@ class Zap::Reporter::Interactive < Zap::Reporter
         next if @installing_packages.get == 0
         @io_lock.synchronize do
           @out << @cursor.clear_line
-          @out << header("💽", "Installing…", :magenta) + %([#{@installed_packages.get}/#{@installing_packages.get}])
+          @out << header("💽", "Installing…", :magenta)
+          @out << %([#{@installed_packages.get}/#{@installing_packages.get}])
           @out.flush
         end
       end
@@ -225,7 +229,8 @@ class Zap::Reporter::Interactive < Zap::Reporter
         break if msg.nil?
         @io_lock.synchronize do
           @out << @cursor.clear_line
-          @out << header("🏗️", "Building…", :light_red) + %([#{@built_packages.get}/#{@building_packages.get}])
+          @out << header("🏗️", "Building…", :light_red)
+          @out << %([#{@built_packages.get}/#{@building_packages.get}])
           @out.flush
         end
       end
@@ -246,12 +251,13 @@ class Zap::Reporter::Interactive < Zap::Reporter
       # print added / removed packages
       all_packages = @added_packages.map { |pkg_key| {pkg_key, true} } + @removed_packages.map { |pkg_key| {pkg_key, false} }
       if all_packages.size > 0
-        @out << header("📦", "Dependencies", :light_yellow) + %(Added: #{@added_packages.size}, Removed: #{@removed_packages.size}).colorize.mode(:dim).to_s
+        @out << header("📦", "Dependencies", :light_yellow)
+        @out << "Added: #{@added_packages.size}, Removed: #{@removed_packages.size}".colorize.mode(:dim)
         @out << "\n\n"
         all_packages.map { |pkg_key, added|
-          parts = pkg_key.split("@")
+          parts = pkg_key.split('@')
           {
-            parts[...-1].join("@").colorize.bold.to_s + (" " + parts.last).colorize.dim.to_s,
+            "#{parts[...-1].join('@').colorize.bold} #{parts.last.colorize.dim}",
             added,
           }
         }.sort_by(&.[0]).each do |pkg_key, added|
@@ -266,10 +272,10 @@ class Zap::Reporter::Interactive < Zap::Reporter
 
       @out << header("👌", "Done!", :green)
       if realtime
-        @out << ("took " + realtime.total_seconds.humanize + "s • ").colorize.dim
+        @out << "took #{realtime.total_seconds.humanize}s • ".colorize.dim
       end
       if memory
-        @out << ("total memory allocated " + memory.humanize + "B").colorize.dim
+        @out << "total memory allocated #{memory.humanize}B".colorize.dim
       end
       @out << "\n"
     end
@@ -277,8 +283,8 @@ class Zap::Reporter::Interactive < Zap::Reporter
 
   protected def self.format_pkg_keys(pkgs)
     pkgs.map { |pkg_key|
-      parts = pkg_key.split("@")
-      parts[...-1].join("@").colorize.bold.to_s + ("@" + parts.last).colorize.dim.to_s
+      parts = pkg_key.split('@')
+      "#{parts[...-1].join('@').colorize.bold}#{("@#{parts.last}").colorize.dim}"
     }.sort!
   end
 end
