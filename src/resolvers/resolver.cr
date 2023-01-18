@@ -281,6 +281,9 @@ module Zap::Resolver
 
   private def self.flag_transitive_dependencies(package : Package, ancestors : Set(Package))
     if (peers = package.peer_dependencies) && peers.try(&.size.> 0)
+      {% if flag?(:preview_mt) %}
+        peers = peers.inner
+      {% end %}
       peers_hash = peers.dup
 
       peers_hash.reject! do |peer_name, peer_range|
