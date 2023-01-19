@@ -1,6 +1,6 @@
 module Zap::Resolver
   struct TarballUrl < Base
-    def resolve(parent_pkg : Package | Lockfile::Root, *, dependent : Package? = nil) : Package
+    def resolve(*, dependent : Package? = nil) : Package
       tarball_url = version.to_s
       store_hash = Digest::SHA1.hexdigest("zap--tarball-#{tarball_url}")
       temp_path = Path.new(Dir.tempdir, store_hash)
@@ -10,7 +10,7 @@ module Zap::Resolver
       end
       Package.init(temp_path).tap { |pkg|
         pkg.dist = Package::TarballDist.new(tarball_url, temp_path.to_s)
-        on_resolve(pkg, parent_pkg, tarball_url, dependent: dependent)
+        on_resolve(pkg, tarball_url, dependent: dependent)
       }
     end
 

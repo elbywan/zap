@@ -2,14 +2,14 @@ module Zap::Resolver
   @git_url : Utils::GitUrl
 
   struct Git < Base
-    def initialize(@state, @package_name, @version = "latest", @aliased_name = nil)
+    def initialize(@state, @package_name, @version = "latest", @aliased_name = nil, @parent = nil)
       super
       @git_url = Utils::GitUrl.new(@version.to_s, @state.reporter)
     end
 
-    def resolve(parent_pkg : Package | Lockfile::Root, *, dependent : Package? = nil) : Package
+    def resolve(*, dependent : Package? = nil) : Package
       fetch_metadata.tap do |pkg|
-        on_resolve(pkg, parent_pkg, pkg.dist.as(Package::GitDist).commit_hash, dependent: dependent)
+        on_resolve(pkg, pkg.dist.as(Package::GitDist).commit_hash, dependent: dependent)
       end
     end
 

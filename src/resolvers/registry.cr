@@ -26,9 +26,9 @@ module Zap::Resolver
       }
     end
 
-    def resolve(parent_pkg : Package | Lockfile::Root, *, dependent : Package? = nil) : Package
+    def resolve(*, dependent : Package? = nil) : Package
       pkg = self.fetch_metadata
-      on_resolve(pkg, parent_pkg, pkg.version, dependent: dependent)
+      on_resolve(pkg, pkg.version, dependent: dependent)
       pkg
     rescue e
       raise "Error resolving #{pkg.try &.name || self.package_name} #{pkg.try &.version || self.version} #{e.message}"

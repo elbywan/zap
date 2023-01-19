@@ -31,6 +31,7 @@ class Zap::Lockfile
       hash[key] = Root.new
     end
   end
+  property overrides : Package::Overrides? = nil
   property packages : SafeHash(String, Package) = SafeHash(String, Package).new
 
   @[JSON::Field(ignore: true)]
@@ -79,6 +80,13 @@ class Zap::Lockfile
           pinned_deps << key
         end
         keep
+      end
+    end
+
+    # Do not prune overrides
+    overrides.try &.each do |name, override_list|
+      override_list.each do |override|
+        pinned_deps << "#{name}@#{override.specifier}"
       end
     end
 

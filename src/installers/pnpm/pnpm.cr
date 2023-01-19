@@ -32,19 +32,17 @@ module Zap::Installer::Pnpm
       @public_hoist_patterns = public_hoist_patterns.map { |pattern| Regex.new("^#{Regex.escape(pattern).gsub("\\*", ".*")}$") }
     end
 
-    alias Ancestors = Set(Package | Lockfile::Root)
+    alias Ancestors = Deque(Package | Lockfile::Root)
 
     def install
       state.lockfile.roots.each do |name, root|
         workspace = state.workspaces.find { |w| w.package.name == name }
         root_path = workspace.try(&.path./ "node_modules") || Path.new(state.config.node_modules)
-        ancestors = Ancestors.new
-        ancestors << root
         Dir.mkdir_p(root_path)
         install_package(
           root,
           root_path: root_path,
-          ancestors: ancestors
+          ancestors: Ancestors.new
         )
       end
     end
@@ -52,10 +50,11 @@ module Zap::Installer::Pnpm
     def install_package(
       package : Package | Lockfile::Root,
       *,
-      ancestors : Ancestors = Ancestors.new,
+      ancestors : Ancestors,
       root_path : Path? = nil
     ) : Path
       resolved_peers = nil
+      overrides = nil
       if package.is_a?(Package)
         if package.kind.link?
           # Links are easy, we just need to return the path
@@ -63,12 +62,21 @@ module Zap::Installer::Pnpm
         end
 
         resolved_peers = resolve_peers(package, ancestors)
-        if resolved_peers && resolved_peers.size > 0
-          peers_hash = Package.hash_peer_dependencies(resolved_peers)
-          install_path = @modules_store / "#{package.key}+#{peers_hash}" / "node_modules"
-        else
-          install_path = @modules_store / package.key / "node_modules"
+        resolved_transitive_overrides = resolve_transitive_overrides(package, ancestors)
+
+        package_folder = String.build do |str|
+          str << package.key
+          if resolved_peers && resolved_peers.size > 0
+            peers_hash = Package.hash_dependencies(resolved_peers)
+            str << "+#{peers_hash}"
+          end
+          if resolved_transitive_overrides && resolved_transitive_overrides.size > 0
+            overrides_hash = Digest::SHA1.hexdigest(resolved_transitive_overrides.map { |p| "#{p.name}@#{p.version}" }.sort.join("+"))
+            str << "+#{overrides_hash}"
+          end
         end
+
+        install_path = @modules_store / package_folder / "node_modules"
 
         # Already installed
         if File.directory?(install_path)
@@ -90,9 +98,6 @@ module Zap::Installer::Pnpm
         install_path = root_path.not_nil!
       end
 
-      # pinned_packages = package.pinned_dependencies.map do |name, version_or_alias|
-      #   state.lockfile.packages[version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key]
-      # end
       pinned_packages = package.pinned_dependencies.map do |name, version_or_alias|
         _key = version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key
         _pkg = state.lockfile.packages[_key]
@@ -102,13 +107,26 @@ module Zap::Installer::Pnpm
         }
       end
 
-      # ((resolved_peers.try &.to_a.+ pinned_packages) || pinned_packages).each do |dependency|
       (resolved_peers.try(&.map { |p| {p.name, p} }.+ pinned_packages) || pinned_packages).each do |(name, dependency)|
         # Install the dependency in the .zap folder if it's not already installed
+        ancestors.unshift package
+
+        # Apply overrides
+        if overrides = state.lockfile.overrides
+          reversed_ancestors = ancestors.to_a.reverse
+          if override = overrides.override?(dependency, reversed_ancestors)
+            # maybe enable logging with a verbose flag?
+            # ancestors_str = reversed_ancestors.select(&.is_a?(Package)).map { |a| "#{a.as(Package).name}@#{a.as(Package).version}" }.join(" > ")
+            # state.reporter.log("#{"Overriden:".colorize.bold.yellow} #{"#{override.name}@"}#{override.specifier.colorize.blue} (was: #{dependency.version}) #{"(#{ancestors_str})".colorize.dim}")
+            dependency = state.lockfile.packages["#{override.name}@#{override.specifier}"]
+          end
+        end
+
         source = install_package(
           dependency,
-          ancestors: ancestors.dup << package
+          ancestors: ancestors
         )
+        ancestors.shift
 
         # Link it to the parent package
         target = install_path / name
@@ -202,8 +220,7 @@ module Zap::Installer::Pnpm
       end
       if peers.size > 0
         Set(Package).new.tap do |resolved_peers|
-          reverse_ancestors = ancestors.to_a.reverse
-          reverse_ancestors.each do |ancestor|
+          ancestors.each do |ancestor|
             ancestor.pinned_dependencies.each do |name, version_or_alias|
               dependency = state.lockfile.get_package(name, version_or_alias)
               resolved_peers << dependency if peers.has_key?(version_or_alias.is_a?(String) ? dependency.name : name)
@@ -212,6 +229,20 @@ module Zap::Installer::Pnpm
           end
         end
       end
+    end
+
+    private def resolve_transitive_overrides(package : Package, ancestors : Ancestors) : Set(Package::Overrides::Parent)?
+      result = Set(Package::Overrides::Parent).new
+      if transitive_overrides = package.transitive_overrides
+        reversed_ancestors = ancestors.to_a.reverse
+        transitive_overrides.each do |override|
+          if parents = override.parents
+            matched_parents = override.matched_parents(reversed_ancestors)
+            result.concat(matched_parents)
+          end
+        end
+      end
+      result
     end
 
     protected def self.symlink(source, target)

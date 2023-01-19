@@ -68,9 +68,24 @@ module Zap::Commands::Install
         # Crawl, resolve and store dependencies
         state.reporter.report_resolver_updates
         resolved_packages = SafeSet(String).new
-        Resolver.resolve_dependencies(main_package, state: state, resolved_packages: resolved_packages, overrides: main_package.overrides)
+        state.lockfile.overrides = Package::Overrides.merge(main_package.overrides, state.lockfile.overrides)
+        state.lockfile.overrides.try &.each do |name, override_list|
+          override_list.each_with_index do |override, index|
+            Resolver.resolve_dependency(
+              nil, # no parent
+              name,
+              override.specifier,
+              state: state,
+              # do not track resolved packages for overrides
+              resolved_packages: SafeSet(String).new
+            ) do |metadata|
+              override_list[index] = override.copy_with(specifier: metadata.version)
+            end
+          end
+        end
+        Resolver.resolve_dependencies(main_package, state: state, resolved_packages: resolved_packages)
         workspaces.each do |workspace|
-          Resolver.resolve_dependencies(workspace.package, state: state, resolved_packages: resolved_packages, overrides: main_package.overrides)
+          Resolver.resolve_dependencies(workspace.package, state: state, resolved_packages: resolved_packages)
         end
         state.pipeline.await
         state.reporter.stop

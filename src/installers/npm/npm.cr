@@ -64,12 +64,25 @@ module Zap::Installer::Npm
               subcache.shift
             end
           end
+          # Append self to the dependency ancestors
+          ancestors = dependency_item.ancestors.dup.push(dependency)
+          # Process each child dependency
           dependency.pinned_dependencies?.try &.each do |name, version_or_alias|
+            # Apply overrides
             pkg = state.lockfile.packages[version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key]
+            if overrides = state.lockfile.overrides
+              if override = overrides.override?(pkg, ancestors)
+                # maybe enable logging with a verbose flag?
+                # ancestors_str = ancestors.map { |a| "#{a.name}@#{a.version}" }.join(" > ")
+                # state.reporter.log("#{"Overriden:".colorize.bold.yellow} #{"#{override.name}@"}#{override.specifier.colorize.blue} (was: #{pkg.version}) #{"(#{ancestors_str})".colorize.dim}")
+                pkg = state.lockfile.packages["#{override.name}@#{override.specifier}"]
+              end
+            end
+            # Queue child dependency
             dependency_queue << DependencyItem.new(
               dependency: pkg,
               cache: subcache,
-              ancestors: dependency_item.ancestors.dup.push(dependency),
+              ancestors: ancestors,
               alias: version_or_alias.is_a?(Package::Alias) ? name : nil,
             )
           end

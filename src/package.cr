@@ -156,6 +156,10 @@ class Zap::Package
     end
   end
 
+  @[JSON::Field(ignore: true)]
+  @[YAML::Field(ignore: true)]
+  safe_property transitive_overrides : SafeSet(Package::Overrides::Override)? = nil
+
   ################
   # Constructors #
   ################
@@ -324,7 +328,7 @@ class Zap::Package
     end
   end
 
-  def self.hash_peer_dependencies(peers : Iterable(Package))
+  def self.hash_dependencies(peers : Iterable(Package))
     Digest::SHA1.hexdigest(peers.map(&.key).sort.join("+"))
   end
 

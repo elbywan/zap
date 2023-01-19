@@ -1,12 +1,12 @@
 module Zap::Resolver
   struct File < Base
-    def resolve(parent_pkg : Package | Lockfile::Root, *, dependent : Package? = nil) : Package
+    def resolve(*, dependent : Package? = nil) : Package
       path = Path.new version.to_s.split("file:").last
       absolute_path = path.expand(state.config.prefix)
       if Dir.exists? absolute_path
         Package.init(absolute_path).tap { |pkg|
           pkg.dist = Package::LinkDist.new(path.to_s)
-          on_resolve(pkg, parent_pkg, version.to_s, dependent: dependent)
+          on_resolve(pkg, version.to_s, dependent: dependent)
         }
       elsif ::File.exists? absolute_path
         tarball_path = path
@@ -15,7 +15,7 @@ module Zap::Resolver
         extract_tarball_to_temp(absolute_path, temp_path)
         Package.init(temp_path).tap { |pkg|
           pkg.dist = Package::TarballDist.new(tarball_path.to_s, temp_path.to_s)
-          on_resolve(pkg, parent_pkg, version.to_s, dependent: dependent)
+          on_resolve(pkg, version.to_s, dependent: dependent)
         }
       else
         raise "Invalid file path #{version}"
