@@ -8,12 +8,15 @@ module Zap::Utils::Macros
     @_{{name.var.id}}_lock = Mutex.new
 
     def {{name.var.id}} : {{name.type}}
-      @{{name.var.id}} = @_{{name.var.id}}_lock.synchronize do
-        if (value = @{{name.var.id}}).nil?
-          {{ yield }}
-        else
-          value
+      @_{{name.var.id}}_lock.synchronize do
+        temp = begin
+          if (value = @{{name.var.id}}).nil?
+            {{ yield }}
+          else
+            value
+          end
         end
+        @{{name.var.id}} = temp
       end
     end
     {% else %}
@@ -29,16 +32,24 @@ module Zap::Utils::Macros
     @_{{name.var.id}}_lock = Mutex.new
 
     def {{name.var.id}} : {{name.type}}
-      @{{name.var.id}} = @_{{name.var.id}}_lock.synchronize do
-        if (value = @{{name.var.id}}).nil?
+     @_{{name.var.id}}_lock.synchronize do
+        temp = if (value = @{{name.var.id}}).nil?
           {{ yield }}
         else
           value
         end
+        @{{name.var.id}} = temp
       end
     end
     def {{name.var.id}}=({{name.var.id}} : {{name.type}})
-      @{{name.var.id}} = {{name.var.id}}
+      @_{{name.var.id}}_lock.synchronize do
+        @{{name.var.id}} = {{name.var.id}}
+      end
+    end
+    def {{name.var.id}}_init(&block : Proc({{name.type}}))
+      @_{{name.var.id}}_lock.synchronize do
+        @{{name.var.id}} ||= yield
+      end
     end
   end
 
