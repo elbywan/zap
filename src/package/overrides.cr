@@ -100,12 +100,13 @@ class Zap::Package
     end
 
     protected def self.parse_key(raw_key : String)
-      if raw_key[0] == "@"
-        name = "@#{raw_key[1..].split('@')[0]}"
-        version = raw_key.split('@')[2]?
+      split_key = raw_key.split('@')
+      if raw_key.starts_with?("@")
+        name = split_key[0..1].join('@')
+        version = split_key[2]?
       else
-        name = raw_key.split('@').first
-        version = raw_key.split('@')[1]?
+        name = split_key.first
+        version = split_key[1]?
       end
       return name, version
     end
