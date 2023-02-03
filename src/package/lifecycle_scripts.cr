@@ -67,8 +67,14 @@ class Zap::Package
       field(kind).try do |command|
         output = output_io || IO::Memory.new
         # See: https://docs.npmjs.com/cli/v9/commands/npm-run-script
+        paths = [] of Path | String
+        Path.new(chdir).each_parent { |parent|
+          if parent.basename == "node_modules" && File.directory?(parent / ".bin")
+            paths << parent / ".bin"
+          end
+        }
         env = {
-          "PATH" => config.bin_path + Process::PATH_DELIMITER + ENV["PATH"],
+          "PATH" => (paths << config.bin_path << ENV["PATH"]).join(Process::PATH_DELIMITER),
         }
         yield command
         status = Process.run(command, **args, shell: true, env: env, chdir: chdir, output: output, error: output)
