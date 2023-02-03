@@ -133,7 +133,7 @@ class Zap::Package
       loop do
         break if pull.kind.end_object?
         key = pull.read_object_key
-        name, version = self.class.parse_key(key)
+        name, version = Utils::Various.parse_key(key)
         if pull.kind.begin_object?
           if key == "."
             raise "Overrides field contains invalid json. Wrong '.' spec (#{pull.read_raw}): must be a string."
@@ -160,18 +160,6 @@ class Zap::Package
         end
       end
       pull.read_end_object
-    end
-
-    protected def self.parse_key(raw_key : String)
-      split_key = raw_key.split('@')
-      if raw_key.starts_with?("@")
-        name = split_key[0..1].join('@')
-        version = split_key[2]?
-      else
-        name = split_key.first
-        version = split_key[1]?
-      end
-      return name, version
     end
   end
 end

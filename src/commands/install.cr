@@ -8,6 +8,7 @@ module Zap::Commands::Install
     install_config : Config::Install,
     store : Store,
     lockfile : Lockfile,
+    main_package : Package,
     pipeline = Pipeline.new,
     reporter : Reporter = Reporter::Interactive.new,
     workspaces : Array(Workspaces::Workspace) = [] of Workspaces::Workspace
@@ -62,7 +63,8 @@ module Zap::Commands::Install
           store: Store.new(global_store_path),
           lockfile: lockfile,
           reporter: reporter,
-          workspaces: workspaces
+          workspaces: workspaces,
+          main_package: main_package,
         )
 
         # Crawl, resolve and store dependencies

@@ -221,7 +221,7 @@ module Zap::Resolver
     if package && is_direct_dependency && type
       state.lockfile.add_dependency(name, version, type, package.name)
     end
-    # Multithreaded dependency resolution
+    # Multithreaded dependency resolution (if enabled)
     state.pipeline.process do
       # Create the appropriate resolver depending on the version (git, tarball, registry, local folder…)
       parent = package.try { |package| is_direct_dependency ? state.lockfile.roots[package.name] : package }
@@ -245,6 +245,8 @@ module Zap::Resolver
       # If the package has already been resolved, skip it to prevent infinite loops
       already_resolved = metadata.already_resolved?(state, resolved_packages)
       next if already_resolved
+      # Apply package extensions when the package is resolved for the first time
+      apply_package_extensions(metadata, state: state) if !lockfile_cached
       # Determine whether the dependencies should be resolved, most of the time they should
       should_resolve_dependencies = metadata.should_resolve_dependencies?(state)
       # Store the package data in the lockfile
@@ -411,6 +413,19 @@ module Zap::Resolver
       state.reporter.stop
       state.reporter.error(e, new_dep)
       raise e
+    end
+  end
+
+  private def self.apply_package_extensions(metadata : Package, *, state : Commands::Install::State) : Nil
+    # Take into account package extensions
+    if package_extensions = state.main_package.zap_config.package_extensions
+      package_extensions
+        .select { |selector|
+          name, version = Utils::Various.parse_key(selector)
+          name == metadata.name && (!version || Utils::Semver.parse(version).valid?(metadata.version))
+        }.each { |_, ext|
+        ext.merge_into(metadata)
+      }
     end
   end
 

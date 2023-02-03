@@ -35,9 +35,9 @@ class Zap::Package
   @[YAML::Field(ignore: true)]
   getter bundle_dependencies : (SafeHash(String, String) | Bool)? = nil
   @[JSON::Field(key: "peerDependencies")]
-  getter peer_dependencies : SafeHash(String, String)? = nil
+  property peer_dependencies : SafeHash(String, String)? = nil
   @[JSON::Field(key: "peerDependenciesMeta")]
-  getter peer_dependencies_meta : SafeHash(String, {optional: Bool?})? = nil
+  property peer_dependencies_meta : SafeHash(String, {optional: Bool?})? = nil
   @[YAML::Field(ignore: true)]
   property scripts : LifecycleScripts? = nil
   getter os : Array(String)? = nil
@@ -104,7 +104,8 @@ class Zap::Package
 
   record ZapConfig,
     hoist_patterns : Array(String)? = nil,
-    public_hoist_patterns : Array(String)? = nil do
+    public_hoist_patterns : Array(String)? = nil,
+    package_extensions : Hash(String, PackageExtension) = Hash(String, PackageExtension).new do
     include JSON::Serializable
     include YAML::Serializable
   end
@@ -208,6 +209,9 @@ class Zap::Package
           end
         end
       end
+    end
+    PackageExtension::PACKAGE_EXTENSIONS.each do |(name, extension)|
+      zap_config.package_extensions[name] ||= extension
     end
   end
 
