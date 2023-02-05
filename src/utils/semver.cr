@@ -8,16 +8,16 @@ module Zap::Utils::Semver
   # -----------------------------------------------------
   #
   # range-set  ::= range ( logical-or range ) *
-  RANGE_SET = /#{RANGE}(?:#{LOGICAL_OR}#{RANGE})*/
+  # RANGE_SET = /#{RANGE}(?:#{LOGICAL_OR}#{RANGE})*/
   # logical-or ::= ( ' ' ) * '||' ( ' ' ) *
   LOGICAL_OR = /\s*\|\|\s*/
   # range      ::= hyphen | simple ( ' ' simple ) * | ''
-  RANGE = /#{HYPHEN}|#{SIMPLE}(?:\s+#{SIMPLE})*|/
+  # RANGE = /#{HYPHEN}|#{SIMPLE}(?:\s+#{SIMPLE})*|/
   # hyphen     ::= partial ' - ' partial
-  HYPHEN        = /#{PARTIAL}#{HYPHEN_CLAUSE}#{PARTIAL}/
+  # HYPHEN        = /#{PARTIAL}#{HYPHEN_CLAUSE}#{PARTIAL}/
   HYPHEN_CLAUSE = /\s*-\s*/
   # simple     ::= primitive | partial | tilde | caret
-  SIMPLE = /(?:#{PRIMITIVE}|#{TILDE}|#{CARET})?#{PARTIAL}/
+  # SIMPLE = /(?:#{PRIMITIVE}|#{TILDE}|#{CARET})?#{PARTIAL}/
   # primitive  ::= ( '<' | '>' | '>=' | '<=' | '=' ) partial
   PRIMITIVE = /(?:[<>]=?|=)/
   # partial    ::= xr ( '.' xr ( '.' xr qualifier ? )? )?
@@ -65,11 +65,8 @@ module Zap::Utils::Semver
 
     getter comparison
     getter major : UInt128
-    getter major
     getter minor : UInt128
-    getter minor
     getter patch : UInt128
-    getter patch
     getter prerelease : String | Nil
     getter build_metadata : String | Nil
 
@@ -114,13 +111,10 @@ module Zap::Utils::Semver
     end
 
     def <=>(other : self) : Int32
-      return -1 if @major.nil?
       return -1 if major < other.major
       return 1 if major > other.major
-      return -1 if @minor.nil?
       return -1 if minor < other.minor
       return 1 if minor > other.minor
-      return -1 if @patch.nil?
       return -1 if patch < other.patch
       return 1 if patch > other.patch
       return 0 if @prerelease == other.prerelease
