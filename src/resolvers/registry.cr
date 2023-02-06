@@ -17,7 +17,7 @@ module Zap::Resolver
 
     def self.init(global_store_path : String, base_url = nil)
       @@base_url = base_url if base_url
-      fetch_cache = Fetch::Cache::InMemory.new(fallback: Fetch::Cache::InStore.new(global_store_path))
+      fetch_cache = Fetch::Cache::InStore.new(global_store_path) # Fetch::Cache::InMemory.new(fallback: Fetch::Cache::InStore.new(global_store_path))
       # Reusable client pool
       @@client_pool ||= Fetch::Pool.new(@@base_url, 50, cache: fetch_cache) { |client|
         client.read_timeout = 10.seconds
