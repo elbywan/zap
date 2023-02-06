@@ -82,7 +82,7 @@ module Zap::Fetch
     @inflight = SafeHash(String, Channel(Nil)).new
     @pool : Channel(HTTP::Client)
 
-    def initialize(@base_url : String, @size = 20, @cache = Cache::InMemory.new, &block)
+    def initialize(@base_url : String, @size = 20, @cache : Cache = Cache::InMemory.new, &block)
       @pool = Channel(HTTP::Client).new(@size)
       @size.times do
         client = HTTP::Client.new(URI.parse base_url)

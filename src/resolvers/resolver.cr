@@ -155,7 +155,7 @@ module Zap::Resolver
             state: state,
             dependent: dependent,
             resolved_packages: resolved_packages,
-            ancestors: ancestors.dup << package,
+            ancestors: Deque(Package).new(ancestors.size + 1).concat(ancestors),
           )
         end
       end
@@ -174,7 +174,7 @@ module Zap::Resolver
           state: state,
           dependent: dependent,
           resolved_packages: resolved_packages,
-          ancestors: ancestors.dup << package,
+          ancestors: Deque(Package).new(ancestors.size + 1).concat(ancestors),
         )
       end
     end
@@ -304,6 +304,7 @@ module Zap::Resolver
 
       peers_hash.reject! do |peer_name, peer_range|
         peer_name == package.name ||
+          package.pinned_dependencies.try(&.has_key?(peer_name)) ||
           package.dependencies.try(&.has_key?(peer_name)) ||
           package.optional_dependencies.try(&.has_key?(peer_name))
       end
@@ -313,8 +314,9 @@ module Zap::Resolver
       ancestors.reverse_each do |ancestor|
         peers_hash.try &.select! do |peer_name, peer_range|
           if ancestor.name == peer_name ||
+             ancestor.pinned_dependencies.try(&.has_key?(peer_name)) ||
              ancestor.dependencies.try(&.has_key?(peer_name)) ||
-             package.optional_dependencies.try(&.has_key?(peer_name))
+             ancestor.optional_dependencies.try(&.has_key?(peer_name))
             next false
           end
 
@@ -328,8 +330,9 @@ module Zap::Resolver
 
         transitive_peers.try &.each do |peer_name|
           if ancestor.name == peer_name ||
+             ancestor.pinned_dependencies.try(&.has_key?(peer_name)) ||
              ancestor.dependencies.try(&.has_key?(peer_name)) ||
-             package.optional_dependencies.try(&.has_key?(peer_name))
+             ancestor.optional_dependencies.try(&.has_key?(peer_name))
             next transitive_peers.not_nil!.delete(peer_name)
           end
 
