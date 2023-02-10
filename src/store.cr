@@ -48,7 +48,7 @@ struct Zap::Store
   def store_package_file(package_name : String, package_version : String, relative_file_path : String | Path, file_io : IO, permissions : Int64 = DEFAULT_CREATE_PERMISSIONS)
     file_path = package_path(package_name, package_version) / relative_file_path
     Dir.mkdir_p(file_path.dirname)
-    File.open(file_path, "w", perm: permissions) do |file|
+    File.open(file_path, "w", perm: permissions.to_i32) do |file|
       IO.copy file_io, file
     end
   end

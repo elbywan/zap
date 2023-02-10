@@ -77,7 +77,7 @@ class Zap::Package
           "PATH" => (paths << config.bin_path << ENV["PATH"]).join(Process::PATH_DELIMITER),
         }
         yield command
-        status = Process.run(command, **args, shell: true, env: env, chdir: chdir, output: output, error: output)
+        status = Process.run(command, **args, shell: true, env: env, chdir: chdir.to_s, output: output, error: output)
         if !status.success? && raise_on_error_code
           raise "#{output_io ? "" : output}\nCommand failed: #{command} (#{status.exit_status})"
         end
@@ -85,7 +85,7 @@ class Zap::Package
     end
 
     def run_script(kind : Symbol, chdir : Path | String, config : Config, raise_on_error_code = true, output_io = nil, **args)
-      run_script(kind, chdir, config, raise_on_error_code, output_io, **args) { }
+      run_script(kind, chdir.to_s, config, raise_on_error_code, output_io, **args) { }
     end
   end
 end

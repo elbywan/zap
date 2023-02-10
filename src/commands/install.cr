@@ -187,7 +187,7 @@ module Zap::Commands::Install
         end
         output_io = Reporter::ReporterFormattedAppendPipe.new(state.reporter)
         Package::LifecycleScripts::SELF_LIFECYCLE_SCRIPTS.each do |script|
-          scripts.run_script(script, chdir, state.config, output_io: output_io) { |command|
+          scripts.run_script(script, chdir.to_s, state.config, output_io: output_io) { |command|
             state.reporter.output << "\n   • #{package.name.colorize.bold} #{script.colorize.cyan} #{%(#{command}).colorize.dim}\n"
           }
         end

@@ -63,7 +63,7 @@ module Zap::Utils
       # Folder already exists, so we can skip cloning
       return if dest.nil?
       self.class.run("git clone --quiet --filter=tree:0 #{@base_url} #{dest}", @reporter)
-      self.class.run("git checkout --quiet #{commitish}", @reporter, chdir: dest)
+      self.class.run("git checkout --quiet #{commitish}", @reporter, chdir: dest.to_s)
     end
 
     def clone(dest : (String | Path)? = nil) : Nil
@@ -71,7 +71,7 @@ module Zap::Utils
     end
 
     def self.commit_hash(dest : Path | String) : String
-      self.run_and_get_output("git rev-parse HEAD", chdir: dest).chomp
+      self.run_and_get_output("git rev-parse HEAD", chdir: dest.to_s).chomp
     end
 
     def get_tag_for_semver!(semver : String) : String
