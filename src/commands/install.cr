@@ -11,9 +11,17 @@ module Zap::Commands::Install
     main_package : Package,
     pipeline = Pipeline.new,
     reporter : Reporter = Reporter::Interactive.new,
-    workspaces : Array(Workspaces::Workspace) = [] of Workspaces::Workspace
+    workspaces : Array(Workspaces::Workspace) = [] of Workspaces::Workspace,
+    resolved_packages : SafeSet(String) = SafeSet(String).new
 
-  def self.run(config : Config, install_config : Config::Install, *, reporter : Reporter? = nil)
+  def self.run(
+    config : Config,
+    install_config : Config::Install,
+    *,
+    reporter : Reporter? = nil,
+    resolved_packages : SafeSet(String) = SafeSet(String).new,
+    store : Store? = Store.new(config.global_store_path)
+  )
     realtime = nil
     state = uninitialized State
     null_io = File.open(File::NULL, "w")
@@ -29,7 +37,7 @@ module Zap::Commands::Install
         puts <<-TERM
         ⚡ #{"Zap".colorize.bold.underline} #{"(v#{VERSION})".colorize.dim}
            #{"project:".colorize.blue} #{project_path} • #{"store:".colorize.blue} #{global_store_path} • #{"workers:".colorize.blue} #{Crystal::Scheduler.nb_of_workers}
-           #{"lockfile:".colorize.blue} #{lockfile.read_from_disk ? "ok".colorize.green : "not found".colorize.red} • #{"install strategy:".colorize.blue} #{install_config.install_strategy.to_s.downcase}
+           #{"lockfile:".colorize.blue} #{lockfile.read_status.from_disk? ? "ok".colorize.green : lockfile.read_status.error? ? "read error".colorize.red : "not found".colorize.red} • #{"install strategy:".colorize.blue} #{install_config.install_strategy.to_s.downcase}
         TERM
       end
 
@@ -60,16 +68,16 @@ module Zap::Commands::Install
           install_config: config.global ? install_config.copy_with(
             install_strategy: Config::InstallStrategy::NPM_Shallow
           ) : install_config,
-          store: Store.new(global_store_path),
+          store: store,
           lockfile: lockfile,
           reporter: reporter,
           workspaces: workspaces,
           main_package: main_package,
+          resolved_packages: resolved_packages
         )
 
         # Crawl, resolve and store dependencies
         state.reporter.report_resolver_updates
-        resolved_packages = SafeSet(String).new
         state.lockfile.overrides = Package::Overrides.merge(main_package.overrides, state.lockfile.overrides)
         state.lockfile.overrides.try &.each do |name, override_list|
           override_list.each_with_index do |override, index|
@@ -85,9 +93,9 @@ module Zap::Commands::Install
             end
           end
         end
-        Resolver.resolve_dependencies(main_package, state: state, resolved_packages: resolved_packages)
+        Resolver.resolve_dependencies(main_package, state: state, resolved_packages: state.resolved_packages)
         workspaces.each do |workspace|
-          Resolver.resolve_dependencies(workspace.package, state: state, resolved_packages: resolved_packages)
+          Resolver.resolve_dependencies(workspace.package, state: state, resolved_packages: state.resolved_packages)
         end
         state.pipeline.await
         state.reporter.stop

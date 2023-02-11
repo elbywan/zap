@@ -33,23 +33,35 @@ abstract struct Zap::Resolver::Base
     pkg.has_prepare_script ||= pkg.scripts.try(&.has_prepare_script?)
     # Pin the dependency to the locked version
     if aliased_name
-      parent.try &.pinned_dependencies[aliased_name] = Package::Alias.new(name: pkg.name, version: locked_version)
+      if parent_package.is_a?(Package)
+        parent_package.atomic_set_pinned_dependency(aliased_name, Package::Alias.new(name: pkg.name, version: locked_version))
+      else
+        parent_package.try &.pinned_dependencies[aliased_name] = Package::Alias.new(name: pkg.name, version: locked_version)
+      end
     else
-      parent.try &.pinned_dependencies[pkg.name] = locked_version
+      if parent_package.is_a?(Package)
+        parent_package.atomic_set_pinned_dependency(pkg.name, locked_version)
+      else
+        parent_package.try &.pinned_dependencies[pkg.name] = locked_version
+      end
     end
   end
 
   def get_lockfile_cache(name : String, *, dependent : Package? = nil)
-    if pinned_dependency = parent.try &.pinned_dependencies?.try &.[name]?
+    parent_package = parent
+    pinned_dependency =
+      parent_package.is_a?(Package) ? parent_package.atomic_get_pinned_dependency?(name) : parent_package.try &.pinned_dependencies[name]?
+    if pinned_dependency
       if pinned_dependency.is_a?(Package::Alias)
         packages_ref = pinned_dependency.key
       else
         packages_ref = "#{name}@#{pinned_dependency}"
       end
-      cached_pkg = state.lockfile.packages[packages_ref]?
-      if cached_pkg
-        cached_pkg.dependents << (dependent || cached_pkg).key
-        cached_pkg
+      state.lockfile.packages_lock.synchronize do
+        state.lockfile.packages[packages_ref].try do |cached_pkg|
+          cached_pkg.dependents << (dependent || cached_pkg).key
+          cached_pkg
+        end
       end
     end
   end
@@ -60,6 +72,8 @@ abstract struct Zap::Resolver::Base
 end
 
 module Zap::Resolver
+  Utils::Synchronize::Global.sync_channel(store, Bool)
+
   def self.make(state : Commands::Install::State, name : String, version_field : String = "latest", parent : Package | Lockfile::Root | Nil = nil) : Base
     # Partial implementation of the pnpm workspace protocol
     # Does not support aliases for the moment
@@ -118,7 +132,7 @@ module Zap::Resolver
     *,
     state : Commands::Install::State,
     dependent : Package? = nil,
-    resolved_packages = SafeSet(String).new,
+    resolved_packages : SafeSet(String),
     ancestors : Deque(Package) = Deque(Package).new
   )
     is_main_package = dependent.nil?
@@ -223,13 +237,11 @@ module Zap::Resolver
     end
     # Multithreaded dependency resolution (if enabled)
     state.pipeline.process do
-      # Create the appropriate resolver depending on the version (git, tarball, registry, local folder…)
       parent = package.try { |package| is_direct_dependency ? state.lockfile.roots[package.name] : package }
+      # Create the appropriate resolver depending on the version (git, tarball, registry, local folder…)
       resolver = Resolver.make(state, name, version, parent)
       # Attempt to use the package data from the lockfile
-      if package
-        metadata = resolver.get_lockfile_cache(name, dependent: dependent)
-      end
+      metadata = resolver.get_lockfile_cache(name, dependent: dependent)
       # Check if the data from the lockfile is still valid (direct deps can be modified in the package.json file or through the cli)
       if metadata && is_direct_dependency
         metadata = nil unless resolver.is_lockfile_cache_valid?(metadata)
@@ -242,15 +254,19 @@ module Zap::Resolver
       # Flag transitive dependencies and overrides
       flag_transitive_dependencies(metadata, ancestors)
       flag_transitive_overrides(metadata, ancestors, state)
+      # Mutate only if the package is not already in the lockfile
+      state.lockfile.packages_lock.synchronize do
+        unless state.lockfile.packages[metadata.key]?
+          # Apply package extensions before saving the package in the lockfile
+          apply_package_extensions(metadata, state: state)
+          # Store the package data in the lockfile
+          state.lockfile.packages[metadata.key] = metadata
+        end
+      end
       # If the package has already been resolved, skip it to prevent infinite loops
-      already_resolved = metadata.already_resolved?(state, resolved_packages)
-      next if already_resolved
-      # Apply package extensions when the package is resolved for the first time
-      apply_package_extensions(metadata, state: state) if !lockfile_cached
+      next if metadata.already_resolved?(state, resolved_packages)
       # Determine whether the dependencies should be resolved, most of the time they should
       should_resolve_dependencies = metadata.should_resolve_dependencies?(state)
-      # Store the package data in the lockfile
-      state.lockfile.packages[metadata.key] = metadata
       # Repeat the process for transitive dependencies if needed
       if should_resolve_dependencies
         self.resolve_dependencies(
@@ -267,7 +283,9 @@ module Zap::Resolver
         end
       end
       # Attempt to store the package in the filesystem or in the cache if needed
-      stored = resolver.store(metadata) { state.reporter.on_downloading_package }
+      stored = synchronize_store(metadata.key) {
+        resolver.store(metadata) { state.reporter.on_downloading_package }
+      }
       # Call the on_resolve callback
       on_resolve.call(metadata)
       # Report the package as downloaded if it was stored
@@ -297,9 +315,6 @@ module Zap::Resolver
     transitive_peers = package.transitive_peer_dependencies.try &.dup
 
     if (peers = package.peer_dependencies) && peers.try(&.size.> 0)
-      {% if flag?(:preview_mt) %}
-        peers = peers.inner
-      {% end %}
       peers_hash = peers.dup
 
       peers_hash.reject! do |peer_name, peer_range|
@@ -426,9 +441,7 @@ module Zap::Resolver
         .select { |selector|
           name, version = Utils::Various.parse_key(selector)
           name == metadata.name && (!version || Utils::Semver.parse(version).valid?(metadata.version))
-        }.each { |_, ext|
-        ext.merge_into(metadata)
-      }
+        }.each { |_, ext| ext.merge_into(metadata) }
     end
   end
 

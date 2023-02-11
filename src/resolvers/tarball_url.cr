@@ -2,12 +2,7 @@ module Zap::Resolver
   struct TarballUrl < Base
     def resolve(*, dependent : Package? = nil) : Package
       tarball_url = version.to_s
-      store_hash = Digest::SHA1.hexdigest("zap--tarball-#{tarball_url}")
-      temp_path = Path.new(Dir.tempdir, store_hash)
-      # TODO: a dedicated pool?
-      unless Dir.exists?(temp_path)
-        Utils::TarGzip.download_and_unpack(tarball_url, temp_path)
-      end
+      temp_path = @state.store.store_temp_tarball(tarball_url)
       Package.init(temp_path).tap { |pkg|
         pkg.dist = Package::TarballDist.new(tarball_url, temp_path.to_s)
         on_resolve(pkg, tarball_url, dependent: dependent)

@@ -31,6 +31,7 @@ module Zap::Resolver
       on_resolve(pkg, pkg.version, dependent: dependent)
       pkg
     rescue e
+      Zap::Log.debug { e.message.colorize.red.to_s + "\n" + e.backtrace.map { |line| "\t#{line}" }.join("\n").colorize.red.to_s }
       raise "Error resolving #{pkg.try &.name || self.package_name} #{pkg.try &.version || self.version} #{e.message}"
     end
 
@@ -88,8 +89,6 @@ module Zap::Resolver
         rescue e
           state.store.remove_package(package_name, version)
           raise e
-        ensure
-          io.try &.close
         end
         true
       end
@@ -148,11 +147,8 @@ module Zap::Resolver
       raise "Resolver::Registry has not been initialized" unless client_pool = @@client_pool
       version = self.version
       base_url = @@base_url
-
-      begin
-        manifest = client_pool.cached_fetch("/#{package_name}", HEADERS)
-        find_valid_version(manifest, version)
-      end
+      manifest = client_pool.cached_fetch("/#{package_name}", HEADERS)
+      find_valid_version(manifest, version)
     end
   end
 end

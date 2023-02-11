@@ -1,5 +1,7 @@
 require "http/client"
 require "json"
+require "../utils/data_structures/safe_hash"
+require "../utils/synchronize"
 
 module Zap::Fetch
   CACHE_DIR = ".fetch_cache"
@@ -78,8 +80,9 @@ module Zap::Fetch
   end
 
   class Pool
+    include Zap::Utils::Synchronize(Nil)
+
     @size = 0
-    @inflight = SafeHash(String, Channel(Nil)).new
     @pool : Channel(HTTP::Client)
 
     def initialize(@base_url : String, @size = 20, @cache : Cache = Cache::InMemory.new, &block)
@@ -104,6 +107,7 @@ module Zap::Fetch
           begin
             break yield client
           rescue e
+            Zap::Log.debug { e.message.colorize.red.to_s + "\n" + e.backtrace.map { |line| "\t#{line}" }.join("\n").colorize.red.to_s }
             client.close
             sleep 0.5.seconds * retry_count
             raise e if retry_count >= retry_attempts
@@ -122,54 +126,39 @@ module Zap::Fetch
       body = @cache.get(full_url)
       return body if body
       # Dedupe requests by having an inflight channel for each URL
-      if inflight = @inflight[url]?
-        inflight.receive
-      else
-        chan = Channel(Nil).new
-        @inflight[url] = chan
-        begin
-          # debug! "[fetch] getting client… #{url}"
-          client do |http|
-            yield http
+      synchronize(url) do
+        # debug! "[fetch] getting client… #{url}"
+        client do |http|
+          yield http
 
-            # debug! "[fetch] got client #{url}"
+          # debug! "[fetch] got client #{url}"
 
-            http.head(*args, **kwargs) do |response|
-              # debug! "[fetch] got response #{url}"
-              raise "Invalid status code from #{url} (#{response.status_code})" unless response.status_code == 200
-              etag = response.headers["ETag"]?
-              # Attempt to extract the body from the cache again but this time with the etag
-              body = @cache.get(full_url, etag)
-              if body
-                cache_control_directives, expiry = extract_cache_headers(response)
-                @cache.set(full_url, body, expiry, etag)
-                return body
-              end
-            end
-
-            http.get(*args, **kwargs) do |response|
-              # debug! "[fetch] got response #{url}"
-              raise "Invalid status code from #{url} (#{response.status_code})" unless response.status_code == 200
-
-              etag = response.headers["ETag"]?
+          http.head(*args, **kwargs) do |response|
+            # debug! "[fetch] got response #{url}"
+            raise "Invalid status code from #{url} (#{response.status_code})" unless response.status_code == 200
+            etag = response.headers["ETag"]?
+            # Attempt to extract the body from the cache again but this time with the etag
+            body = @cache.get(full_url, etag)
+            if body
               cache_control_directives, expiry = extract_cache_headers(response)
-              body = @cache.set(full_url, response.body_io.gets_to_end, expiry, etag)
+              @cache.set(full_url, body, expiry, etag)
+              return body
             end
           end
-        ensure
-          @inflight.delete(url)
-          loop do
-            select
-            when chan.send(nil)
-              next
-            else
-              break
-            end
+
+          http.get(*args, **kwargs) do |response|
+            # debug! "[fetch] got response #{url}"
+            raise "Invalid status code from #{url} (#{response.status_code})" unless response.status_code == 200
+
+            etag = response.headers["ETag"]?
+            cache_control_directives, expiry = extract_cache_headers(response)
+            body = @cache.set(full_url, response.body_io.gets_to_end, expiry, etag)
           end
         end
       end
 
-      return @cache.get(full_url).not_nil!
+      # Cache should now be populated
+      @cache.get(full_url).not_nil!
     end
 
     def cached_fetch(*args, **kwargs) : String

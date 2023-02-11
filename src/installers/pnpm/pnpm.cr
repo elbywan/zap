@@ -207,13 +207,7 @@ module Zap::Installer::Pnpm
     private def resolve_peers(package : Package, ancestors : Ancestors) : Set(Package)?
       peers = Hash(String, String).new
       if direct_peers = package.peer_dependencies
-        peers.merge!(
-          {% if flag?(:preview_mt) %}
-            direct_peers.inner
-          {% else %}
-            direct_peers
-          {% end %}
-        )
+        peers.merge!(direct_peers)
       end
       if transitive_peers = package.transitive_peer_dependencies
         transitive_peers.each { |peer| peers[peer] ||= "*" }

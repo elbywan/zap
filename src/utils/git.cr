@@ -1,7 +1,7 @@
 require "../reporters/*"
 
 module Zap::Utils
-  struct GitUrl
+  class GitUrl
     # See: https://docs.npmjs.com/cli/v9/configuring-npm/package-json#git-urls-as-dependencies
     # <protocol>://[<user>[:<password>]@]<hostname>[:<port>][:][/]<path>[#<commit-ish> | #semver:<semver>]
     GIT_URL_REGEX = /(?:git\+)?(?<protocol>git|ssh|http|https|file):\/\/(?:(?<user>[^:@]+)?(:(?<password>[^@]+))?@)?(?<hostname>[^:\/]+)(:(?<port>\d+))?[\/:](?<path>[^#]+)((?:#semver:(?<semver>[^:]+))|(?:#(?<commitish>[^:]+)))?/
@@ -18,6 +18,24 @@ module Zap::Utils
     @commitish : String?
     @semver : String?
     @reporter : Reporter?
+    getter resolved_commitish : String do
+      commitish = @commitish
+      if semver = @semver
+        # List tags and find one matching the specified semver
+        commitish = get_tag_for_semver!(semver)
+      end
+
+      commitish || get_default_branch? || "main"
+    end
+
+    getter commitish_hash : String do
+      ref_commit = get_ref_commit?(resolved_commitish)
+      if !ref_commit || ref_commit.empty?
+        resolved_commitish
+      else
+        ref_commit
+      end
+    end
 
     def initialize(@url : String, @reporter : Reporter? = nil)
       begin
@@ -50,27 +68,18 @@ module Zap::Utils
     end
 
     def clone(dest : (String | Path)? = nil, &) : Nil
-      commitish = @commitish
-      if semver = @semver
-        # List tags and find one matching the specified semver
-        commitish = get_tag_for_semver!(semver)
-      end
-
-      commitish ||= get_default_branch? || "main"
-
       # Get the commit hash
-      dest ||= yield (get_ref_commit?(commitish) || commitish)
-      # Folder already exists, so we can skip cloning
-      return if dest.nil?
+      dest ||= yield commitish_hash
+
       self.class.run("git clone --quiet --filter=tree:0 #{@base_url} #{dest}", @reporter)
-      self.class.run("git checkout --quiet #{commitish}", @reporter, chdir: dest.to_s)
+      self.class.run("git checkout --quiet #{resolved_commitish}", @reporter, chdir: dest.to_s)
     end
 
     def clone(dest : (String | Path)? = nil) : Nil
       clone(dest) { }
     end
 
-    def self.commit_hash(dest : Path | String) : String
+    def self.head_commit_hash(dest : Path | String) : String
       self.run_and_get_output("git rev-parse HEAD", chdir: dest.to_s).chomp
     end
 

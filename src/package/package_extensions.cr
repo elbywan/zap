@@ -15,7 +15,7 @@ class Zap::Package
         if version.nil?
           pkg.dependencies.try &.delete(name)
         else
-          hash = (pkg.dependencies ||= SafeHash(String, String).new)
+          hash = (pkg.dependencies ||= Hash(String, String).new)
           hash[name] = version
         end
       end
@@ -23,7 +23,7 @@ class Zap::Package
         if version.nil?
           pkg.optional_dependencies.try &.delete(name)
         else
-          hash = (pkg.optional_dependencies ||= SafeHash(String, String).new)
+          hash = (pkg.optional_dependencies ||= Hash(String, String).new)
           hash[name] = version
         end
       end
@@ -31,7 +31,7 @@ class Zap::Package
         if version.nil?
           pkg.peer_dependencies.try &.delete(name)
         else
-          hash = (pkg.peer_dependencies ||= SafeHash(String, String).new)
+          hash = (pkg.peer_dependencies ||= Hash(String, String).new)
           hash[name] = version
         end
       end
@@ -39,7 +39,7 @@ class Zap::Package
         if value.nil?
           pkg.peer_dependencies_meta.try &.delete(name)
         else
-          hash = (pkg.peer_dependencies_meta ||= SafeHash(String, {optional: Bool?}).new)
+          hash = (pkg.peer_dependencies_meta ||= Hash(String, {optional: Bool?}).new)
           hash[name] = value
         end
       end

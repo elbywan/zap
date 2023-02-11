@@ -24,20 +24,20 @@ class Zap::Package
   getter! version : String
   getter bin : (String | Hash(String, String))? = nil
   @[YAML::Field(ignore: true)]
-  property dependencies : SafeHash(String, String)? = nil
+  property dependencies : Hash(String, String)? = nil
   @[JSON::Field(key: "devDependencies")]
   @[YAML::Field(ignore: true)]
-  property dev_dependencies : SafeHash(String, String)? = nil
+  property dev_dependencies : Hash(String, String)? = nil
   @[JSON::Field(key: "optionalDependencies")]
   @[YAML::Field(ignore: true)]
-  property optional_dependencies : SafeHash(String, String)? = nil
+  property optional_dependencies : Hash(String, String)? = nil
   @[JSON::Field(key: "bundleDependencies")]
   @[YAML::Field(ignore: true)]
-  getter bundle_dependencies : (SafeHash(String, String) | Bool)? = nil
+  getter bundle_dependencies : (Hash(String, String) | Bool)? = nil
   @[JSON::Field(key: "peerDependencies")]
-  property peer_dependencies : SafeHash(String, String)? = nil
+  property peer_dependencies : Hash(String, String)? = nil
   @[JSON::Field(key: "peerDependenciesMeta")]
-  property peer_dependencies_meta : SafeHash(String, {optional: Bool?})? = nil
+  property peer_dependencies_meta : Hash(String, {optional: Bool?})? = nil
   @[YAML::Field(ignore: true)]
   property scripts : LifecycleScripts? = nil
   getter os : Array(String)? = nil
@@ -80,14 +80,30 @@ class Zap::Package
   end
 
   @[JSON::Field(ignore: true)]
-  safe_getter pinned_dependencies : SafeHash(String, String | Alias) { SafeHash(String, String | Alias).new }
+  getter pinned_dependencies : Hash(String, String | Alias) { Hash(String, String | Alias).new }
   getter? pinned_dependencies
-  setter pinned_dependencies : SafeHash(String, String | Alias)?
+  setter pinned_dependencies : Hash(String, String | Alias)?
 
   @[JSON::Field(ignore: true)]
-  safe_getter dependents : SafeSet(String) { SafeSet(String).new }
+  @[YAML::Field(ignore: true)]
+  @pinned_dependencies_lock = Mutex.new
+
+  def atomic_get_pinned_dependency(name : String) : String | Alias
+    @pinned_dependencies_lock.synchronize { pinned_dependencies[name] }
+  end
+
+  def atomic_get_pinned_dependency?(name : String) : String | Alias | Nil
+    @pinned_dependencies_lock.synchronize { pinned_dependencies[name]? }
+  end
+
+  def atomic_set_pinned_dependency(name : String, value : String | Alias) : Nil
+    @pinned_dependencies_lock.synchronize { pinned_dependencies[name] = value }
+  end
+
+  @[JSON::Field(ignore: true)]
+  getter dependents : Set(String) { Set(String).new }
   getter? dependents
-  setter dependents : SafeSet(String)?
+  setter dependents : Set(String)?
 
   @[JSON::Field(ignore: true)]
   property optional : Bool? = nil
@@ -193,7 +209,7 @@ class Zap::Package
 
   def after_initialize
     if meta = peer_dependencies_meta
-      @peer_dependencies ||= SafeHash(String, String).new
+      @peer_dependencies ||= Hash(String, String).new
       meta.each do |name, meta|
         peer_dependencies.not_nil![name] ||= "*"
       end
@@ -228,15 +244,15 @@ class Zap::Package
   def add_dependency(name : String, version : String, type : Symbol)
     case type
     when :dependencies
-      (self.dependencies ||= SafeHash(String, String).new)[name] = version
+      (self.dependencies ||= Hash(String, String).new)[name] = version
       self.dev_dependencies.try &.delete(name)
       self.optional_dependencies.try &.delete(name)
     when :optional_dependencies
-      (self.optional_dependencies ||= SafeHash(String, String).new)[name] = version
+      (self.optional_dependencies ||= Hash(String, String).new)[name] = version
       self.dependencies.try &.delete(name)
       self.dev_dependencies.try &.delete(name)
     when :dev_dependencies
-      (self.dev_dependencies ||= SafeHash(String, String).new)[name] = version
+      (self.dev_dependencies ||= Hash(String, String).new)[name] = version
       self.dependencies.try &.delete(name)
       self.optional_dependencies.try &.delete(name)
     else
@@ -350,19 +366,19 @@ class Zap::Package
   protected def already_resolved?(state : Commands::Install::State, resolved_packages : SafeSet(String)) : Bool
     if should_resolve_dependencies?(state)
       {% if flag?(:preview_mt) %}
-        begin
-          resolved_packages.lock.lock
-          return true if resolved_packages.inner.includes?(key)
-          resolved_packages.inner.add(key)
-        ensure
-          resolved_packages.lock.unlock
-        end
+        resolved_packages.lock.synchronize {
+          resolved_packages.inner.includes?(key).tap { |included|
+            resolved_packages.inner << key if !included
+          }
+        }
       {% else %}
-        return true if resolved_packages.includes?(key)
-        resolved_packages.add(key)
+        resolved_packages.includes?(key).tap { |included|
+          resolved_packages << key if !included
+        }
       {% end %}
+    else
+      false
     end
-    false
   end
 
   protected def self.check_os_cpu_array(field : Array(String)?, value : String)
