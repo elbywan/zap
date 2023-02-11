@@ -55,13 +55,14 @@ module Zap::Commands::Install
         # Find workspaces
         workspaces = Workspaces.crawl(main_package, config: config)
 
-        if workspaces.size > 0
-          puts <<-TERM
-             #{"scope".colorize.blue}: #{workspaces.size} packages • #{"workspaces:".colorize.blue} #{workspaces.map(&.package.name).join(", ")}
-          TERM
+        unless config.silent
+          if workspaces.size > 0
+            puts <<-TERM
+              #{"scope".colorize.blue}: #{workspaces.size} packages • #{"workspaces:".colorize.blue} #{workspaces.map(&.package.name).join(", ")}
+            TERM
+          end
+          puts "\n"
         end
-
-        puts "\n"
 
         state = State.new(
           config: config,
