@@ -11,15 +11,13 @@ module Zap::Commands::Install
     main_package : Package,
     pipeline = Pipeline.new,
     reporter : Reporter = Reporter::Interactive.new,
-    workspaces : Array(Workspaces::Workspace) = [] of Workspaces::Workspace,
-    resolved_packages : SafeSet(String) = SafeSet(String).new
+    workspaces : Array(Workspaces::Workspace) = [] of Workspaces::Workspace
 
   def self.run(
     config : Config,
     install_config : Config::Install,
     *,
     reporter : Reporter? = nil,
-    resolved_packages : SafeSet(String) = SafeSet(String).new,
     store : Store? = Store.new(config.global_store_path)
   )
     realtime = nil
@@ -74,7 +72,6 @@ module Zap::Commands::Install
           reporter: reporter,
           workspaces: workspaces,
           main_package: main_package,
-          resolved_packages: resolved_packages
         )
 
         # Crawl, resolve and store dependencies
@@ -82,21 +79,21 @@ module Zap::Commands::Install
         state.lockfile.overrides = Package::Overrides.merge(main_package.overrides, state.lockfile.overrides)
         state.lockfile.overrides.try &.each do |name, override_list|
           override_list.each_with_index do |override, index|
-            Resolver.resolve_dependency(
+            Resolver.resolve(
               nil, # no parent
               name,
               override.specifier,
               state: state,
-              # do not track resolved packages for overrides
-              resolved_packages: SafeSet(String).new
+              # do not resolve children for overrides
+              single_resolution: true
             ) do |metadata|
               override_list[index] = override.copy_with(specifier: metadata.version)
             end
           end
         end
-        Resolver.resolve_dependencies(main_package, state: state, resolved_packages: state.resolved_packages)
+        Resolver.resolve_dependencies_of(main_package, state: state)
         workspaces.each do |workspace|
-          Resolver.resolve_dependencies(workspace.package, state: state, resolved_packages: state.resolved_packages)
+          Resolver.resolve_dependencies_of(workspace.package, state: state)
         end
         state.pipeline.await
         state.reporter.stop

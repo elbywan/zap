@@ -72,7 +72,7 @@ abstract struct Zap::Resolver::Base
 end
 
 module Zap::Resolver
-  Utils::Synchronize::Global.sync_channel(store, Bool)
+  Utils::MemoLock::Global.memo_lock(:store, Bool)
 
   def self.make(state : Commands::Install::State, name : String, version_field : String = "latest", parent : Package | Lockfile::Root | Nil = nil) : Base
     # Partial implementation of the pnpm workspace protocol
@@ -127,12 +127,11 @@ module Zap::Resolver
     end
   end
 
-  def self.resolve_dependencies(
+  def self.resolve_dependencies_of(
     package : Package,
     *,
     state : Commands::Install::State,
     dependent : Package? = nil,
-    resolved_packages : SafeSet(String),
     ancestors : Deque(Package) = Deque(Package).new
   )
     is_main_package = dependent.nil?
@@ -161,14 +160,13 @@ module Zap::Resolver
             # From: https://docs.npmjs.com/cli/v9/configuring-npm/package-json#optionaldependencies
             next if package.optional_dependencies.try &.[name]?
           end
-          self.resolve_dependency(
+          self.resolve(
             package,
             name,
             version,
             type,
             state: state,
             dependent: dependent,
-            resolved_packages: resolved_packages,
             ancestors: Deque(Package).new(ancestors.size + 1).concat(ancestors),
           )
         end
@@ -181,20 +179,19 @@ module Zap::Resolver
         else
           version = version_or_alias
         end
-        self.resolve_dependency(
+        self.resolve(
           package,
           name,
           version,
           state: state,
           dependent: dependent,
-          resolved_packages: resolved_packages,
           ancestors: Deque(Package).new(ancestors.size + 1).concat(ancestors),
         )
       end
     end
   end
 
-  def self.resolve_dependency(
+  def self.resolve(
     package : Package?,
     name : String,
     version : String,
@@ -202,22 +199,20 @@ module Zap::Resolver
     *,
     state : Commands::Install::State,
     dependent : Package? = nil,
-    resolved_packages : SafeSet(String),
     ancestors : Deque(Package) = Deque(Package).new
   )
-    resolve_dependency(
+    resolve(
       package,
       name,
       version,
       type,
       state: state,
       dependent: dependent,
-      resolved_packages: resolved_packages,
       ancestors: ancestors,
     ) { }
   end
 
-  def self.resolve_dependency(
+  def self.resolve(
     package : Package?,
     name : String,
     version : String,
@@ -225,7 +220,7 @@ module Zap::Resolver
     *,
     state : Commands::Install::State,
     dependent : Package? = nil,
-    resolved_packages : SafeSet(String),
+    single_resolution : Bool = false,
     ancestors : Deque(Package) = Deque(Package).new,
     &on_resolve : Package -> _
   )
@@ -255,8 +250,9 @@ module Zap::Resolver
       flag_transitive_dependencies(metadata, ancestors)
       flag_transitive_overrides(metadata, ancestors, state)
       # Mutate only if the package is not already in the lockfile
+      lockfile_metadata = nil
       state.lockfile.packages_lock.synchronize do
-        unless state.lockfile.packages[metadata.key]?
+        unless lockfile_metadata = state.lockfile.packages[metadata.key]?
           # Apply package extensions before saving the package in the lockfile
           apply_package_extensions(metadata, state: state)
           # Store the package data in the lockfile
@@ -264,16 +260,15 @@ module Zap::Resolver
         end
       end
       # If the package has already been resolved, skip it to prevent infinite loops
-      next if metadata.already_resolved?(state, resolved_packages)
+      next if !single_resolution && (lockfile_metadata || metadata).already_resolved?(state)
       # Determine whether the dependencies should be resolved, most of the time they should
-      should_resolve_dependencies = metadata.should_resolve_dependencies?(state)
+      should_resolve_dependencies = !single_resolution && metadata.should_resolve_dependencies?(state)
       # Repeat the process for transitive dependencies if needed
       if should_resolve_dependencies
-        self.resolve_dependencies(
+        self.resolve_dependencies_of(
           metadata,
           state: state,
           dependent: dependent || metadata,
-          resolved_packages: resolved_packages,
           ancestors: ancestors,
         )
         # Print deprecation warnings unless the package is already in the lockfile
@@ -283,9 +278,9 @@ module Zap::Resolver
         end
       end
       # Attempt to store the package in the filesystem or in the cache if needed
-      stored = synchronize_store(metadata.key) {
+      stored = memo_lock_store(metadata.key) do
         resolver.store(metadata) { state.reporter.on_downloading_package }
-      }
+      end
       # Call the on_resolve callback
       on_resolve.call(metadata)
       # Report the package as downloaded if it was stored

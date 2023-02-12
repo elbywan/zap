@@ -1,5 +1,3 @@
-require "./utils/synchronize"
-
 struct Zap::Store
   @global_store_path : Path | String
 

@@ -1,6 +1,6 @@
 require "./data_structures/safe_hash"
 
-module Zap::Utils::Synchronize(T)
+module Zap::Utils::MemoLock(T)
   @sync_channel : SafeHash(String, Channel(T)) = SafeHash(String, Channel(T)).new
 
   protected def sync_channel(key : String)
@@ -28,7 +28,7 @@ module Zap::Utils::Synchronize(T)
       if value.is_a?(T)
         loop do
           select
-          when chan.send(nil)
+          when chan.send(value)
             next
           else
             break
@@ -39,7 +39,7 @@ module Zap::Utils::Synchronize(T)
     end
   end
 
-  protected def synchronize(key : String, &)
+  def memo_lock(key : String, &)
     if chan = sync_channel(key)
       chan.receive
     else
@@ -52,8 +52,8 @@ module Zap::Utils::Synchronize(T)
   end
 end
 
-module Zap::Utils::Synchronize::Global
-  macro sync_channel(name_arg, type = Nil)
+module Zap::Utils::MemoLock::Global
+  macro memo_lock(name_arg, type = Nil)
     {% name = name_arg.id %}
     @@%sync_channel : SafeHash(String, Channel({{type}})) = SafeHash(String, Channel({{type}})).new
 
@@ -93,7 +93,7 @@ module Zap::Utils::Synchronize::Global
       end
     end
 
-    protected def self.synchronize_{{name}}(key : String, &) : {{type}}
+    def self.memo_lock_{{name}}(key : String, &) : {{type}}
       if chan = sync_channel_{{name}}(key)
         chan.receive
       else
@@ -105,53 +105,4 @@ module Zap::Utils::Synchronize::Global
       end
     end
   end
-
-  # @@sync_channel : SafeHash(String, Channel(T)) = SafeHash(String, Channel(T)).new
-  # private def self.sync_channel(key : String)
-  #   {% if flag?(:preview_mt) %}
-  #     @@sync_channel.lock.synchronize do
-  #       if chan = @@sync_channel.inner[key]?
-  #         chan
-  #       else
-  #         @@sync_channel.inner[key] = Channel(T).new
-  #         nil
-  #       end
-  #     end
-  #   {% else %}
-  #     if chan = @@sync_channel[key]?
-  #       chan
-  #     else
-  #       @@sync_channel[key] = Channel(T).new
-  #       nil
-  #     end
-  #   {% end %}
-  # end
-
-  # private def self.notify_sync_channel(key : String, value : T | Nil)
-  #   @@sync_channel.delete(key).try do |chan|
-  #     if value
-  #       loop do
-  #         select
-  #         when chan.send(value)
-  #           next
-  #         else
-  #           break
-  #         end
-  #       end
-  #     end
-  #     chan.close
-  #   end
-  # end
-
-  # private def synchronize(key : String, &) : T
-  #   if chan = sync_channel(key)
-  #     chan.receive
-  #   else
-  #     begin
-  #       value = yield
-  #     ensure
-  #       notify_sync_channel(key, value)
-  #     end
-  #   end
-  # end
 end

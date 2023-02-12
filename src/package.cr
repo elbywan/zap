@@ -14,6 +14,11 @@ class Zap::Package
   include YAML::Serializable
   include Utils::Macros
 
+  macro __no_serialization__
+    @[JSON::Field(ignore: true)]
+    @[YAML::Field(ignore: true)]
+  end
+
   #######################
   # Package.json fields #
   #######################
@@ -84,8 +89,7 @@ class Zap::Package
   getter? pinned_dependencies
   setter pinned_dependencies : Hash(String, String | Alias)?
 
-  @[JSON::Field(ignore: true)]
-  @[YAML::Field(ignore: true)]
+  __no_serialization__
   @pinned_dependencies_lock = Mutex.new
 
   def atomic_get_pinned_dependency(name : String) : String | Alias
@@ -134,8 +138,7 @@ class Zap::Package
   # Utility fields #
   ##################
 
-  @[JSON::Field(ignore: true)]
-  @[YAML::Field(ignore: true)]
+  __no_serialization__
   getter kind : Kind do
     case dist = self.dist
     when TarballDist
@@ -153,8 +156,7 @@ class Zap::Package
     end
   end
 
-  @[JSON::Field(ignore: true)]
-  @[YAML::Field(ignore: true)]
+  __no_serialization__
   getter key : String do
     case dist = self.dist
     when LinkDist
@@ -173,8 +175,7 @@ class Zap::Package
     end
   end
 
-  @[JSON::Field(ignore: true)]
-  @[YAML::Field(ignore: true)]
+  __no_serialization__
   safe_property transitive_overrides : SafeSet(Package::Overrides::Override)? = nil
 
   ################
@@ -361,21 +362,14 @@ class Zap::Package
     !kind.link?
   end
 
-  # For some dependencies, we need to store a Set of all the packages that have already been crawled
+  __no_serialization__
+  @resolved = Atomic(Int8).new(0_i8)
+
+  # For some dependencies, we need to remember when they have already been resolved
   # This is to prevent infinite loops when crawling the dependency tree
-  protected def already_resolved?(state : Commands::Install::State, resolved_packages : SafeSet(String)) : Bool
+  protected def already_resolved?(state : Commands::Install::State) : Bool
     if should_resolve_dependencies?(state)
-      {% if flag?(:preview_mt) %}
-        resolved_packages.lock.synchronize {
-          resolved_packages.inner.includes?(key).tap { |included|
-            resolved_packages.inner << key if !included
-          }
-        }
-      {% else %}
-        resolved_packages.includes?(key).tap { |included|
-          resolved_packages << key if !included
-        }
-      {% end %}
+      !@resolved.compare_and_set(0, 1)[1]
     else
       false
     end

@@ -1,7 +1,7 @@
 require "http/client"
 require "json"
 require "../utils/data_structures/safe_hash"
-require "../utils/synchronize"
+require "../utils/memo_lock"
 
 module Zap::Fetch
   CACHE_DIR = ".fetch_cache"
@@ -80,7 +80,7 @@ module Zap::Fetch
   end
 
   class Pool
-    include Zap::Utils::Synchronize(Nil)
+    include Zap::Utils::MemoLock(Nil)
 
     @size = 0
     @pool : Channel(HTTP::Client)
@@ -126,7 +126,7 @@ module Zap::Fetch
       body = @cache.get(full_url)
       return body if body
       # Dedupe requests by having an inflight channel for each URL
-      synchronize(url) do
+      memo_lock(url) do
         # debug! "[fetch] getting client… #{url}"
         client do |http|
           yield http

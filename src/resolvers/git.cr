@@ -2,7 +2,7 @@ module Zap::Resolver
   @git_url : Utils::GitUrl
 
   struct Git < Base
-    Utils::Synchronize::Global.sync_channel(clone, Package)
+    Utils::MemoLock::Global.memo_lock(:clone, Package)
 
     def initialize(@state, @package_name, @version = "latest", @aliased_name = nil, @parent = nil)
       super
@@ -56,7 +56,7 @@ module Zap::Resolver
       metadata_path = @state.store.package_path(@package_name, cache_key + ".package.json")
       path = Path.new(Dir.tempdir, cache_key)
 
-      self.class.synchronize_clone(cache_key) do
+      self.class.memo_lock_clone(cache_key) do
         previously_cloned_or_stored = ::File.directory?(path) || (metadata_cached = ::File.exists?(metadata_path))
         @git_url.clone(path) unless previously_cloned_or_stored
 
@@ -94,7 +94,6 @@ module Zap::Resolver
       Commands::Install.run(
         config,
         Config::Install.new,
-        resolved_packages: state.resolved_packages,
         store: state.store
       )
     end
