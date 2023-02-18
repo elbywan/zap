@@ -60,13 +60,18 @@ module Zap::Backend
   # -----------------
   # Recursive version
   # -----------------
-  protected def self.recursively(src_path : Path | String, dest_path : Path | String, pipeline : Pipeline, &block : (String | Path, String | Path) -> Nil)
-    if Dir.exists?(src_path)
-      Dir.mkdir(dest_path) unless Dir.exists?(dest_path)
-      Dir.each_child(src_path) do |entry|
-        src = Utils::File.join(src_path, entry)
-        dest = Utils::File.join(dest_path, entry)
-        self.recursively(src, dest, pipeline: pipeline, &block)
+  protected def self.recursively(src_path : String, dest_path : String, pipeline : Pipeline, *, is_dir : Bool? = nil, &block : (String | Path, String | Path) -> Nil)
+    if is_dir.nil? ? Dir.exists?(src_path) : is_dir
+      begin
+        Dir.mkdir(dest_path) # unless Dir.exists?(dest_path)
+      rescue ::File::Error
+        # ignore errors - assume that the dir exists already
+      end
+      # Using each_child_entry instead of each_child because it prevents calling stat on each entry
+      Dir.each_child_entry(src_path) do |entry|
+        src = "#{src_path}#{Path::SEPARATORS[0]}#{entry.name}"
+        dest = "#{dest_path}#{Path::SEPARATORS[0]}#{entry.name}"
+        self.recursively(src, dest, pipeline: pipeline, is_dir: entry.dir?, &block)
       end
     else
       pipeline.process do
