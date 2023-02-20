@@ -1,0 +1,20 @@
+name: Specs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      - name: Install Crystal
+        uses: crystal-lang/install-crystal@v1
+      - name: Install dependencies
+        run: shards install
+      - name: Run tests
+        run: crystal spec
