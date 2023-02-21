@@ -65,7 +65,7 @@ module Zap::Commands::Install
         state = State.new(
           config: config,
           install_config: config.global ? install_config.copy_with(
-            install_strategy: Config::InstallStrategy::NPM_Shallow
+            install_strategy: Config::InstallStrategy::Classic_Shallow
           ) : install_config,
           store: store,
           lockfile: lockfile,
@@ -129,10 +129,10 @@ module Zap::Commands::Install
         # Install dependencies to the appropriate node_modules folder
         state.reporter.report_installer_updates
         installer = case state.install_config.install_strategy
-                    when .pnpm?
-                      Installer::Pnpm::Installer.new(state, main_package)
-                    when .npm_hoisted?, .npm_shallow?
-                      Installer::Npm::Installer.new(state, main_package)
+                    when .isolated?
+                      Installer::Isolated::Installer.new(state, main_package)
+                    when .classic_hoisted?, .classic_shallow?
+                      Installer::Classic::Installer.new(state, main_package)
                     else
                       raise "Unsupported install strategy: #{state.install_config.install_strategy}"
                     end

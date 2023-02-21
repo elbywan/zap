@@ -74,9 +74,9 @@ module Zap
     end
 
     enum InstallStrategy
-      NPM_Hoisted
-      NPM_Shallow
-      PNPM
+      Classic_Hoisted
+      Classic_Shallow
+      Isolated
     end
 
     # Configuration specific for the install command
@@ -93,7 +93,7 @@ module Zap
       ),
       frozen_lockfile : Bool = !!ENV["CI"]?,
       ignore_scripts : Bool = false,
-      install_strategy : InstallStrategy = InstallStrategy::NPM_Hoisted,
+      install_strategy : InstallStrategy = InstallStrategy::Classic_Hoisted,
       omit : Array(Omit) = ENV["NODE_ENV"]? === "production" ? [Omit::Dev] : [] of Omit,
       new_packages : SafeArray(String) = SafeArray(String).new,
       save : Bool = true,

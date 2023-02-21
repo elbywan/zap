@@ -1,6 +1,6 @@
 require "../backends/*"
 
-module Zap::Installer::Pnpm
+module Zap::Installer::Isolated
   # See: https://github.com/npm/rfcs/blob/main/accepted/0042-isolated-mode.md
 
   class Installer < Base

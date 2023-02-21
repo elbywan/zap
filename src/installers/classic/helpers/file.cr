@@ -1,4 +1,4 @@
-module Zap::Installer::Npm::Helpers::File
+module Zap::Installer::Classic::Helpers::File
   def self.install(dependency : Package, *, installer : Zap::Installer::Base, cache : Deque(CacheItem), state : Commands::Install::State, aliased_name : String?) : Deque(CacheItem)?
     case dist = dependency.dist
     when Package::LinkDist

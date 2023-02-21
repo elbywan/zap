@@ -1,7 +1,7 @@
 require "../backends/*"
 require "./helpers"
 
-module Zap::Installer::Npm
+module Zap::Installer::Classic
   record DependencyItem,
     # the dependency to install
     dependency : Package,
@@ -59,7 +59,7 @@ module Zap::Installer::Npm
           # no subcache = do not process the sub dependencies
           next unless subcache
           # shallow strategy means we only install direct deps at top-level
-          if state.install_config.install_strategy.npm_shallow?
+          if state.install_config.install_strategy.classic_shallow?
             while (subcache[0].root)
               subcache.shift
             end

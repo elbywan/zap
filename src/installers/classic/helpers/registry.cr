@@ -1,4 +1,4 @@
-module Zap::Installer::Npm::Helpers::Registry
+module Zap::Installer::Classic::Helpers::Registry
   def self.hoist(dependency : Package, cache : Deque(CacheItem), ancestors : Array(Package), aliased_name : String? = nil) : CacheItem?
     # Do not hoist aliases
     return cache.last if aliased_name
