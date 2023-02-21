@@ -125,6 +125,7 @@ class Zap::Package
   record ZapConfig,
     hoist_patterns : Array(String)? = nil,
     public_hoist_patterns : Array(String)? = nil,
+    install_strategy : Config::InstallStrategy? = nil,
     package_extensions : Hash(String, PackageExtension) = Hash(String, PackageExtension).new do
     include JSON::Serializable
     include YAML::Serializable

@@ -24,20 +24,14 @@ module Zap::Commands::Install
     state = uninitialized State
     null_io = File.open(File::NULL, "w")
 
+    puts "⚡ #{"Zap".colorize.bold.underline} #{"(v#{VERSION})".colorize.dim}" unless config.silent
+
     memory = Benchmark.memory {
       project_path = config.prefix
       global_store_path = config.global_store_path
 
       reporter ||= config.silent ? Reporter::Interactive.new(null_io) : Reporter::Interactive.new
       lockfile = Lockfile.new(project_path, reporter: reporter)
-
-      unless config.silent
-        puts <<-TERM
-        ⚡ #{"Zap".colorize.bold.underline} #{"(v#{VERSION})".colorize.dim}
-           #{"project:".colorize.blue} #{project_path} • #{"store:".colorize.blue} #{global_store_path} • #{"workers:".colorize.blue} #{Crystal::Scheduler.nb_of_workers}
-           #{"lockfile:".colorize.blue} #{lockfile.read_status.from_disk? ? "ok".colorize.green : lockfile.read_status.error? ? "read error".colorize.red : "not found".colorize.red} • #{"install strategy:".colorize.blue} #{install_config.install_strategy.to_s.downcase}
-        TERM
-      end
 
       realtime = Benchmark.realtime {
         Resolver::Registry.init(global_store_path)
@@ -50,13 +44,23 @@ module Zap::Commands::Install
           end
         end
 
+        # Merge zap config from package.json
+        install_config = install_config.merge_pkg(main_package)
+
+        unless config.silent
+          puts <<-TERM
+              #{"project:".colorize.blue} #{project_path} • #{"store:".colorize.blue} #{global_store_path} • #{"workers:".colorize.blue} #{Crystal::Scheduler.nb_of_workers}
+              #{"lockfile:".colorize.blue} #{lockfile.read_status.from_disk? ? "ok".colorize.green : lockfile.read_status.error? ? "read error".colorize.red : "not found".colorize.red} • #{"install strategy:".colorize.blue} #{install_config.install_strategy.to_s.downcase}
+          TERM
+        end
+
         # Find workspaces
         workspaces = Workspaces.crawl(main_package, config: config)
 
         unless config.silent
           if workspaces.size > 0
             puts <<-TERM
-              #{"scope".colorize.blue}: #{workspaces.size} packages • #{"workspaces:".colorize.blue} #{workspaces.map(&.package.name).join(", ")}
+                #{"scope".colorize.blue}: #{workspaces.size} packages • #{"workspaces:".colorize.blue} #{workspaces.map(&.package.name).join(", ")}
             TERM
           end
           puts "\n"
@@ -131,7 +135,7 @@ module Zap::Commands::Install
         installer = case state.install_config.install_strategy
                     when .isolated?
                       Installer::Isolated::Installer.new(state, main_package)
-                    when .classic_hoisted?, .classic_shallow?
+                    when .classic?, .classic_shallow?
                       Installer::Classic::Installer.new(state, main_package)
                     else
                       raise "Unsupported install strategy: #{state.install_config.install_strategy}"

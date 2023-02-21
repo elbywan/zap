@@ -47,7 +47,7 @@ class Zap::CLI
 
   private macro command(aliases, description)
     {% for a, idx in aliases %}
-      parser.on({{a}}, {% if idx > 0 %}"Same as <#{{{aliases[0]}}}>"{% else %}{{description}}{% end %}) do
+      parser.on({{a}}, {% if idx > 0 %}"Alias for: <#{{{aliases[0]}}}>"{% else %}{{description}}{% end %}) do
         {{ yield }}
       end
     {% end %}

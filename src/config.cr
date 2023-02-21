@@ -74,7 +74,7 @@ module Zap
     end
 
     enum InstallStrategy
-      Classic_Hoisted
+      Classic
       Classic_Shallow
       Isolated
     end
@@ -93,7 +93,7 @@ module Zap
       ),
       frozen_lockfile : Bool = !!ENV["CI"]?,
       ignore_scripts : Bool = false,
-      install_strategy : InstallStrategy = InstallStrategy::Classic_Hoisted,
+      install_strategy : InstallStrategy? = nil,
       omit : Array(Omit) = ENV["NODE_ENV"]? === "production" ? [Omit::Dev] : [] of Omit,
       new_packages : SafeArray(String) = SafeArray(String).new,
       save : Bool = true,
@@ -103,9 +103,8 @@ module Zap
       save_optional : Bool = false,
       lockfile_only : Bool = false,
       print_logs : Bool = true do
-      # ---- #
-      # Body #
-      # ---- #
+      getter! install_strategy : InstallStrategy
+
       def omit_dev?
         omit.includes?(Omit::Dev)
       end
@@ -116,6 +115,12 @@ module Zap
 
       def omit_peer?
         omit.includes?(Omit::Peer)
+      end
+
+      def merge_pkg(package : Package)
+        self.copy_with(
+          install_strategy: @install_strategy || package.zap_config.install_strategy || InstallStrategy::Classic
+        )
       end
     end
   end
