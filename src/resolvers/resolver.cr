@@ -58,7 +58,7 @@ abstract struct Zap::Resolver::Base
         packages_ref = "#{name}@#{pinned_dependency}"
       end
       state.lockfile.packages_lock.synchronize do
-        state.lockfile.packages[packages_ref].try do |cached_pkg|
+        state.lockfile.packages[packages_ref]?.try do |cached_pkg|
           cached_pkg.dependents << (dependent || cached_pkg).key
           cached_pkg
         end
