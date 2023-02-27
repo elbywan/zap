@@ -18,6 +18,7 @@ module Zap::Installer::Isolated
     def initialize(
       @state,
       @main_package,
+      *,
       hoist_patterns = main_package.zap_config.try(&.hoist_patterns) || DEFAULT_HOIST_PATTERNS,
       public_hoist_patterns = main_package.zap_config.try(&.public_hoist_patterns) || DEFAULT_PUBLIC_HOIST_PATTERNS
     )
@@ -34,7 +35,7 @@ module Zap::Installer::Isolated
 
     alias Ancestors = Deque(Package | Lockfile::Root)
 
-    def install
+    def install : Nil
       state.lockfile.roots.each do |name, root|
         workspace = state.workspaces.find { |w| w.package.name == name }
         root_path = workspace.try(&.path./ "node_modules") || Path.new(state.config.node_modules)
@@ -47,7 +48,7 @@ module Zap::Installer::Isolated
       end
     end
 
-    def install_package(
+    private def install_package(
       package : Package | Lockfile::Root,
       *,
       ancestors : Ancestors,

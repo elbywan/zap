@@ -107,7 +107,7 @@ module Zap::Commands::Install
         workspaces.each do |workspace|
           state.lockfile.set_root(workspace.package)
         end
-        state.lockfile.prune
+        pruned_direct_dependencies = state.lockfile.prune
 
         # Do not edit lockfile or package.json files in global mode or if the save flag is false
         unless state.config.global || !state.install_config.save
@@ -141,6 +141,7 @@ module Zap::Commands::Install
                       raise "Unsupported install strategy: #{state.install_config.install_strategy}"
                     end
         installer.install
+        installer.remove(pruned_direct_dependencies)
         state.reporter.stop
 
         # Run package.json hooks for the installed packages

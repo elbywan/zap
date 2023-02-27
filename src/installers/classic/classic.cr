@@ -24,7 +24,7 @@ module Zap::Installer::Classic
     root : Bool = false
 
   class Installer < Base
-    def install
+    def install : Nil
       node_modules = Path.new(state.config.node_modules)
 
       # process each dependency breadth-first
@@ -97,7 +97,7 @@ module Zap::Installer::Classic
       end
     end
 
-    def install_dependency(dependency : Package, *, cache : Deque(CacheItem), ancestors : Array(Package), aliased_name : String?) : Deque(CacheItem)?
+    private def install_dependency(dependency : Package, *, cache : Deque(CacheItem), ancestors : Array(Package), aliased_name : String?) : Deque(CacheItem)?
       case dependency.kind
       when .tarball_file?, .link?
         Helpers::File.install(dependency, installer: self, cache: cache, state: state, aliased_name: aliased_name)

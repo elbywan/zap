@@ -6,6 +6,17 @@ module Zap::Installer
 
     def initialize(@state, @main_package)
     end
+
+    abstract def install : Nil
+
+    def remove(dependencies : Set({String, String | Package::Alias, Lockfile::Root})) : Nil
+      dependencies.each do |(name, version_or_alias, root)|
+        workspace = state.workspaces.find { |w| w.package.name == name }
+        node_modules = workspace.try(&.path./ "node_modules") || Path.new(state.config.node_modules)
+        package_path = node_modules / (version_or_alias.is_a?(String) ? name : version_or_alias.name)
+        FileUtils.rm_rf(package_path)
+      end
+    end
   end
 
   METADATA_FILE_NAME = ".zap.metadata"

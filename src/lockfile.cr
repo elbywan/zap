@@ -69,8 +69,10 @@ class Zap::Lockfile
     packages[version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key]
   end
 
-  def prune
+  def prune : Set({String, String | Package::Alias, Lockfile::Root})
+    pruned_direct_dependencies = Set({String, String | Package::Alias, Lockfile::Root}).new
     pinned_deps = Set(String).new
+
     self.roots.values.each do |root|
       # All dependencies from the root
       all_dependencies =
@@ -82,6 +84,7 @@ class Zap::Lockfile
         key = version.is_a?(String) ? "#{name}@#{version}" : version.key
         unless keep = all_dependencies.includes?(name)
           reporter.on_package_removed(key)
+          pruned_direct_dependencies << {name, version, root}
         else
           pinned_deps << key
         end
@@ -113,6 +116,8 @@ class Zap::Lockfile
         false
       end
     end
+
+    pruned_direct_dependencies
   end
 
   def write
