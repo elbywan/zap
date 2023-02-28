@@ -74,7 +74,19 @@ class Zap::CLI
     parser.on("--ignore-scripts", "If true, does not run scripts specified in package.json files") do
       @command_config = command_config.copy_with(ignore_scripts: true)
     end
-    parser.on("--install-strategy STRATEGY", "Pick which installation strategy to use.") do |strategy|
+    parser.on(
+      "--install-strategy STRATEGY",
+      <<-DESCRIPTION
+      The strategy used to install packages.
+      Possible values:
+        - classic (default)
+        Mimics the behavior of npm and yarn: install non-duplicated in top-level, and duplicated as necessary within directory structure.
+        - isolated
+        Mimics the behavior of pnpm: dependencies are symlinked from a virtual store at node_modules/.zap.
+        - classic_shallow
+        Like classic but will only install direct dependencies at top-level.
+      DESCRIPTION
+    ) do |strategy|
       @command_config = command_config.copy_with(install_strategy: Config::InstallStrategy.parse(strategy))
     end
     parser.on("--no-logs", "If true, will not print logs like deprecation warnings") do
