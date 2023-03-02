@@ -44,6 +44,19 @@ module Zap::Commands::Install
           end
         end
 
+        # Remove packages if specified from the CLI
+        if install_config.removed_packages.size > 0
+          install_config.removed_packages.each do |name|
+            if main_package.dependencies && main_package.dependencies.try &.has_key?(name)
+              main_package.dependencies.not_nil!.delete(name)
+            elsif main_package.dev_dependencies && main_package.dev_dependencies.try &.has_key?(name)
+              main_package.dev_dependencies.not_nil!.delete(name)
+            elsif main_package.optional_dependencies && main_package.optional_dependencies.try &.has_key?(name)
+              main_package.optional_dependencies.not_nil!.delete(name)
+            end
+          end
+        end
+
         # Merge zap config from package.json
         install_config = install_config.merge_pkg(main_package)
 
@@ -115,7 +128,7 @@ module Zap::Commands::Install
           state.lockfile.write
 
           # Edit and write the package.json file if the flags have been set in the config
-          if state.install_config.new_packages.size > 0
+          if state.install_config.new_packages.size > 0 || state.install_config.removed_packages.size > 0
             package_json = JSON.parse(File.read(Path.new(project_path).join("package.json"))).as_h
             if deps = main_package.dependencies
               package_json["dependencies"] = JSON::Any.new(deps.transform_values { |v| JSON::Any.new(v) })
