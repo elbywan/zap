@@ -1,0 +1,31 @@
+{
+  "name": "@zap.org/darwin-arm64",
+  "version": "0.0.1",
+  "description": "Apple silicon binaries for the zap package manager",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elbywan/zap.git"
+  },
+  "keywords": [
+    "zap"
+  ],
+  "author": "Julien Elbaz",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/elbywan/zap/issues"
+  },
+  "homepage": "https://github.com/elbywan/zap#readme",
+  "os": [
+    "darwin"
+  ],
+  "arch": [
+    "arm64"
+  ],
+  "files": [
+    "bin"
+  ]
+}

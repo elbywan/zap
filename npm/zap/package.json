@@ -1,0 +1,34 @@
+{
+  "name": "@zap.org/zap",
+  "version": "0.0.1",
+  "description": "Zap is a package manager for the Javascript language",
+  "main": "index.js",
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elbywan/zap.git"
+  },
+  "keywords": [
+    "package manager",
+    "npm",
+    "pnpm",
+    "yarn"
+  ],
+  "author": "Julien Elbaz",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/elbywan/zap/issues"
+  },
+  "homepage": "https://github.com/elbywan/zap#readme",
+  "bin": {
+    "zap": "bin/zap"
+  },
+  "optionalDependencies": {
+    "@zap.org/darwin-arm64": "0.0.1",
+    "@zap.org/darwin-x64": "0.0.1",
+    "@zap.org/linux-x64": "0.0.1",
+    "@zap.org/win32-x64": "0.0.1"
+  }
+}

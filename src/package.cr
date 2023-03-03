@@ -298,10 +298,10 @@ class Zap::Package
     # Node.js process.arch returns the following values:
     # See: https://nodejs.org/api/process.html#processarch
     arch = begin
-      {% if flag?(:arm) %}
-        "arm"
-      {% elsif flag?(:aarch64) %}
+      {% if flag?(:aarch64) %}
         "arm64"
+      {% elsif flag?(:arm) %}
+        "arm"
       {% elsif flag?(:i386) %}
         "ia32"
       {% elsif flag?(:x86_64) %}
