@@ -16,12 +16,12 @@ module Zap::Installer::Isolated
     ]
 
     def initialize(
-      @state,
-      @main_package,
+      state,
       *,
-      hoist_patterns = main_package.zap_config.try(&.hoist_patterns) || DEFAULT_HOIST_PATTERNS,
-      public_hoist_patterns = main_package.zap_config.try(&.public_hoist_patterns) || DEFAULT_PUBLIC_HOIST_PATTERNS
+      hoist_patterns = state.main_package.zap_config.try(&.hoist_patterns) || DEFAULT_HOIST_PATTERNS,
+      public_hoist_patterns = state.main_package.zap_config.try(&.public_hoist_patterns) || DEFAULT_PUBLIC_HOIST_PATTERNS
     )
+      super(state)
       @node_modules = Path.new(state.config.node_modules)
       @modules_store = @node_modules / ".zap"
       Dir.mkdir_p(@modules_store)

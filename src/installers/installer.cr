@@ -4,7 +4,9 @@ module Zap::Installer
     getter main_package : Package
     getter installed_packages_with_hooks = [] of {Package, Path}
 
-    def initialize(@state, @main_package)
+    def initialize(state : Commands::Install::State)
+      @state = state
+      @main_package = state.main_package
     end
 
     abstract def install : Nil
