@@ -14,7 +14,7 @@ class Zap::Package
   include YAML::Serializable
   include Utils::Macros
 
-  macro __no_serialization__
+  macro __do_not_serialize__
     @[JSON::Field(ignore: true)]
     @[YAML::Field(ignore: true)]
   end
@@ -89,7 +89,7 @@ class Zap::Package
   getter? pinned_dependencies
   setter pinned_dependencies : Hash(String, String | Alias)?
 
-  __no_serialization__
+  __do_not_serialize__
   @pinned_dependencies_lock = Mutex.new
 
   def atomic_get_pinned_dependency(name : String) : String | Alias
@@ -139,7 +139,7 @@ class Zap::Package
   # Utility fields #
   ##################
 
-  __no_serialization__
+  __do_not_serialize__
   getter kind : Kind do
     case dist = self.dist
     when TarballDist
@@ -157,7 +157,7 @@ class Zap::Package
     end
   end
 
-  __no_serialization__
+  __do_not_serialize__
   getter key : String do
     case dist = self.dist
     when LinkDist
@@ -176,7 +176,7 @@ class Zap::Package
     end
   end
 
-  __no_serialization__
+  __do_not_serialize__
   safe_property transitive_overrides : SafeSet(Package::Overrides::Override)? = nil
 
   ################
@@ -206,7 +206,9 @@ class Zap::Package
     nil
   end
 
-  def initialize(@name = "@root", @version = "0.0.0")
+  DEFAULT_ROOT = "@root"
+
+  def initialize(@name = DEFAULT_ROOT, @version = "0.0.0")
   end
 
   def after_initialize
@@ -363,7 +365,7 @@ class Zap::Package
     !kind.link?
   end
 
-  __no_serialization__
+  __do_not_serialize__
   @resolved = Atomic(Int8).new(0_i8)
 
   # For some dependencies, we need to remember when they have already been resolved

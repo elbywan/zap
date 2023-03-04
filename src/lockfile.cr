@@ -41,11 +41,9 @@ class Zap::Lockfile
   @[YAML::Field(ignore: true)]
   property read_status : ReadStatus = ReadStatus::NotFound
   @[YAML::Field(ignore: true)]
-  property! reporter : Reporter
-  @[YAML::Field(ignore: true)]
   property! lockfile_path : Path
 
-  def self.new(project_path : Path | String, *, reporter : Reporter)
+  def self.new(project_path : Path | String)
     lockfile_path = Path.new(project_path) / NAME
     instance = uninitialized self
     if File.readable? lockfile_path
@@ -59,7 +57,6 @@ class Zap::Lockfile
     else
       instance = self.allocate
     end
-    instance.reporter = reporter
     instance.lockfile_path = lockfile_path
 
     instance
@@ -69,11 +66,11 @@ class Zap::Lockfile
     packages[version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key]
   end
 
-  def prune : Set({String, String | Package::Alias, Lockfile::Root})
-    pruned_direct_dependencies = Set({String, String | Package::Alias, Lockfile::Root}).new
+  def prune : Set({String, String | Package::Alias, String})
+    pruned_direct_dependencies = Set({String, String | Package::Alias, String}).new
     pinned_deps = Set(String).new
 
-    self.roots.values.each do |root|
+    self.roots.each do |root_name, root|
       # All dependencies from the root
       all_dependencies =
         (root.dependencies.try(&.keys) || [] of String) +
@@ -83,8 +80,7 @@ class Zap::Lockfile
       root.pinned_dependencies?.try &.select! do |name, version|
         key = version.is_a?(String) ? "#{name}@#{version}" : version.key
         unless keep = all_dependencies.includes?(name)
-          reporter.on_package_removed(key)
-          pruned_direct_dependencies << {name, version, root}
+          pruned_direct_dependencies << {name, version, root_name}
         else
           pinned_deps << key
         end

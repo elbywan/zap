@@ -11,12 +11,33 @@ module Zap::Installer
 
     abstract def install : Nil
 
-    def remove(dependencies : Set({String, String | Package::Alias, Lockfile::Root})) : Nil
-      dependencies.each do |(name, version_or_alias, root)|
-        workspace = state.workspaces.find { |w| w.package.name == name }
+    def remove(dependencies : Set({String, String | Package::Alias, String})) : Nil
+      dependencies.each do |(name, version_or_alias, root_name)|
+        workspace = state.workspaces.find { |w| w.package.name == root_name }
         node_modules = workspace.try(&.path./ "node_modules") || Path.new(state.config.node_modules)
         package_path = node_modules / (version_or_alias.is_a?(String) ? name : version_or_alias.name)
-        FileUtils.rm_rf(package_path)
+        if File.directory?(package_path)
+          package = Package.init?(package_path)
+          unlink_binaries(package) if package
+          FileUtils.rm_rf(package_path)
+        end
+      end
+    end
+
+    private def unlink_binaries(package : Package)
+      if bin = package.bin
+        base_bin_path = Utils::File.join(state.config.node_modules, ".bin")
+        if bin.is_a?(Hash)
+          bin.each do |name, path|
+            bin_name = name.split("/").last
+            bin_path = Utils::File.join(base_bin_path, bin_name)
+            File.delete?(bin_path)
+          end
+        else
+          bin_name = package.name.split("/").last
+          bin_path = Utils::File.join(base_bin_path, bin_name)
+          File.delete?(bin_path)
+        end
       end
     end
   end

@@ -30,7 +30,7 @@ module Zap::Commands::Install
       global_store_path = config.global_store_path
 
       reporter ||= config.silent ? Reporter::Interactive.new(null_io) : Reporter::Interactive.new
-      lockfile = Lockfile.new(config.prefix, reporter: reporter)
+      lockfile = Lockfile.new(config.prefix)
 
       realtime = Benchmark.realtime {
         Resolver::Registry.init(global_store_path)
@@ -116,7 +116,7 @@ module Zap::Commands::Install
     if config.global
       Package.new
     else
-      Package.init(Path.new(config.prefix), name_if_nil: "@root")
+      Package.init(Path.new(config.prefix), name_if_nil: Package::DEFAULT_ROOT)
     end
   end
 
@@ -168,7 +168,18 @@ module Zap::Commands::Install
     state.workspaces.each do |workspace|
       state.lockfile.set_root(workspace.package)
     end
-    state.lockfile.prune
+    pruned_dependencies = state.lockfile.prune
+    if state.config.global
+      state.install_config.removed_packages.each do |name|
+        version = Package.get_pkg_version_from_json(Utils::File.join(state.config.node_modules, name, "package.json"))
+        pruned_dependencies << {name, version, Package::DEFAULT_ROOT} if version
+      end
+    end
+    pruned_dependencies.each do |(name, version)|
+      key = version.is_a?(String) ? "#{name}@#{version}" : version.key
+      state.reporter.on_package_removed(key)
+    end
+    pruned_dependencies
   end
 
   private def self.write_package_json(state : State)

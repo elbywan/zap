@@ -55,7 +55,9 @@ module Zap
 
     getter node_path : String do
       nodejs = ENV["ZAP_NODE_PATH"]? || Process.find_executable("node").try { |node_path| File.realpath(node_path) }
-      raise "❌ Couldn't find the node executable.\nPlease install node.js and ensure that your PATH environment variable is set correctly." unless nodejs
+      unless nodejs
+        raise "❌ Couldn't find the node executable.\nPlease install node.js and ensure that your PATH environment variable is set correctly or use the ZAP_NODE_PATH environment variable to manually specify the path."
+      end
       Path.new(nodejs).dirname
     end
 
