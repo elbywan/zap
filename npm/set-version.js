@@ -5,6 +5,12 @@ const newVersion = process.argv[2];
 
 console.log(`Bumping packages to version ${newVersion}...`);
 
+const yamlPath = path.resolve(__dirname, "../shard.yml");
+const yaml = fs
+  .readFileSync(yamlPath, "utf8")
+  .replace(/^version: .*/m, `version: ${newVersion}`);
+fs.writeFileSync(yamlPath, yaml);
+
 const packages = [
   "darwin-arm64",
   "darwin-x64",
