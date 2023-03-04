@@ -58,7 +58,7 @@ class Zap::CLI
 
       separator("Common Options")
 
-      parser.on("-h", "--help", "Show this help") do
+      parser.on("-h", "--help", "Show this help.") do
         puts parser
         exit
       end
@@ -67,6 +67,10 @@ class Zap::CLI
       end
       parser.on("-C PATH", "--dir PATH", "Use PATH as the root directory of the project.") do |path|
         @config = @config.copy_with(prefix: Path.new(path).expand.to_s, global: false)
+      end
+      parser.on("--version", "Show version.") do
+        puts "v#{VERSION}"
+        exit
       end
     end.parse
 
@@ -77,19 +81,19 @@ class Zap::CLI
   private macro command(input, description, args = nil)
     {% if input.is_a?(StringLiteral) %}
       parser.on({{input}},{{description}}) do
-        banner(parser, {{input}}, {{description}}{%if args %}, args: {{args}}{%end%})
+        banner(parser, {{input}}, {{description}}{% if args %}, args: {{args}}{% end %})
         {{ yield }}
       end
     {% else %}
       {% for a, idx in input %}
         {% if idx == 0 %}
           parser.on({{a}},{{description}} + %(\nAliases: #{{{input}}.join(", ")})) do
-            banner(parser, {{a}}, {{description}}{%if args %}, args: {{args}}{%end%})
+            banner(parser, {{a}}, {{description}}{% if args %}, args: {{args}}{% end %})
             {{ yield }}
           end
         {% else %}
           parser.@handlers[{{a}}] = OptionParser::Handler.new(OptionParser::FlagValue::None, ->(str : String) {
-            banner(parser, {{a}}, {{description}}{%if args %}, args: {{args}}{%end%})
+            banner(parser, {{a}}, {{description}}{% if args %}, args: {{args}}{% end %})
             {{yield}}
         })
         {% end %}
