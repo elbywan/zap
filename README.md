@@ -20,6 +20,13 @@ I am not looking for contributors at the moment, but feel free to open an issue 
 
 #### ⚠️ TLDR: Use it at your own risk
 
+## Installation
+
+```bash
+npm i -g @zap.org/zap
+zap --help
+```
+
 ## Features
 
 #### Check the [project board](https://github.com/users/elbywan/projects/1/views/1) for the current status of the project.
@@ -73,13 +80,6 @@ zap i --install-strategy isolated
 zap i my-react@npm:react
 zap i jquery2@npm:jquery@2
 zap i jquery3@npm:jquery@3
-```
-
-## Installation
-
-```bash
-npm i -g @zap.org/zap
-zap --help
 ```
 
 ## Development
