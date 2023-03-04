@@ -72,3 +72,44 @@ jobs:
         with:
           name: zap_x86_64-pc-win32.exe
           path: ${{ github.workspace }}\bin\zap.exe
+  trigger_release:
+    runs-on: ubuntu-latest
+    needs: [macos_x86_64, macos_arm64, linux, windows]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 2
+      - name: Check if release is needed
+        run: |
+          needs_release=$(git diff HEAD^1 shard.yml | grep "+version: " | wc -l | xargs)
+          echo "needs_release=$needs_release" >> $GITHUB_ENV
+      - name: Determine release version and tag
+        uses: actions/github-script@v6
+        id: release-data
+        if: ${{ env.needs_release == 1 }}
+        with:
+          script: |
+            const { version } = require("./npm/zap/package.json")
+            const semverRegex = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
+            const [, major, minor, patch, prerelease, metadata] = version.match(semverRegex)
+            const data = {
+              version,
+              major,
+              minor,
+              patch,
+              prerelease,
+              metadata,
+              distTag: prerelease ? prerelease.split(".")[0] : "latest"
+            }
+
+            console.log(data)
+
+            return data
+      - name: Trigger release
+        if: ${{ env.needs_release == 1 }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run "release.yml" -f workflow_run_id=${{ github.run_id }} -f dist_tag="${{fromJSON(steps.release-data.outputs.result).distTag}}"
