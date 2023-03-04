@@ -21,6 +21,7 @@ const targetPath = path.join(__dirname, "bin", "zap");
 const intermediatePath = path.join(__dirname, "bin", "zap.bin");
 
 try {
+  fs.chmodSync(originalPath, 0o755);
   fs.linkSync(originalPath, intermediatePath);
   fs.renameSync(intermediatePath, targetPath);
 } catch (error) {

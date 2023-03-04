@@ -1,0 +1,50 @@
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      workflow_run_id:
+        description: "Workflow run id"
+        required: true
+      dist_tag:
+        description: "Npm dist tag"
+        required: true
+        default: "next"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      - name: Install node
+        uses: actions/setup-node@v3
+        with:
+          node-version: latest
+          registry-url: "https://registry.npmjs.org"
+      - name: Download artifacts
+        id: download-artifacts
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          run_id: ${{ github.event.inputs.workflow_run_id }}
+          workflow_conclusion: success
+          path: ./bin
+      - name: Prepare the binaries
+        run: |
+          ls -al ./bin
+          chmod u+x ./bin/zap_x86_64-apple-darwin/zap
+          mv ./bin/zap_x86_64-apple-darwin/zap ./npm/darwin-x64/bin/zap
+          chmod u+x ./bin/zap_arm64-apple-darwin/zap
+          mv ./bin/zap_arm64-apple-darwin/zap ./npm/darwin-arm64/bin/zap
+          chmod u+x ./bin/zap_x86_64-linux-musl/zap
+          mv ./bin/zap_x86_64-linux-musl/zap ./npm/linux-x64/bin/zap
+          chmod u+x ./bin/zap_x86_64-pc-win32.exe/zap.exe
+          mv ./bin/zap_x86_64-pc-win32.exe/zap.exe ./npm/win32-x64/bin/zap
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
+        run: |
+          npm publish ./npm/darwin-x64 --tag ${{ github.event.inputs.dist_tag }} --access public
+          npm publish ./npm/darwin-arm64 --tag ${{ github.event.inputs.dist_tag }} --access public
+          npm publish ./npm/linux-x64 --tag ${{ github.event.inputs.dist_tag }} --access public
+          npm publish ./npm/win32-x64 --tag ${{ github.event.inputs.dist_tag }} --access public
+          npm publish ./npm/zap --tag ${{ github.event.inputs.dist_tag }} --access public
