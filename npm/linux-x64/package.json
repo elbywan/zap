@@ -22,7 +22,7 @@
   "os": [
     "linux"
   ],
-  "arch": [
+  "cpu": [
     "x64"
   ],
   "files": [

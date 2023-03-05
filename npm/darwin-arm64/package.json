@@ -22,7 +22,7 @@
   "os": [
     "darwin"
   ],
-  "arch": [
+  "cpu": [
     "arm64"
   ],
   "files": [
