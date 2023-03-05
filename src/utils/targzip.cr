@@ -15,6 +15,7 @@ module Zap::Utils::TarGzip
 
   def self.unpack_to(io : IO, destination : Path) : Nil
     Utils::TarGzip.unpack(io) do |entry, file_path, io|
+      next if file_path.to_s.empty?
       if (entry.flag === Crystar::DIR)
         Dir.mkdir_p(destination / file_path)
       else

@@ -118,8 +118,10 @@ module Zap::Resolver
       TarballUrl.new(state, name, version_field, aliased_name, parent)
     when .starts_with?("file:")
       File.new(state, name, version_field, aliased_name, parent)
+    when .starts_with?("github:")
+      Github.new(state, name, version_field[7..], aliased_name, parent)
     when .matches?(/^[^@].*\/.*$/)
-      Git.new(state, name, "git+https://github.com/#{version_field}", aliased_name, parent)
+      Github.new(state, name, version_field, aliased_name, parent)
     else
       version = Utils::Semver.parse(version_field)
       raise "Invalid version: #{version_field}" unless version
@@ -403,9 +405,10 @@ module Zap::Resolver
       # Resolve the package
       resolver = Resolver.make(state, inferred_name, inferred_version || "*", state.lockfile.roots[main_package.name])
       metadata = resolver.resolve.not_nil!
+      name = inferred_name.empty? ? metadata.name : inferred_name
       metadata.match_os_and_cpu!
       # Store it in the filesystem, potentially in the global store
-      stored = resolver.store(metadata) { state.reporter.on_downloading_package } if metadata
+      stored = resolver.store(metadata) { state.reporter.on_downloading_package }
       state.reporter.on_package_downloaded if stored
       # If the save flag is set
       if state.install_config.save
@@ -420,7 +423,7 @@ module Zap::Resolver
           end
         end
         # Save the dependency in the package.json
-        main_package.add_dependency(inferred_name, saved_version.not_nil!, type)
+        main_package.add_dependency(name, saved_version.not_nil!, type)
       end
     rescue e
       state.reporter.stop
@@ -456,7 +459,7 @@ module Zap::Resolver
       return cli_input, ""
     elsif cli_input.starts_with?("github:")
       # 9. npm install github:<githubname>/<githubrepo>[#<commit-ish>]
-      return "git+https://github.com/#{cli_input[7..]}", ""
+      return cli_input, "" # cli_input.split("#")[0].split("/").last
     elsif cli_input.starts_with?("gist:")
       # 10. npm install gist:[<githubname>/]<gistID>[#<commit-ish>|#semver:<semver>]
       return "git+https://gist.github.com/#{cli_input[5..]}", ""

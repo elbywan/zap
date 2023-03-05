@@ -6,17 +6,17 @@ module Zap::Utils
     # <protocol>://[<user>[:<password>]@]<hostname>[:<port>][:][/]<path>[#<commit-ish> | #semver:<semver>]
     GIT_URL_REGEX = /(?:git\+)?(?<protocol>git|ssh|http|https|file):\/\/(?:(?<user>[^:@]+)?(:(?<password>[^@]+))?@)?(?<hostname>[^:\/]+)(:(?<port>\d+))?[\/:](?<path>[^#]+)((?:#semver:(?<semver>[^:]+))|(?:#(?<commitish>[^:]+)))?/
 
-    @url : String
+    getter url : String
     getter base_url : String
     getter! match : Regex::MatchData
-    @protocol : String
-    @hostname : String
-    @port : Int32?
-    @user : String?
-    @password : String?
-    @path : String?
-    @commitish : String?
-    @semver : String?
+    getter protocol : String
+    getter hostname : String
+    getter port : Int32?
+    getter user : String?
+    getter password : String?
+    getter path : String?
+    getter commitish : String?
+    getter semver : String?
     @reporter : Reporter?
     getter resolved_commitish : String do
       commitish = @commitish
