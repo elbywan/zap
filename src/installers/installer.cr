@@ -15,7 +15,7 @@ module Zap::Installer
       dependencies.each do |(name, version_or_alias, root_name)|
         workspace = state.workspaces.find { |w| w.package.name == root_name }
         node_modules = workspace.try(&.path./ "node_modules") || Path.new(state.config.node_modules)
-        package_path = node_modules / (version_or_alias.is_a?(String) ? name : version_or_alias.name)
+        package_path = node_modules / name
         if File.directory?(package_path)
           package = Package.init?(package_path)
           unlink_binaries(package) if package

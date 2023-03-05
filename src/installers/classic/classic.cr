@@ -40,7 +40,7 @@ module Zap::Installer::Classic
           initial_cache << CacheItem.new(node_modules: workspace.path / "node_modules", root: true)
         end
         root.pinned_dependencies?.try &.map { |name, version_or_alias|
-          pkg = state.lockfile.packages[version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key]
+          pkg = state.lockfile.get_package(name, version_or_alias)
           dependency_queue << DependencyItem.new(
             dependency: pkg,
             cache: initial_cache,
@@ -69,7 +69,7 @@ module Zap::Installer::Classic
           # Process each child dependency
           dependency.pinned_dependencies?.try &.each do |name, version_or_alias|
             # Apply overrides
-            pkg = state.lockfile.packages[version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key]
+            pkg = state.lockfile.get_package(name, version_or_alias)
             if overrides = state.lockfile.overrides
               if override = overrides.override?(pkg, ancestors)
                 # maybe enable logging with a verbose flag?
