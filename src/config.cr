@@ -1,9 +1,6 @@
 module Zap
   # Global configuration for Zap
-  record Config,
-    # ------------- #
-    # Config Fields #
-    # ------------- #
+  record(Config,
     global : Bool = false,
     global_store_path : String = File.expand_path(
       ENV["ZAP_STORE_PATH"]? || (
@@ -15,11 +12,12 @@ module Zap
       ), home: true),
     prefix : String = Dir.current,
     child_concurrency : Int32 = 5,
-    silent : Bool = false do
+    silent : Bool = false
+  ) do
     # ----------- #
     # Config Body #
     # ------------#
-    alias CommandConfig = Install
+    alias CommandConfig = Install | Dlx
 
     getter node_modules : String do
       if global
@@ -82,10 +80,7 @@ module Zap
     end
 
     # Configuration specific for the install command
-    record Install,
-      # ------ #
-      # Fields #
-      # ------ #
+    record(Install,
       file_backend : Backend::Backends = (
         {% if flag?(:darwin) %}
           Backend::Backends::CloneFile
@@ -105,7 +100,8 @@ module Zap
       save_dev : Bool = false,
       save_optional : Bool = false,
       lockfile_only : Bool = false,
-      print_logs : Bool = true do
+      print_logs : Bool = true
+    ) do
       getter! install_strategy : InstallStrategy
 
       def omit_dev?
@@ -123,6 +119,38 @@ module Zap
       def merge_pkg(package : Package)
         self.copy_with(
           install_strategy: @install_strategy || package.zap_config.install_strategy || InstallStrategy::Classic
+        )
+      end
+    end
+
+    SPACE_REGEX = /\s+/
+
+    # Configuration specific for the run command
+    record(Dlx,
+      packages : Array(String) = Array(String).new,
+      command : String = "",
+      args : Array(String)? = nil,
+      quiet : Bool = false,
+      call : String? = nil
+    ) do
+      def from_args(args : Array(String))
+        if call = @call
+          return self.copy_with(
+            packages: packages.empty? ? [call.split(SPACE_REGEX).first] : packages,
+            command: call,
+            args: nil
+          )
+        end
+
+        if args.size < 1
+          puts %(#{"Error:".colorize.bold.red} #{"Missing the <command> argument. Type `zap x --help` for more details.".colorize.red})
+          exit 1
+        end
+
+        self.copy_with(
+          packages: packages.empty? ? [args[0]] : packages,
+          command: Utils::Various.parse_key(args[0])[0],
+          args: args[1..]? || [] of String
         )
       end
     end

@@ -35,7 +35,7 @@ module Zap::Commands::Install
       realtime = Benchmark.realtime {
         Resolver::Registry.init(global_store_path)
 
-        main_package = read_main_package(config)
+        main_package = Package.read_package(config)
 
         # Remove packages if specified from the CLI
         remove_packages(install_config, main_package)
@@ -111,14 +111,6 @@ module Zap::Commands::Install
   end
 
   # -PRIVATE--------------------------- #
-
-  private def self.read_main_package(config : Config) : Package
-    if config.global
-      Package.new
-    else
-      Package.init(Path.new(config.prefix), name_if_nil: Package::DEFAULT_ROOT)
-    end
-  end
 
   private def self.remove_packages(install_config : Config::Install, main_package : Package)
     install_config.removed_packages.each do |name|

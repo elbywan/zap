@@ -235,6 +235,22 @@ class Zap::Package
     end
   end
 
+  def self.read_package(config : Config) : Package
+    if config.global
+      Package.new
+    else
+      Package.init(Path.new(config.prefix), name_if_nil: Package::DEFAULT_ROOT)
+    end
+  end
+
+  def self.read_package?(config : Config) : Package
+    if config.global
+      Package.new
+    else
+      Package.init?(Path.new(config.prefix))
+    end
+  end
+
   ##########
   # Public #
   ##########

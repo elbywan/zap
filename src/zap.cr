@@ -32,5 +32,7 @@ module Zap
   case command_config
   when Config::Install
     Commands::Install.run(config, command_config)
+  when Config::Dlx
+    Commands::Dlx.run(config, command_config)
   end
 end
