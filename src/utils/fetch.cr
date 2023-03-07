@@ -6,6 +6,8 @@ require "../utils/memo_lock"
 module Zap::Fetch
   CACHE_DIR = ".fetch_cache"
 
+  Log = Zap::Log.for(self)
+
   abstract class Cache
     abstract def get(url : String, etag : String?) : String?
     abstract def set(url : String, value : String, expiry : Time::Span?, etag : String?) : Nil
@@ -62,19 +64,23 @@ module Zap::Fetch
         meta_etag = meta.try &.["etag"]?.try &.as_s?
         if expiry = meta.try &.["expiry"]?.try &.as_i64?
           if expiry > Time.utc.to_unix
+            Log.debug { "(#{url}) Cache hit - serving metadata from #{path}" }
             return File.read(path)
           end
         end
         if etag && meta_etag && meta_etag == etag
+          Log.debug { "(#{url}) Cache hit (etag) - serving metadata from #{path}" }
           return File.read(path)
         end
       end
 
       def set(url, value, expiry : Time::Span? = nil, etag : String? = nil) : Nil
         key = self.class.hash(url)
-        Dir.mkdir_p(@path / key)
-        File.write(@path / key / BODY_FILE_NAME, value)
-        File.write(@path / key / META_FILE_NAME, {"etag": etag, expiry: expiry ? (Time.utc + expiry).to_unix : nil}.to_json)
+        root_path = @path / key
+        Log.debug { "(#{url}) Storing metadata at #{root_path}" }
+        Dir.mkdir_p(root_path)
+        File.write(root_path / BODY_FILE_NAME, value)
+        File.write(root_path / META_FILE_NAME, {"etag": etag, expiry: expiry ? (Time.utc + expiry).to_unix : nil}.to_json)
       end
     end
   end
@@ -121,6 +127,7 @@ module Zap::Fetch
     def cached_fetch(*args, **kwargs, &block) : String
       url = args[0]
       full_url = @base_url + url
+
       # Extract the body from the cache if possible
       # (will try in memory, then on disk if the expiry date is still valid)
       body = @cache.get(full_url)
@@ -152,7 +159,14 @@ module Zap::Fetch
 
             etag = response.headers["ETag"]?
             cache_control_directives, expiry = extract_cache_headers(response)
-            body = @cache.set(full_url, response.body_io.gets_to_end, expiry, etag)
+            body = response.body_io.gets_to_end
+
+            if (response.headers["Content-Length"].to_i != body.bytesize)
+              # I do not know why this happens, but it does sometimes.
+              raise "Content-Length mismatch for #{url} (#{response.headers["Content-Length"]} != #{body.bytesize})"
+            end
+
+            @cache.set(full_url, body, expiry, etag)
           end
         end
       end

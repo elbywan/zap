@@ -28,11 +28,11 @@ module Zap::Utils
     def call
       now = Time.monotonic
       interval = now - @last
-      if interval > @interval
-        @last = now
-        @block.call
-      else
-        @lock.synchronize do
+      @lock.synchronize do
+        if interval > @interval
+          @last = now
+          @block.call
+        else
           @timeout ||= Timeout.new(@interval - interval) do
             @block.call
             @lock.synchronize { @timeout = nil }

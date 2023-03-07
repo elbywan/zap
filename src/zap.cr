@@ -20,8 +20,18 @@ module Zap
   VERSION = {{ `shards version`.stringify }}.chomp
 
   Colorize.on_tty_only!
-  Log = ::Log.for("zap")
-  ::Log.setup_from_env
+  Log = ::Log.for(self)
+  if env = ENV["DEBUG"]?
+    begin
+      env.split(',').each { |source|
+        ::Log.setup(source, level: :debug)
+      }
+    rescue
+      ::Log.setup_from_env(default_sources: "zap.*")
+    end
+  else
+    ::Log.setup_from_env(default_sources: "zap.*")
+  end
 
   begin
     config, command_config = CLI.new.parse

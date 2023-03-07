@@ -176,7 +176,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
 
   def report_resolver_updates
     @update_channel = Channel(Int32?).new
-    spawn(same_thread: true) do
+    spawn do
       @lines.set(1)
       loop do
         msg = @update_channel.receive?
@@ -206,7 +206,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
 
   def report_installer_updates
     @update_channel = Channel(Int32?).new
-    spawn(same_thread: true) do
+    spawn do
       loop do
         msg = @update_channel.receive?
         break if msg.nil?
@@ -223,7 +223,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
 
   def report_builder_updates
     @update_channel = Channel(Int32?).new
-    spawn(same_thread: true) do
+    spawn do
       loop do
         msg = @update_channel.receive?
         break if msg.nil?
