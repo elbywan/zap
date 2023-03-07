@@ -158,7 +158,7 @@ module Zap::Installer::Classic
         (dependency.scripts ||= Zap::Package::LifecycleScripts.new).install = "node-gyp rebuild"
       end
 
-      if dependency.scripts.try &.install
+      if dependency.scripts.try &.has_install_script?
         @installed_packages_with_hooks << {dependency, install_folder}
       end
 

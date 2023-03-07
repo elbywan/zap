@@ -36,7 +36,7 @@ class Zap::Package
     end
 
     def has_install_script?
-      !install.nil? || nil
+      !install.nil? || !postinstall.nil? || !preinstall.nil? || nil
     end
 
     def has_prepare_script?
