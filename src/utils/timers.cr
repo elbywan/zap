@@ -26,9 +26,9 @@ module Zap::Utils
     end
 
     def call
-      now = Time.monotonic
-      interval = now - @last
       @lock.synchronize do
+        now = Time.monotonic
+        interval = now - @last
         if interval > @interval
           @last = now
           @block.call

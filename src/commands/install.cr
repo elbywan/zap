@@ -26,7 +26,7 @@ module Zap::Commands::Install
 
     puts "⚡ #{"Zap".colorize.bold.underline} #{"(v#{VERSION})".colorize.dim}" unless config.silent
 
-    memory = Benchmark.memory {
+    memory = Benchmark.memory do
       global_store_path = config.global_store_path
 
       reporter ||= config.silent ? Reporter::Interactive.new(null_io) : Reporter::Interactive.new
@@ -99,7 +99,7 @@ module Zap::Commands::Install
         # Run package.json hooks for the workspace packages
         run_own_install_hooks(state)
       }
-    }
+    end
 
     state.reporter.report_done(realtime, memory, state.install_config)
     null_io.try &.close

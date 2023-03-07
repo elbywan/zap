@@ -101,7 +101,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
       if @written
         Colorize.reset(@out)
         @out.flush
-        @out.puts ""
+        @out.print "\n"
       end
       @written = false
     rescue Channel::ClosedError
@@ -176,29 +176,34 @@ class Zap::Reporter::Interactive < Zap::Reporter
 
   def report_resolver_updates
     @update_channel = Channel(Int32?).new
-    spawn do
+    Utils::Thread.worker do
       @lines.set(1)
       loop do
         msg = @update_channel.receive?
         break if msg.nil?
         @io_lock.synchronize do
-          @out << @cursor.clear_lines(@lines.get, :up)
+          STDIN.raw! if STDIN.tty?
+          @out << @cursor.up(@lines.get - 1) if @lines.get > 1
+          @out << "\r"
           @out << header("🔍", "Resolving…", :yellow)
           @out << %([#{@resolved_packages.get}/#{@resolving_packages.get}])
           @lines.set(1)
           if (downloading = @downloading_packages.get) > 0
-            @out << "\n"
+            @out << "\r\n"
             @out << header("📡", "Downloading…", :cyan)
             @out << %([#{@downloaded_packages.get}/#{downloading}])
             @lines.add(1)
           end
           if (packing = @packing_packages.get) > 0
-            @out << "\n"
+            @out << "\r\n"
             @out << header("🎁", "Packing…")
             @out << %([#{@packed_packages.get}/#{packing}])
             @lines.add(1)
           end
+          @out << "".colorize.mode(:none).fore(:default)
           @out.flush
+        ensure
+          STDIN.cooked! if STDIN.tty?
         end
       end
     end
@@ -206,7 +211,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
 
   def report_installer_updates
     @update_channel = Channel(Int32?).new
-    spawn do
+    Utils::Thread.worker do
       loop do
         msg = @update_channel.receive?
         break if msg.nil?
@@ -223,7 +228,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
 
   def report_builder_updates
     @update_channel = Channel(Int32?).new
-    spawn do
+    Utils::Thread.worker do
       loop do
         msg = @update_channel.receive?
         break if msg.nil?
