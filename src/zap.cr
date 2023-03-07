@@ -19,6 +19,10 @@ require "./constants"
 module Zap
   VERSION = {{ `shards version`.stringify }}.chomp
 
+  Colorize.on_tty_only!
+  Log = ::Log.for("zap")
+  ::Log.setup_from_env
+
   begin
     config, command_config = CLI.new.parse
   rescue e
@@ -26,13 +30,12 @@ module Zap
     exit ErrorCodes::EARLY_EXIT.to_i32
   end
 
-  Log = ::Log.for("zap")
-  ::Log.setup_from_env
-
   case command_config
   when Config::Install
     Commands::Install.run(config, command_config)
   when Config::Dlx
     Commands::Dlx.run(config, command_config)
+  when Config::Init
+    Commands::Init.run(config, command_config)
   end
 end

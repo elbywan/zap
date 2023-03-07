@@ -67,8 +67,4 @@ struct Zap::Store
     file_path = package_path(package_name, package_version) / relative_dir_path
     Dir.mkdir_p(file_path)
   end
-
-  private def package(name : String, version : String)
-    Package.init(package_path(name, version))
-  end
 end

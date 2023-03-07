@@ -35,7 +35,7 @@ module Zap::Commands::Install
       realtime = Benchmark.realtime {
         Resolver::Registry.init(global_store_path)
 
-        main_package = Package.read_package(config)
+        main_package = Package.read_package(config).tap(&.refine)
 
         # Remove packages if specified from the CLI
         remove_packages(install_config, main_package)

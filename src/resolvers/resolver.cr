@@ -434,7 +434,7 @@ module Zap::Resolver
 
   private def self.apply_package_extensions(metadata : Package, *, state : Commands::Install::State) : Nil
     # Take into account package extensions
-    if package_extensions = state.main_package.zap_config.package_extensions
+    if package_extensions = state.main_package.zap_config.try(&.package_extensions)
       package_extensions
         .select { |selector|
           name, version = Utils::Various.parse_key(selector)

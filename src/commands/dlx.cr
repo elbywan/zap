@@ -1,10 +1,7 @@
 module Zap::Commands::Dlx
   def self.run(
     config : Config,
-    dlx_config : Config::Dlx,
-    *,
-    reporter : Reporter? = nil,
-    store : Store? = Store.new(config.global_store_path)
+    dlx_config : Config::Dlx
   )
     dlx_config = dlx_config.from_args(ARGV)
     main_package = Package.init?(Path.new(config.prefix))

@@ -65,6 +65,7 @@ class Zap::Package
 
     def run_script(kind : Symbol, chdir : Path | String, config : Config, raise_on_error_code = true, output_io = nil, **args)
       field(kind).try do |command|
+        return unless command.is_a?(String) && !command.empty?
         output = output_io || IO::Memory.new
         # See: https://docs.npmjs.com/cli/v9/commands/npm-run-script
         paths = [] of Path | String

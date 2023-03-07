@@ -133,7 +133,7 @@ class Zap::Package
 
   @[JSON::Field(key: "zap")]
   @[YAML::Field(ignore: true)]
-  getter zap_config : ZapConfig = ZapConfig.new
+  property zap_config : ZapConfig? = nil
 
   ##################
   # Utility fields #
@@ -218,6 +218,9 @@ class Zap::Package
         peer_dependencies.not_nil![name] ||= "*"
       end
     end
+  end
+
+  def refine
     if override_entries = self.overrides
       override_entries.each do |name, overrides|
         overrides.each_with_index do |override, index|
@@ -230,8 +233,9 @@ class Zap::Package
         end
       end
     end
+    zap_config = self.zap_config ||= ZapConfig.new
     PackageExtension::PACKAGE_EXTENSIONS.each do |(name, extension)|
-      zap_config.package_extensions[name] ||= extension
+      zap_config.not_nil!.package_extensions[name] ||= extension
     end
   end
 
