@@ -21,7 +21,6 @@ const binaryPath = path.join(path.dirname(modulePath), "bin", "zap");
 const args = process.argv.slice(2);
 
 childProcess.execFileSync(binaryPath, args, {
-  detached: true,
   cwd: __dirname,
   stdio: "inherit",
 });
