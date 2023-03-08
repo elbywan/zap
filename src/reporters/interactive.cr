@@ -29,7 +29,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
     @removed_packages = SafeSet(String).new
     @update_channel = Channel(Int32?).new
     @cursor = Term::Cursor
-    @debounced_update = Utils::Debounce.new(0.01.seconds) do
+    @debounced_update = Utils::Debounce.new(0.05.seconds) do
       update_action
     end
   end
@@ -99,7 +99,6 @@ class Zap::Reporter::Interactive < Zap::Reporter
       Fiber.yield
       @update_channel.close
       if @written
-        Colorize.reset(@out)
         @out.flush
         @out.print "\n"
       end
@@ -170,7 +169,6 @@ class Zap::Reporter::Interactive < Zap::Reporter
   end
 
   def header(emoji, str, color = :default)
-    Colorize.reset(@out)
     %( ○ #{emoji} #{str.ljust(25).colorize(color).bright})
   end
 
@@ -181,26 +179,26 @@ class Zap::Reporter::Interactive < Zap::Reporter
       loop do
         msg = @update_channel.receive?
         break if msg.nil?
-        @io_lock.synchronize do
-          STDIN.raw! if STDIN.tty?
-          @out << @cursor.up(@lines.get - 1) if @lines.get > 1
-          @out << "\r"
-          @out << header("🔍", "Resolving…", :yellow)
-          @out << %([#{@resolved_packages.get}/#{@resolving_packages.get}])
+        output = String.build do |str|
+          str << @cursor.clear_lines(@lines.get, :up)
+          str << header("🔍", "Resolving…", :yellow)
+          str << %([#{@resolved_packages.get}/#{@resolving_packages.get}])
           @lines.set(1)
           if (downloading = @downloading_packages.get) > 0
-            @out << "\r\n"
-            @out << header("📡", "Downloading…", :cyan)
-            @out << %([#{@downloaded_packages.get}/#{downloading}])
+            str << "\n"
+            str << header("📡", "Downloading…", :cyan)
+            str << %([#{@downloaded_packages.get}/#{downloading}])
             @lines.add(1)
           end
           if (packing = @packing_packages.get) > 0
-            @out << "\r\n"
-            @out << header("🎁", "Packing…")
-            @out << %([#{@packed_packages.get}/#{packing}])
+            str << "\n"
+            str << header("🎁", "Packing…")
+            str << %([#{@packed_packages.get}/#{packing}])
             @lines.add(1)
           end
-          @out << "".colorize.mode(:none).fore(:default)
+        end
+        @io_lock.synchronize do
+          @out << output
           @out.flush
         ensure
           STDIN.cooked! if STDIN.tty?
