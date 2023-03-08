@@ -25,9 +25,6 @@
   "bin": {
     "zap": "bin/zap"
   },
-  "dependencies": {
-    "node-gyp": "*"
-  },
   "optionalDependencies": {
     "@zap.org/darwin-arm64": "0.0.7",
     "@zap.org/darwin-x64": "0.0.7",
