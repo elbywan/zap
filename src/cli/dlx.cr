@@ -6,7 +6,8 @@ struct Zap::Config
     command : String = "",
     args : Array(String)? = nil,
     quiet : Bool = false,
-    call : String? = nil
+    call : String? = nil,
+    create_command : String? = nil
   ) do
     def from_args(args : Array(String))
       if call = @call
@@ -24,7 +25,7 @@ struct Zap::Config
 
       self.copy_with(
         packages: packages.empty? ? [args[0]] : packages,
-        command: Utils::Various.parse_key(args[0])[0],
+        command: create_command || Utils::Various.parse_key(args[0])[0],
         args: args[1..]? || [] of String
       )
     end
