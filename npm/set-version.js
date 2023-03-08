@@ -27,7 +27,9 @@ packages.forEach((package) => {
   if (package === "zap") {
     Object.getOwnPropertyNames(pkgJson.optionalDependencies).forEach(
       (dependency) => {
-        pkgJson.optionalDependencies[dependency] = newVersion;
+        if (dependency.startsWith("@zap.org/")) {
+          pkgJson.optionalDependencies[dependency] = newVersion;
+        }
       }
     );
   }
