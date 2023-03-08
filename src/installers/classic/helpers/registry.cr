@@ -35,7 +35,7 @@ module Zap::Installer::Classic::Helpers::Registry
 
     logical_name = (aliased_name || dependency.name)
 
-    installer.on_install(dependency, cache_item.node_modules / logical_name, state: state) if installed
+    installer.on_install(dependency, cache_item.node_modules / logical_name, state: state, cache: cache) if installed
 
     cache_item.installed_packages << dependency
     cache_item.installed_packages_names << logical_name

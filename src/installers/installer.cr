@@ -26,16 +26,15 @@ module Zap::Installer
 
     private def unlink_binaries(package : Package)
       if bin = package.bin
-        base_bin_path = Utils::File.join(state.config.node_modules, ".bin")
         if bin.is_a?(Hash)
           bin.each do |name, path|
             bin_name = name.split("/").last
-            bin_path = Utils::File.join(base_bin_path, bin_name)
+            bin_path = Utils::File.join(state.config.bin_path, bin_name)
             File.delete?(bin_path)
           end
         else
           bin_name = package.name.split("/").last
-          bin_path = Utils::File.join(base_bin_path, bin_name)
+          bin_path = Utils::File.join(state.config.bin_path, bin_name)
           File.delete?(bin_path)
         end
       end

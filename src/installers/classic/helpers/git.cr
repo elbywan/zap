@@ -14,7 +14,7 @@ module Zap::Installer::Classic::Helpers::Git
       ::File.open(packed_tarball_path, "r") do |tarball|
         Utils::TarGzip.unpack_to(tarball, target_path)
       end
-      installer.on_install(dependency, target_path, state: state)
+      installer.on_install(dependency, target_path, state: state, cache: cache)
     end
 
     Helpers.prepare_cache(dependency, target_path, cache, aliased_name)

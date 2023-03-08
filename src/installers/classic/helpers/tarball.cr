@@ -11,7 +11,7 @@ module Zap::Installer::Classic::Helpers::Tarball
     }
 
     installation_path = target / (aliased_name || dependency.name)
-    installer.on_install(dependency, installation_path, state: state) if installed
+    installer.on_install(dependency, installation_path, state: state, cache: cache) if installed
     Helpers.prepare_cache(dependency, installation_path, cache, aliased_name)
   end
 end

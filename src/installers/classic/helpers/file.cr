@@ -21,7 +21,7 @@ module Zap::Installer::Classic::Helpers::File
       Dir.mkdir_p(target_path.dirname)
       FileUtils.rm_rf(target_path) if ::File.directory?(target_path)
       ::File.symlink(link_source, target_path)
-      installer.on_install(dependency, target_path, state: state)
+      installer.on_install(dependency, target_path, state: state, cache: cache)
     end
     cache.last.installed_packages << dependency
     cache.last.installed_packages_names << (aliased_name || dependency.name)
@@ -59,7 +59,7 @@ module Zap::Installer::Classic::Helpers::File
       # end
 
       FileUtils.cp_r(extracted_folder, target_path)
-      installer.on_install(dependency, target_path, state: state)
+      installer.on_install(dependency, target_path, state: state, cache: cache)
     end
     Helpers.prepare_cache(dependency, target_path, cache, aliased_name)
   end

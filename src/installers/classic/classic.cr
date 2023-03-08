@@ -113,7 +113,7 @@ module Zap::Installer::Classic
     end
 
     # Actions to perform after the dependency has been freshly installed.
-    def on_install(dependency : Package, install_folder : Path, *, state : Commands::Install::State)
+    def on_install(dependency : Package, install_folder : Path, *, state : Commands::Install::State, cache : Deque(CacheItem))
       # Store package metadata
       unless File.symlink?(install_folder)
         File.open(install_folder / METADATA_FILE_NAME, "w") do |f|
@@ -122,12 +122,17 @@ module Zap::Installer::Classic
       end
       # Link binary files if they are declared in the package.json
       if bin = dependency.bin
+        bin_folder_path = state.config.bin_path
         is_direct_dependency = dependency.is_direct_dependency?
-        Dir.mkdir_p(state.config.bin_path)
+        if !is_direct_dependency && state.install_config.install_strategy.classic_shallow?
+          non_root = cache.find! { |c| !c.root }
+          bin_folder_path = non_root.node_modules / ".bin"
+        end
+        Dir.mkdir_p(bin_folder_path)
         if bin.is_a?(Hash)
           bin.each do |name, path|
             bin_name = name.split("/").last
-            bin_path = Utils::File.join(state.config.bin_path, bin_name)
+            bin_path = Utils::File.join(bin_folder_path, bin_name)
             if !File.exists?(bin_path) || is_direct_dependency
               File.delete?(bin_path)
               File.symlink(Path.new(path).expand(install_folder), bin_path)
@@ -136,7 +141,7 @@ module Zap::Installer::Classic
           end
         else
           bin_name = dependency.name.split("/").last
-          bin_path = Utils::File.join(state.config.bin_path, bin_name)
+          bin_path = Utils::File.join(bin_folder_path, bin_name)
           if !File.exists?(bin_path) || is_direct_dependency
             File.delete?(bin_path)
             File.symlink(Path.new(bin).expand(install_folder), bin_path)
