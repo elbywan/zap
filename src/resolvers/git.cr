@@ -126,7 +126,7 @@ module Zap::Resolver
     def clone_to(path : Path | String)
       api_url = "https://api.github.com/repos/#{@raw_version.to_s.split('#')[0]}/tarball/#{@git_url.commitish || ""}"
       tarball_url = HTTP::Client.get(api_url).headers["Location"]?
-      raise "Failed to fetch package location from Github at #{api_url}" unless tarball_url
+      raise "Failed to fetch package location from Github at #{api_url}" unless tarball_url && !tarball_url.empty?
       Utils::TarGzip.download_and_unpack(tarball_url, path)
     end
   end

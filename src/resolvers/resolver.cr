@@ -74,6 +74,9 @@ end
 module Zap::Resolver
   Utils::MemoLock::Global.memo_lock(:store, Bool)
 
+  GH_URL_REGEX   = /^https:\/\/github.com\/(?P<owner>[a-zA-Z0-9\-_]+)\/(?P<package>[^#^\/]+)(?:#(?P<hash>[.*]))?/
+  GH_SHORT_REGEX = /^[^@].*\/.*$/
+
   def self.make(state : Commands::Install::State, name : String, version_field : String = "latest", parent : Package | Lockfile::Root | Nil = nil) : Base
     # Partial implementation of the pnpm workspace protocol
     # Does not support aliases for the moment
@@ -114,13 +117,15 @@ module Zap::Resolver
     case version_field
     when .starts_with?("git://"), .starts_with?("git+ssh://"), .starts_with?("git+http://"), .starts_with?("git+https://"), .starts_with?("git+file://")
       Git.new(state, name, version_field, aliased_name, parent)
-    when .starts_with?("http://"), .starts_with?("https://")
-      TarballUrl.new(state, name, version_field, aliased_name, parent)
     when .starts_with?("file:")
       File.new(state, name, version_field, aliased_name, parent)
     when .starts_with?("github:")
       Github.new(state, name, version_field[7..], aliased_name, parent)
-    when .matches?(/^[^@].*\/.*$/)
+    when .matches?(GH_URL_REGEX)
+      Github.new(state, name, version_field[19..], aliased_name, parent)
+    when .starts_with?("http://"), .starts_with?("https://")
+      TarballUrl.new(state, name, version_field, aliased_name, parent)
+    when .matches?(GH_SHORT_REGEX)
       Github.new(state, name, version_field, aliased_name, parent)
     else
       version = Utils::Semver.parse(version_field)
