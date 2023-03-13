@@ -25,7 +25,7 @@ struct Zap::Config
 
       self.copy_with(
         packages: packages.empty? ? [args[0]] : packages,
-        command: create_command || Utils::Various.parse_key(args[0])[0],
+        command: create_command || "",
         args: args[1..]? || [] of String
       )
     end

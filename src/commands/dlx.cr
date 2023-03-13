@@ -52,6 +52,20 @@ module Zap::Commands::Dlx
       File.touch(full_final_dir_path / Installer::METADATA_FILE_NAME)
     end
 
+    if dlx_config.command.empty?
+      pkg_json = Package.init(full_final_dir_path / "node_modules" / packages[0][0])
+      if bin = pkg_json.bin
+        unscoped_name = pkg_json.name.split('/').last
+        if bin.is_a?(String)
+          dlx_config = dlx_config.copy_with(command: unscoped_name)
+        else
+          dlx_config = dlx_config.copy_with(command: bin.size == 1 ? bin.first_key : unscoped_name)
+        end
+      else
+        raise "No command specified and no bin field in package.json"
+      end
+    end
+
     # Run the command
     Process.run(
       dlx_config.command,
