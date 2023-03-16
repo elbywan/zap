@@ -11,3 +11,4 @@ node_modules
 /spec/fixtures/nextjs-blog
 /spec/fixtures/create-react-app
 /spec/fixtures/workspaces_example
+/spec/fixtures/my-turborepo

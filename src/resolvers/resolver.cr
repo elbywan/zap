@@ -94,7 +94,7 @@ module Zap::Resolver
 
     # Will link the workspace in the parent node_modules folder
     if workspace
-      return File.new(state, name, "file:#{workspace.path.relative_to?(state.config.prefix)}")
+      return File.new(state, name, "file:#{workspace.relative_path}", nil, parent)
     end
 
     # Special case for aliases

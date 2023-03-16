@@ -17,18 +17,18 @@ class Zap::CLI
         if (arg.starts_with?("@"))
           split_arg = arg[1..].split('@')
           slash_split = split_arg.first.split('/')
-          package_name = "@#{slash_split.join("/create-")}"
+          package_descriptor = "@#{slash_split.join("/create-")}"
           command = "create-#{slash_split[1]}"
           version = split_arg[1]? ? "@#{split_arg[1]}" : ""
           @command_config = Config::Dlx.new(
-            packages: [package_name],
+            packages: [package_descriptor],
             create_command: command
           )
         else
-          package_name = "create-#{arg}"
+          package_descriptor = "create-#{arg}"
           @command_config = Config::Dlx.new(
-            packages: [package_name],
-            create_command: package_name
+            packages: [package_descriptor],
+            create_command: package_descriptor.split('@').first
           )
         end
         parser.stop
