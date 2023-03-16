@@ -106,7 +106,7 @@ module Zap::Installer::Classic
       when .git?
         Helpers::Git.install(dependency, installer: self, cache: cache, state: state, aliased_name: aliased_name)
       when .registry?
-        cache_item = Helpers::Registry.hoist(dependency, cache: cache, ancestors: ancestors, aliased_name: aliased_name)
+        cache_item = Helpers::Registry.hoist(dependency, cache: cache, state: state, ancestors: ancestors, aliased_name: aliased_name)
         return unless cache_item
         Helpers::Registry.install(dependency, cache_item, installer: self, cache: cache, state: state, aliased_name: aliased_name)
       end

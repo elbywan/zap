@@ -93,4 +93,21 @@ module Zap::Utils::File
   def self.join(*paths : Path | String) : String
     paths.map(&.to_s).join(::Path::SEPARATORS[0])
   end
+
+  def self.nearest_package_files(path : File | Path)
+    path = Path.new(path)
+    nearest_package = nil
+    root_package = nil
+    path.parents.each do |parent|
+      if ::File.exists?(parent / "package.json")
+        pkg = Package.init(parent)
+        nearest_package ||= pkg
+        if pkg.workspaces
+          root_package = pkg
+          break
+        end
+      end
+    end
+    {nearest_package: nearest_package, root_package: root_package}
+  end
 end

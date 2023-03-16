@@ -1,3 +1,5 @@
+require "../utils/various"
+
 class Zap::Package
   struct Overrides
     record Parent,

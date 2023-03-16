@@ -1,3 +1,5 @@
+require "../installers/backends/backend"
+
 struct Zap::Config
   enum Omit
     Dev

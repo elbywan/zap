@@ -86,15 +86,15 @@ module Zap::Resolver
     end
 
     # Check if the package is a workspace
-    if workspace = state.workspaces.find { |w| w.package.name == name }
-      if Utils::Semver.parse(version_field).valid?(workspace.package.version)
-        # Will link the workspace in the parent node_modules folder
-        return File.new(state, name, "file:#{workspace.path.relative_to?(state.config.prefix)}")
-      elsif workspace_protocol
-        raise "Workspace #{name} does not match version #{version_field}"
-      end
-    elsif workspace_protocol
-      raise "Workspace #{name} not found"
+    if workspace_protocol
+      workspace = state.workspaces.get!(name, version_field)
+    else
+      workspace = state.workspaces.get(name, version_field)
+    end
+
+    # Will link the workspace in the parent node_modules folder
+    if workspace
+      return File.new(state, name, "file:#{workspace.path.relative_to?(state.config.prefix)}")
     end
 
     # Special case for aliases

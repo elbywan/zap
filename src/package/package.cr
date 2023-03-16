@@ -1,7 +1,11 @@
 require "json"
 require "yaml"
 require "colorize"
-require "./package/*"
+require "../utils/macros"
+require "../utils/data_structures/*"
+require "../config"
+require "../cli/install"
+require "./*"
 
 # A class that represents a package.
 # It is used to store the information about a package and to resolve dependencies.

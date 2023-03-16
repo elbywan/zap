@@ -1,11 +1,11 @@
 module Zap::Installer::Classic::Helpers::Registry
-  def self.hoist(dependency : Package, cache : Deque(CacheItem), ancestors : Array(Package), aliased_name : String? = nil) : CacheItem?
+  def self.hoist(dependency : Package, cache : Deque(CacheItem), state : Commands::Install::State, ancestors : Array(Package), aliased_name : String? = nil) : CacheItem?
     # Do not hoist aliases
     return cache.last if aliased_name
     # Take into account the nohoist field
-    if Workspaces.no_hoist
+    if no_hoist = state.workspaces.no_hoist
       logical_path = "#{ancestors.map(&.name).join("/")}/#{dependency.name}"
-      do_not_hoist = Workspaces.no_hoist.try &.any? { |pattern|
+      do_not_hoist = no_hoist.any? { |pattern|
         ::File.match?(pattern, logical_path)
       }
       return cache.last if do_not_hoist

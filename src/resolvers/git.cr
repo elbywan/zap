@@ -78,7 +78,10 @@ module Zap::Resolver
       @git_url.clone(path)
     end
 
-    private def prepare_package(path : Path, config : Config = state.config.copy_with(prefix: path.to_s, global: false, silent: true))
+    private def prepare_package(
+      path : Path,
+      config : Config = state.config.copy_with(prefix: path.to_s, global: false, silent: true, no_workspaces: true)
+    )
       Commands::Install.run(
         config,
         Config::Install.new,

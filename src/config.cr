@@ -12,7 +12,8 @@ module Zap
       ), home: true),
     prefix : String = Dir.current,
     child_concurrency : Int32 = 5,
-    silent : Bool = false
+    silent : Bool = false,
+    no_workspaces : Bool = false,
   ) do
     getter node_modules : String do
       if global
@@ -58,7 +59,7 @@ module Zap
       {% if flag?(:windows) %}
         node_path
       {% else %}
-        Path.new(node_path, "..").normalize.to_s
+        Path.new(node_path).dirname
       {% end %}
     end
   end

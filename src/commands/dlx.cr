@@ -27,7 +27,8 @@ module Zap::Commands::Dlx
     process_config = config.copy_with(
       prefix: full_final_dir_path.to_s,
       global: false,
-      silent: dlx_config.quiet
+      silent: dlx_config.quiet,
+      no_workspaces: true,
     )
 
     unless File.exists?(full_final_dir_path / Installer::METADATA_FILE_NAME)

@@ -11,7 +11,7 @@ module Zap::Commands::Install
     main_package : Package,
     pipeline = Pipeline.new,
     reporter : Reporter = Reporter::Interactive.new,
-    workspaces : Array(Workspaces::Workspace) = [] of Workspaces::Workspace
+    workspaces : Workspaces = Workspaces.new
 
   def self.run(
     config : Config,
@@ -51,7 +51,7 @@ module Zap::Commands::Install
         end
 
         # Find workspaces
-        workspaces = Workspaces.crawl(main_package, config: config)
+        workspaces = Workspaces.new(main_package, config: config)
 
         unless config.silent
           if workspaces.size > 0
@@ -87,7 +87,7 @@ module Zap::Commands::Install
           state.lockfile.write
 
           # Edit and write the package.json file if the flags have been set in the config
-          write_package_json(state)
+          write_package_json(state, state.config.prefix)
         end
 
         # Install dependencies to the appropriate node_modules folder
@@ -174,17 +174,23 @@ module Zap::Commands::Install
     pruned_dependencies
   end
 
-  private def self.write_package_json(state : State)
+  private def self.write_package_json(state : State, location : String? = nil)
     if state.install_config.new_packages.size > 0 || state.install_config.removed_packages.size > 0
-      package_json = JSON.parse(File.read(Path.new(state.config.prefix).join("package.json"))).as_h
+      package_json = JSON.parse(File.read(Path.new(location).join("package.json"))).as_h
       if deps = state.main_package.dependencies
         package_json["dependencies"] = JSON::Any.new(deps.transform_values { |v| JSON::Any.new(v) })
+      else
+        package_json.delete("dependencies")
       end
       if dev_deps = state.main_package.dev_dependencies
         package_json["devDependencies"] = JSON::Any.new(dev_deps.transform_values { |v| JSON::Any.new(v) })
+      else
+        package_json.delete("devDependencies")
       end
       if opt_deps = state.main_package.optional_dependencies
         package_json["optionalDependencies"] = JSON::Any.new(opt_deps.transform_values { |v| JSON::Any.new(v) })
+      else
+        package_json.delete("optionalDependencies")
       end
       File.write(Path.new(state.config.prefix).join("package.json"), package_json.to_pretty_json)
     end
