@@ -80,7 +80,7 @@ module Zap::Resolver
 
     private def prepare_package(
       path : Path,
-      config : Config = state.config.copy_with(prefix: path.to_s, global: false, silent: true, no_workspaces: true)
+      config : Config = state.config.copy_for_inner_consumption.copy_with(prefix: path.to_s)
     )
       Commands::Install.run(
         config,

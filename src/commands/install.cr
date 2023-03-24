@@ -166,7 +166,7 @@ module Zap::Commands::Install
       # Find the nearest workspace if it exists
       nearest_workspace = workspaces.try &.find { |w| w.path == nearest_package_dir }
       # Check if the nearest package.json file is in the workspace
-      if workspace_package && workspace_package_dir && workspaces && (nearest_is_workspace_root || nearest_workspace)
+      if !config.no_workspaces && workspace_package && workspace_package_dir && workspaces && (nearest_is_workspace_root || nearest_workspace)
         main_package = workspace_package
         # Use the workspace root directory as the prefix
         config = config.copy_with(prefix: workspace_package_dir)

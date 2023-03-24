@@ -65,5 +65,11 @@ module Zap
         Path.new(node_path).dirname
       {% end %}
     end
+
+    def copy_for_inner_consumption : Config
+      copy_with(
+        global: false, silent: true, no_workspaces: true, filters: nil, recursive: false, root_workspace: false,
+      )
+    end
   end
 end

@@ -150,6 +150,10 @@ module Zap
         parser.on("-w", "--workspace-root", "Will apply the command to the root workspace package.") do
           @config = @config.copy_with(root_workspace: true)
         end
+
+        parser.on("--ignore-workspaces", "Will completely ignore workspaces when applying the command.") do
+          @config = @config.copy_with(no_workspaces: true)
+        end
       end.parse
 
       # Return both configs
