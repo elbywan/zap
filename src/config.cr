@@ -14,6 +14,9 @@ module Zap
     child_concurrency : Int32 = 5,
     silent : Bool = false,
     no_workspaces : Bool = false,
+    filters : Array(Utils::Filter)? = nil,
+    recursive : Bool = false,
+    root_workspace : Bool = false,
   ) do
     getter node_modules : String do
       if global

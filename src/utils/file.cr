@@ -103,6 +103,7 @@ module Zap::Utils::File
     nearest_package_dir = nil
     workspace_package_dir = nil
     [path, *path.parents.reverse].each do |current_path|
+      break if current_path.basename == "node_modules"
       if ::File.exists?(current_path / "package.json")
         pkg = Package.init(current_path)
         nearest_package ||= pkg

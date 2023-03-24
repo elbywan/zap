@@ -26,41 +26,18 @@ module Zap::Commands::Install
     Zap.print_banner unless config.silent
 
     realtime, memory = self.measure do
-      global_store_path = config.global_store_path
-      Resolver::Registry.init(global_store_path)
+      Resolver::Registry.init(config.global_store_path)
 
-      inferred_context = infer_context(config, install_config)
-      workspaces = inferred_context.workspaces
-      config = inferred_context.config
+      # Infer context like the nearest package.json file and workspaces
+      inferred_context = infer_context(config)
+      workspaces, config = inferred_context.workspaces, inferred_context.config
+      lockfile = Lockfile.new(config.prefix)
+      reporter ||= config.silent ? Reporter::Interactive.new(null_io) : Reporter::Interactive.new
       # Merge zap config from package.json
       install_config = install_config.merge_pkg(inferred_context.main_package)
 
-      reporter ||= config.silent ? Reporter::Interactive.new(null_io) : Reporter::Interactive.new
-      lockfile = Lockfile.new(config.prefix)
-
-      unless config.silent
-        puts <<-TERM
-            #{"project:".colorize.blue} #{config.prefix} • #{"store:".colorize.blue} #{global_store_path} • #{"workers:".colorize.blue} #{Crystal::Scheduler.nb_of_workers}
-            #{"lockfile:".colorize.blue} #{lockfile.read_status.from_disk? ? "ok".colorize.green : lockfile.read_status.error? ? "read error".colorize.red : "not found".colorize.red} • #{"install strategy:".colorize.blue} #{install_config.install_strategy.to_s.downcase}
-        TERM
-      end
-
-      unless config.silent
-        if workspaces
-          puts <<-TERM
-              #{"install scope".colorize.blue}: #{inferred_context.install_scope.size} package(s) • #{inferred_context.scope_names(:install).join(", ")}
-          TERM
-        end
-        if (
-             (install_config.removed_packages.size > 0 || install_config.added_packages.size > 0) &&
-             inferred_context.add_remove_scope.size != inferred_context.install_scope.size
-           )
-          puts <<-TERM
-              #{"add/remove scope".colorize.blue}: #{inferred_context.add_remove_scope.size} package(s) • #{inferred_context.scope_names(:add_remove).join(", ")}
-          TERM
-        end
-        puts "\n"
-      end
+      # Print info about the install
+      self.print_info(config, inferred_context, install_config, lockfile, workspaces)
 
       # Init state struct
       state = State.new(
@@ -89,8 +66,8 @@ module Zap::Commands::Install
         # Write lockfile
         state.lockfile.write
 
-        # Edit and write the package.json file if the flags have been set in the config
-        write_package_json(state)
+        # Edit and write the package.json files if the flags have been set in the config
+        write_package_json_files(state)
       end
 
       # Install dependencies to the appropriate node_modules folder
@@ -103,6 +80,7 @@ module Zap::Commands::Install
       run_own_install_hooks(state)
     end
 
+    # Print the report
     state.reporter.report_done(realtime, memory, state.install_config)
     null_io.try &.close
   rescue e
@@ -162,7 +140,7 @@ module Zap::Commands::Install
     end
   end
 
-  private def self.infer_context(config : Config, install_config : Config::Install) : InferredContext
+  private def self.infer_context(config : Config) : InferredContext
     install_scope = [] of WorkspaceOrPackage
     add_remove_scope = [] of WorkspaceOrPackage
 
@@ -177,26 +155,32 @@ module Zap::Commands::Install
       nearest_package = packages_data.nearest_package
       nearest_package_dir = packages_data.nearest_package_dir
 
-      raise "Could not find a package.json file in #{config.prefix} and parent folders." unless nearest_package && nearest_package_dir
+      raise "Could not find a package.json file in #{config.prefix} or its parent folders!" unless nearest_package && nearest_package_dir
 
+      # Initialize workspaces if a workspace root has been found
       if (workspace_package_dir = packages_data.workspace_package_dir.try(&.to_s)) && (workspace_package = packages_data.workspace_package)
         workspaces = Workspaces.new(workspace_package, workspace_package_dir)
       end
+      # Check if the nearest package.json file is the workspace root
       nearest_is_workspace_root = workspace_package && workspace_package.object_id == nearest_package.object_id
+      # Find the nearest workspace if it exists
       nearest_workspace = workspaces.try &.find { |w| w.path == nearest_package_dir }
       # Check if the nearest package.json file is in the workspace
-      if nearest_is_workspace_root || nearest_workspace
-        main_package = workspace_package.not_nil!
-        workspaces = workspaces.not_nil!
+      if workspace_package && workspace_package_dir && workspaces && (nearest_is_workspace_root || nearest_workspace)
+        main_package = workspace_package
         # Use the workspace root directory as the prefix
-        config = config.copy_with(prefix: workspace_package_dir.not_nil!)
+        config = config.copy_with(prefix: workspace_package_dir)
         # Compute the scope of the workspace based on cli flags
-        if filters = install_config.filters
+        if filters = config.filters
+          install_scope << main_package if config.root_workspace
           install_scope += workspaces.filter(filters)
           add_remove_scope = install_scope
-        elsif install_config.recursive
+        elsif config.recursive
           install_scope = [main_package, *workspaces.workspaces]
           add_remove_scope = install_scope
+        elsif config.root_workspace
+          install_scope << main_package
+          add_remove_scope << main_package
         else
           install_scope = [main_package, *workspaces.workspaces]
           add_remove_scope = [nearest_workspace || main_package]
@@ -217,6 +201,31 @@ module Zap::Commands::Install
     main_package = main_package.tap(&.refine)
 
     InferredContext.new(main_package, config, workspaces, install_scope, add_remove_scope)
+  end
+
+  private def self.print_info(config : Config, inferred_context : InferredContext, install_config : Config::Install, lockfile : Lockfile, workspaces : Workspaces?)
+    unless config.silent
+      puts <<-TERM
+          #{"project:".colorize.blue} #{config.prefix} • #{"store:".colorize.blue} #{config.global_store_path} • #{"workers:".colorize.blue} #{Crystal::Scheduler.nb_of_workers}
+          #{"lockfile:".colorize.blue} #{lockfile.read_status.from_disk? ? "ok".colorize.green : lockfile.read_status.error? ? "read error".colorize.red : "not found".colorize.red} • #{"install strategy:".colorize.blue} #{install_config.install_strategy.to_s.downcase}
+      TERM
+
+      if workspaces
+        puts <<-TERM
+            #{"install scope".colorize.blue}: #{inferred_context.install_scope.size} package(s) • #{inferred_context.scope_names(:install).join(", ")}
+        TERM
+      end
+
+      if (
+           (install_config.removed_packages.size > 0 || install_config.added_packages.size > 0) &&
+           inferred_context.add_remove_scope.size != inferred_context.install_scope.size
+         )
+        puts <<-TERM
+            #{"add/remove scope".colorize.blue}: #{inferred_context.add_remove_scope.size} package(s) • #{inferred_context.scope_names(:add_remove).join(", ")}
+        TERM
+      end
+      puts "\n"
+    end
   end
 
   private def self.remove_packages(state : State)
@@ -269,7 +278,7 @@ module Zap::Commands::Install
   end
 
   private def self.clean_lockfile(state : State)
-    workspaces, main_package = {state.context.workspaces, state.main_package}
+    workspaces, main_package = state.context.workspaces, state.main_package
     state.lockfile.set_root(main_package)
     workspaces.try &.each do |workspace|
       state.lockfile.set_root(workspace.package)
@@ -288,21 +297,21 @@ module Zap::Commands::Install
     pruned_dependencies
   end
 
-  private def self.write_package_json(state : State)
+  private def self.write_package_json_files(state : State)
     if state.install_config.added_packages.size > 0 || state.install_config.removed_packages.size > 0
       [*state.context.scope_packages_and_paths(:add_remove)].each do |package, location|
         package_json = JSON.parse(File.read(Path.new(location).join("package.json"))).as_h
-        if deps = package.dependencies
+        if (deps = package.dependencies) && deps.size > 0
           package_json["dependencies"] = JSON::Any.new(deps.transform_values { |v| JSON::Any.new(v) })
         else
           package_json.delete("dependencies")
         end
-        if dev_deps = package.dev_dependencies
+        if (dev_deps = package.dev_dependencies) && dev_deps.size > 0
           package_json["devDependencies"] = JSON::Any.new(dev_deps.transform_values { |v| JSON::Any.new(v) })
         else
           package_json.delete("devDependencies")
         end
-        if opt_deps = package.optional_dependencies
+        if (opt_deps = package.optional_dependencies) && opt_deps.size > 0
           package_json["optionalDependencies"] = JSON::Any.new(opt_deps.transform_values { |v| JSON::Any.new(v) })
         else
           package_json.delete("optionalDependencies")

@@ -34,9 +34,7 @@ struct Zap::Config
     save_dev : Bool = false,
     save_optional : Bool = false,
     lockfile_only : Bool = false,
-    print_logs : Bool = true,
-    filters : Array(Utils::Filter)? = nil,
-    recursive : Bool = false,
+    print_logs : Bool = true
   ) do
     getter! install_strategy : InstallStrategy
 
@@ -118,18 +116,6 @@ class Zap::CLI
     end
     parser.on("--no-save", "Prevents saving to dependencies.") do
       @command_config = install_config.copy_with(save: false)
-    end
-
-    subSeparator("Workspace options")
-
-    parser.on("-F FILTER", "--filter FILTER", "Filtering allows you to restrict commands to specific subsets of packages.") do |filter|
-      filters = install_config.filters || Array(Utils::Filter).new
-      filters << Utils::Filter.new(filter)
-      @command_config = install_config.copy_with(filters: filters)
-    end
-
-    parser.on("-r", "--recursive", "Will apply the command to all packages in the workspace.") do
-      @command_config = install_config.copy_with(recursive: true)
     end
 
     parser.unknown_args do |pkgs|

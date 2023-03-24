@@ -24,7 +24,7 @@ require "../constants"
 module Zap
   Colorize.on_tty_only!
   Log = ::Log.for(self)
-  Zap.run()
+  Zap.run
 
   def self.run
     if env = ENV["DEBUG"]?
@@ -133,6 +133,22 @@ module Zap
         parser.on("--version", "Show version.") do
           puts "v#{VERSION}"
           exit
+        end
+
+        subSeparator("Workspace options")
+
+        parser.on("-F FILTER", "--filter FILTER", "Filtering allows you to restrict commands to specific subsets of packages.") do |filter|
+          filters = @config.filters || Array(Utils::Filter).new
+          filters << Utils::Filter.new(filter)
+          @config = @config.copy_with(filters: filters)
+        end
+
+        parser.on("-r", "--recursive", "Will apply the command to all packages in the workspace.") do
+          @config = @config.copy_with(recursive: true)
+        end
+
+        parser.on("-w", "--workspace-root", "Will apply the command to the root workspace package.") do
+          @config = @config.copy_with(root_workspace: true)
         end
       end.parse
 
