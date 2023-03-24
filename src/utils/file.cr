@@ -94,20 +94,26 @@ module Zap::Utils::File
     paths.map(&.to_s).join(::Path::SEPARATORS[0])
   end
 
-  def self.nearest_package_files(path : File | Path)
+  record PackagesData, workspace_package : Package?, workspace_package_dir : Path?, nearest_package : Package?, nearest_package_dir : Path?
+
+  def self.find_package_files(path : String | Path) : PackagesData
     path = Path.new(path)
     nearest_package = nil
-    root_package = nil
-    path.parents.each do |parent|
-      if ::File.exists?(parent / "package.json")
-        pkg = Package.init(parent)
+    workspace_package = nil
+    nearest_package_dir = nil
+    workspace_package_dir = nil
+    [path, *path.parents.reverse].each do |current_path|
+      if ::File.exists?(current_path / "package.json")
+        pkg = Package.init(current_path)
         nearest_package ||= pkg
+        nearest_package_dir ||= current_path
         if pkg.workspaces
-          root_package = pkg
+          workspace_package = pkg
+          workspace_package_dir = current_path
           break
         end
       end
     end
-    {nearest_package: nearest_package, root_package: root_package}
+    PackagesData.new(workspace_package, workspace_package_dir, nearest_package, nearest_package_dir)
   end
 end

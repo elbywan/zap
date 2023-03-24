@@ -13,7 +13,7 @@ module Zap::Installer
 
     def remove(dependencies : Set({String, String | Package::Alias, String})) : Nil
       dependencies.each do |(name, version_or_alias, root_name)|
-        workspace = state.workspaces.find { |w| w.package.name == root_name }
+        workspace = state.context.workspaces.try &.find { |w| w.package.name == root_name }
         node_modules = workspace.try(&.path./ "node_modules") || Path.new(state.config.node_modules)
         package_path = node_modules / name
         if File.directory?(package_path)

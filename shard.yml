@@ -6,7 +6,7 @@ authors:
 
 targets:
   zap:
-    main: src/zap.cr
+    main: src/cli/cli.cr
 
 crystalline:
   main: .crystalline_main.cr

@@ -3,7 +3,7 @@ module Zap::Installer::Classic::Helpers::Registry
     # Do not hoist aliases
     return cache.last if aliased_name
     # Take into account the nohoist field
-    if no_hoist = state.workspaces.no_hoist
+    if no_hoist = state.context.workspaces.try &.no_hoist
       logical_path = "#{ancestors.map(&.name).join("/")}/#{dependency.name}"
       do_not_hoist = no_hoist.any? { |pattern|
         ::File.match?(pattern, logical_path)

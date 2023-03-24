@@ -37,7 +37,7 @@ module Zap::Installer::Isolated
 
     def install : Nil
       state.lockfile.roots.each do |name, root|
-        workspace = state.workspaces.find { |w| w.package.name == name }
+        workspace = state.context.workspaces.try &.find { |w| w.package.name == name }
         root_path = workspace.try(&.path./ "node_modules") || Path.new(state.config.node_modules)
         Dir.mkdir_p(root_path)
         install_package(

@@ -33,7 +33,7 @@ module Zap::Installer::Classic
       # initialize the queue with all the root dependencies
       root_cache = CacheItem.new(node_modules: node_modules, root: true)
       state.lockfile.roots.each do |name, root|
-        workspace = state.workspaces.find { |w| w.package.name == name }
+        workspace = state.context.workspaces.try &.find { |w| w.package.name == name }
         initial_cache : Deque(CacheItem) = Deque(CacheItem).new
         initial_cache << root_cache
         if workspace

@@ -26,7 +26,7 @@ struct Zap::Config
     ignore_scripts : Bool = false,
     install_strategy : InstallStrategy? = nil,
     omit : Array(Omit) = ENV["NODE_ENV"]? === "production" ? [Omit::Dev] : [] of Omit,
-    new_packages : Array(String) = Array(String).new,
+    added_packages : Array(String) = Array(String).new,
     removed_packages : Array(String) = Array(String).new,
     save : Bool = true,
     save_exact : Bool = false,
@@ -34,7 +34,9 @@ struct Zap::Config
     save_dev : Bool = false,
     save_optional : Bool = false,
     lockfile_only : Bool = false,
-    print_logs : Bool = true
+    print_logs : Bool = true,
+    filters : Array(Utils::Filter)? = nil,
+    recursive : Bool = false,
   ) do
     getter! install_strategy : InstallStrategy
 
@@ -118,11 +120,23 @@ class Zap::CLI
       @command_config = install_config.copy_with(save: false)
     end
 
+    subSeparator("Workspace options")
+
+    parser.on("-F FILTER", "--filter FILTER", "Filtering allows you to restrict commands to specific subsets of packages.") do |filter|
+      filters = install_config.filters || Array(Utils::Filter).new
+      filters << Utils::Filter.new(filter)
+      @command_config = install_config.copy_with(filters: filters)
+    end
+
+    parser.on("-r", "--recursive", "Will apply the command to all packages in the workspace.") do
+      @command_config = install_config.copy_with(recursive: true)
+    end
+
     parser.unknown_args do |pkgs|
       if remove_packages
         install_config.removed_packages.concat(pkgs)
       else
-        install_config.new_packages.concat(pkgs)
+        install_config.added_packages.concat(pkgs)
       end
     end
   end

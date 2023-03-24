@@ -7,11 +7,11 @@ module Zap::Commands::Install
     config : Config,
     install_config : Config::Install,
     store : Store,
-    lockfile : Lockfile,
     main_package : Package,
+    lockfile : Lockfile,
+    context : InferredContext,
     pipeline = Pipeline.new,
-    reporter : Reporter = Reporter::Interactive.new,
-    workspaces : Workspaces = Workspaces.new
+    reporter : Reporter = Reporter::Interactive.new
 
   def self.run(
     config : Config,
@@ -20,85 +20,87 @@ module Zap::Commands::Install
     reporter : Reporter? = nil,
     store : Store? = Store.new(config.global_store_path)
   )
-    realtime = nil
     state = uninitialized State
     null_io = File.open(File::NULL, "w")
 
-    puts "⚡ #{"Zap".colorize.bold.underline} #{"(v#{VERSION})".colorize.dim}" unless config.silent
+    Zap.print_banner unless config.silent
 
-    memory = Benchmark.memory do
+    realtime, memory = self.measure do
       global_store_path = config.global_store_path
+      Resolver::Registry.init(global_store_path)
+
+      inferred_context = infer_context(config, install_config)
+      workspaces = inferred_context.workspaces
+      config = inferred_context.config
+      # Merge zap config from package.json
+      install_config = install_config.merge_pkg(inferred_context.main_package)
 
       reporter ||= config.silent ? Reporter::Interactive.new(null_io) : Reporter::Interactive.new
       lockfile = Lockfile.new(config.prefix)
 
-      realtime = Benchmark.realtime {
-        Resolver::Registry.init(global_store_path)
+      unless config.silent
+        puts <<-TERM
+            #{"project:".colorize.blue} #{config.prefix} • #{"store:".colorize.blue} #{global_store_path} • #{"workers:".colorize.blue} #{Crystal::Scheduler.nb_of_workers}
+            #{"lockfile:".colorize.blue} #{lockfile.read_status.from_disk? ? "ok".colorize.green : lockfile.read_status.error? ? "read error".colorize.red : "not found".colorize.red} • #{"install strategy:".colorize.blue} #{install_config.install_strategy.to_s.downcase}
+        TERM
+      end
 
-        main_package = Package.read_package(config).tap(&.refine)
-
-        # Remove packages if specified from the CLI
-        remove_packages(install_config, main_package)
-
-        # Merge zap config from package.json
-        install_config = install_config.merge_pkg(main_package)
-
-        unless config.silent
+      unless config.silent
+        if workspaces
           puts <<-TERM
-              #{"project:".colorize.blue} #{config.prefix} • #{"store:".colorize.blue} #{global_store_path} • #{"workers:".colorize.blue} #{Crystal::Scheduler.nb_of_workers}
-              #{"lockfile:".colorize.blue} #{lockfile.read_status.from_disk? ? "ok".colorize.green : lockfile.read_status.error? ? "read error".colorize.red : "not found".colorize.red} • #{"install strategy:".colorize.blue} #{install_config.install_strategy.to_s.downcase}
+              #{"install scope".colorize.blue}: #{inferred_context.install_scope.size} package(s) • #{inferred_context.scope_names(:install).join(", ")}
           TERM
         end
-
-        # Find workspaces
-        workspaces = Workspaces.new(main_package, config: config)
-
-        unless config.silent
-          if workspaces.size > 0
-            puts <<-TERM
-                #{"scope".colorize.blue}: #{workspaces.size} packages • #{"workspaces:".colorize.blue} #{workspaces.map(&.package.name).join(", ")}
-            TERM
-          end
-          puts "\n"
+        if (
+             (install_config.removed_packages.size > 0 || install_config.added_packages.size > 0) &&
+             inferred_context.add_remove_scope.size != inferred_context.install_scope.size
+           )
+          puts <<-TERM
+              #{"add/remove scope".colorize.blue}: #{inferred_context.add_remove_scope.size} package(s) • #{inferred_context.scope_names(:add_remove).join(", ")}
+          TERM
         end
+        puts "\n"
+      end
 
-        # Init state struct
-        state = State.new(
-          config: config,
-          install_config: config.global ? install_config.copy_with(
-            install_strategy: Config::InstallStrategy::Classic_Shallow
-          ) : install_config,
-          store: store,
-          lockfile: lockfile,
-          reporter: reporter,
-          workspaces: workspaces,
-          main_package: main_package,
-        )
+      # Init state struct
+      state = State.new(
+        config: config,
+        install_config: config.global ? install_config.copy_with(
+          install_strategy: Config::InstallStrategy::Classic_Shallow
+        ) : install_config,
+        store: store,
+        main_package: inferred_context.main_package,
+        lockfile: lockfile,
+        reporter: reporter,
+        context: inferred_context
+      )
 
-        # Resolve all dependencies
-        resolve_dependencies(state)
+      # Remove packages if specified from the CLI
+      remove_packages(state)
 
-        # Prune lockfile before installing to cleanup pinned dependencies
-        pruned_direct_dependencies = clean_lockfile(state)
+      # Resolve all dependencies
+      resolve_dependencies(state)
 
-        # Do not edit lockfile or package.json files in global mode or if the save flag is false
-        unless state.config.global || !state.install_config.save
-          # Write lockfile
-          state.lockfile.write
+      # Prune lockfile before installing to cleanup pinned dependencies
+      pruned_direct_dependencies = clean_lockfile(state)
 
-          # Edit and write the package.json file if the flags have been set in the config
-          write_package_json(state, state.config.prefix)
-        end
+      # Do not edit lockfile or package.json files in global mode or if the save flag is false
+      unless state.config.global || !state.install_config.save
+        # Write lockfile
+        state.lockfile.write
 
-        # Install dependencies to the appropriate node_modules folder
-        installer = install_packages(state, pruned_direct_dependencies)
+        # Edit and write the package.json file if the flags have been set in the config
+        write_package_json(state)
+      end
 
-        # Run package.json hooks for the installed packages
-        run_install_hooks(state, installer)
+      # Install dependencies to the appropriate node_modules folder
+      installer = install_packages(state, pruned_direct_dependencies)
 
-        # Run package.json hooks for the workspace packages
-        run_own_install_hooks(state)
-      }
+      # Run package.json hooks for the installed packages
+      run_install_hooks(state, installer)
+
+      # Run package.json hooks for the workspace packages
+      run_own_install_hooks(state)
     end
 
     state.reporter.report_done(realtime, memory, state.install_config)
@@ -112,14 +114,123 @@ module Zap::Commands::Install
 
   # -PRIVATE--------------------------- #
 
-  private def self.remove_packages(install_config : Config::Install, main_package : Package)
-    install_config.removed_packages.each do |name|
-      if main_package.dependencies && main_package.dependencies.try &.has_key?(name)
-        main_package.dependencies.not_nil!.delete(name)
-      elsif main_package.dev_dependencies && main_package.dev_dependencies.try &.has_key?(name)
-        main_package.dev_dependencies.not_nil!.delete(name)
-      elsif main_package.optional_dependencies && main_package.optional_dependencies.try &.has_key?(name)
-        main_package.optional_dependencies.not_nil!.delete(name)
+  private def self.measure(&block) : {Time::Span, Int64}
+    realtime = uninitialized Time::Span
+    memory = Benchmark.memory do
+      realtime = Benchmark.realtime do
+        yield
+      end
+    end
+    {realtime, memory}
+  end
+
+  alias WorkspaceScope = Array(WorkspaceOrPackage)
+  alias WorkspaceOrPackage = Package | Workspaces::Workspace
+
+  private record(InferredContext,
+    main_package : Package,
+    config : Config,
+    workspaces : Workspaces?,
+    install_scope : WorkspaceScope,
+    add_remove_scope : WorkspaceScope
+  ) do
+    enum ScopeType
+      Install
+      AddRemove
+    end
+
+    private def get_scope(type : ScopeType)
+      type.install? ? @install_scope : @add_remove_scope
+    end
+
+    def scope_names(type : ScopeType)
+      get_scope(type).map { |pkg|
+        pkg.is_a?(Package) ? pkg.name : pkg.package.name
+      }
+    end
+
+    def scope_packages(type : ScopeType)
+      get_scope(type).map { |pkg|
+        pkg.is_a?(Package) ? pkg : pkg.package
+      }
+    end
+
+    def scope_packages_and_paths(type : ScopeType)
+      get_scope(type).map { |pkg|
+        pkg.is_a?(Package) ? {pkg, config.prefix} : {pkg.package, pkg.path}
+      }
+    end
+  end
+
+  private def self.infer_context(config : Config, install_config : Config::Install) : InferredContext
+    install_scope = [] of WorkspaceOrPackage
+    add_remove_scope = [] of WorkspaceOrPackage
+
+    if config.global
+      # Do not check for workspaces if the global flag is set
+      main_package = Package.read_package(config)
+      install_scope << main_package
+      add_remove_scope << main_package
+    else
+      # Find the nearest package.json file and workspace package.json file
+      packages_data = Utils::File.find_package_files(config.prefix)
+      nearest_package = packages_data.nearest_package
+      nearest_package_dir = packages_data.nearest_package_dir
+
+      raise "Could not find a package.json file in #{config.prefix} and parent folders." unless nearest_package && nearest_package_dir
+
+      if (workspace_package_dir = packages_data.workspace_package_dir.try(&.to_s)) && (workspace_package = packages_data.workspace_package)
+        workspaces = Workspaces.new(workspace_package, workspace_package_dir)
+      end
+      nearest_is_workspace_root = workspace_package && workspace_package.object_id == nearest_package.object_id
+      nearest_workspace = workspaces.try &.find { |w| w.path == nearest_package_dir }
+      # Check if the nearest package.json file is in the workspace
+      if nearest_is_workspace_root || nearest_workspace
+        main_package = workspace_package.not_nil!
+        workspaces = workspaces.not_nil!
+        # Use the workspace root directory as the prefix
+        config = config.copy_with(prefix: workspace_package_dir.not_nil!)
+        # Compute the scope of the workspace based on cli flags
+        if filters = install_config.filters
+          install_scope += workspaces.filter(filters)
+          add_remove_scope = install_scope
+        elsif install_config.recursive
+          install_scope = [main_package, *workspaces.workspaces]
+          add_remove_scope = install_scope
+        else
+          install_scope = [main_package, *workspaces.workspaces]
+          add_remove_scope = [nearest_workspace || main_package]
+        end
+      else
+        # Disable workspaces if the nearest package.json file is not in the workspace
+        main_package = nearest_package
+        workspaces = nil
+        install_scope << main_package
+        add_remove_scope << main_package
+        # Use the nearest package.json base directory as the prefix
+        config = config.copy_with(prefix: nearest_package_dir.to_s)
+      end
+    end
+
+    raise "Could not find a package.json file in #{config.prefix} and parent folders." unless main_package
+
+    main_package = main_package.tap(&.refine)
+
+    InferredContext.new(main_package, config, workspaces, install_scope, add_remove_scope)
+  end
+
+  private def self.remove_packages(state : State)
+    return unless state.install_config.removed_packages.size > 0
+
+    [*state.context.scope_packages(:add_remove)].each do |package|
+      state.install_config.removed_packages.each do |name|
+        if package.dependencies && package.dependencies.try &.has_key?(name)
+          package.dependencies.not_nil!.delete(name)
+        elsif package.dev_dependencies && package.dev_dependencies.try &.has_key?(name)
+          package.dev_dependencies.not_nil!.delete(name)
+        elsif package.optional_dependencies && package.optional_dependencies.try &.has_key?(name)
+          package.optional_dependencies.not_nil!.delete(name)
+        end
       end
     end
   end
@@ -129,9 +240,11 @@ module Zap::Commands::Install
     # Resolve overrides
     resolve_overrides(state)
     # Resolve and store dependencies
-    Resolver.resolve_dependencies_of(state.main_package, state: state)
-    state.workspaces.each do |workspace|
-      Resolver.resolve_dependencies_of(workspace.package, state: state)
+    state.context.scope_packages(:add_remove).each do |package|
+      Resolver.resolve_added_packages(package, state: state)
+    end
+    state.context.scope_packages(:install).each do |package|
+      Resolver.resolve_dependencies_of(package, state: state)
     end
     state.pipeline.await
     state.reporter.stop
@@ -156,8 +269,9 @@ module Zap::Commands::Install
   end
 
   private def self.clean_lockfile(state : State)
-    state.lockfile.set_root(state.main_package)
-    state.workspaces.each do |workspace|
+    workspaces, main_package = {state.context.workspaces, state.main_package}
+    state.lockfile.set_root(main_package)
+    workspaces.try &.each do |workspace|
       state.lockfile.set_root(workspace.package)
     end
     pruned_dependencies = state.lockfile.prune
@@ -174,25 +288,27 @@ module Zap::Commands::Install
     pruned_dependencies
   end
 
-  private def self.write_package_json(state : State, location : String? = nil)
-    if state.install_config.new_packages.size > 0 || state.install_config.removed_packages.size > 0
-      package_json = JSON.parse(File.read(Path.new(location).join("package.json"))).as_h
-      if deps = state.main_package.dependencies
-        package_json["dependencies"] = JSON::Any.new(deps.transform_values { |v| JSON::Any.new(v) })
-      else
-        package_json.delete("dependencies")
+  private def self.write_package_json(state : State)
+    if state.install_config.added_packages.size > 0 || state.install_config.removed_packages.size > 0
+      [*state.context.scope_packages_and_paths(:add_remove)].each do |package, location|
+        package_json = JSON.parse(File.read(Path.new(location).join("package.json"))).as_h
+        if deps = package.dependencies
+          package_json["dependencies"] = JSON::Any.new(deps.transform_values { |v| JSON::Any.new(v) })
+        else
+          package_json.delete("dependencies")
+        end
+        if dev_deps = package.dev_dependencies
+          package_json["devDependencies"] = JSON::Any.new(dev_deps.transform_values { |v| JSON::Any.new(v) })
+        else
+          package_json.delete("devDependencies")
+        end
+        if opt_deps = package.optional_dependencies
+          package_json["optionalDependencies"] = JSON::Any.new(opt_deps.transform_values { |v| JSON::Any.new(v) })
+        else
+          package_json.delete("optionalDependencies")
+        end
+        File.write(Path.new(location).join("package.json"), package_json.to_pretty_json)
       end
-      if dev_deps = state.main_package.dev_dependencies
-        package_json["devDependencies"] = JSON::Any.new(dev_deps.transform_values { |v| JSON::Any.new(v) })
-      else
-        package_json.delete("devDependencies")
-      end
-      if opt_deps = state.main_package.optional_dependencies
-        package_json["optionalDependencies"] = JSON::Any.new(opt_deps.transform_values { |v| JSON::Any.new(v) })
-      else
-        package_json.delete("optionalDependencies")
-      end
-      File.write(Path.new(state.config.prefix).join("package.json"), package_json.to_pretty_json)
     end
   end
 
@@ -240,9 +356,7 @@ module Zap::Commands::Install
 
   private def self.run_own_install_hooks(state : State)
     unless state.install_config.ignore_scripts
-      targets = state.workspaces
-        .map { |workspace| {workspace.package, workspace.path.to_s} }
-        .tap { |targets| targets << {state.main_package, state.config.prefix} }
+      targets = state.context.scope_packages_and_paths(:install)
       ran_once = false
 
       targets.each do |package, path|
@@ -251,7 +365,7 @@ module Zap::Commands::Install
     end
   end
 
-  private def self.run_root_package_install_lifecycle_scripts(package : Package, chdir : String, state : State, *, print_hooks = false) : Bool?
+  private def self.run_root_package_install_lifecycle_scripts(package : Package, chdir : Path | String, state : State, *, print_hooks = false) : Bool?
     package.scripts.try do |scripts|
       if scripts.has_self_install_lifecycle?
         if print_hooks

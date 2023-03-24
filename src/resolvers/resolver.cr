@@ -86,10 +86,12 @@ module Zap::Resolver
     end
 
     # Check if the package is a workspace
+    workspaces = state.context.workspaces
     if workspace_protocol
-      workspace = state.workspaces.get!(name, version_field)
+      raise "Workspace protocol must be used inside a workspace." unless workspaces
+      workspace = workspaces.get!(name, version_field)
     else
-      workspace = state.workspaces.get(name, version_field)
+      workspace = workspaces.try(&.get(name, version_field))
     end
 
     # Will link the workspace in the parent node_modules folder
@@ -141,15 +143,8 @@ module Zap::Resolver
     dependent : Package? = nil,
     ancestors : Deque(Package) = Deque(Package).new
   )
-    is_main_package = dependent.nil?
-
-    # Resolve new packages added from the CLI if we are curently in the root package
-    if is_main_package
-      self.resolve_new_packages(package, state: state)
-    end
-
     # If we are in a root package or if the packages have not been saved in the lockfile
-    if is_main_package || !package.pinned_dependencies? || package.pinned_dependencies.empty?
+    if dependent.nil? || !package.pinned_dependencies? || package.pinned_dependencies.empty?
       # We crawl the regular dependencies fields to lock the versions
       NamedTuple.new(
         dependencies: package.dependencies,
@@ -157,7 +152,7 @@ module Zap::Resolver
         dev_dependencies: package.dev_dependencies,
       ).each do |type, deps|
         if type == :dev_dependencies
-          next if !is_main_package || state.install_config.omit_dev?
+          next if !dependent.nil? || state.install_config.omit_dev?
         elsif type == :optional_dependencies
           next if state.install_config.omit_optional?
         end
@@ -400,11 +395,11 @@ module Zap::Resolver
     end
   end
 
-  private def self.resolve_new_packages(main_package : Package, *, state : Commands::Install::State)
+  def self.resolve_added_packages(main_package : Package, *, state : Commands::Install::State)
     # Infer new dependency type based on CLI flags
     type = state.install_config.save_dev ? :dev_dependencies : state.install_config.save_optional ? :optional_dependencies : :dependencies
     # For each added dependency…
-    state.install_config.new_packages.each do |new_dep|
+    state.install_config.added_packages.each do |new_dep|
       # Infer the package.json version from the CLI argument
       inferred_version, inferred_name = parse_new_package(new_dep, state: state)
       # Resolve the package
@@ -439,7 +434,7 @@ module Zap::Resolver
 
   private def self.apply_package_extensions(metadata : Package, *, state : Commands::Install::State) : Nil
     # Take into account package extensions
-    if package_extensions = state.main_package.zap_config.try(&.package_extensions)
+    if package_extensions = state.context.main_package.zap_config.try(&.package_extensions)
       package_extensions
         .select { |selector|
           name, version = Utils::Various.parse_key(selector)

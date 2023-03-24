@@ -34,7 +34,7 @@ class Zap::Workspaces
 
   def initialize(@workspaces); end
 
-  def initialize(package : Package, config : Config)
+  def initialize(package : Package, workspace_root : Path | String)
     workspaces_field = package.workspaces
 
     if workspaces_field.is_a?(NamedTuple)
@@ -49,7 +49,7 @@ class Zap::Workspaces
     # Slower - this crawls the whole directory tree
     #################
     # Utils::File.crawl(
-    #   config.prefix,
+    #   workspace_root,
     #   included: Utils::GitIgnore.new(workspaces_field),
     #   always_excluded: Utils::GitIgnore.new(["node_modules", ".git"]),
     # ) do |path|
@@ -69,7 +69,7 @@ class Zap::Workspaces
     #####################
     patterns = workspaces_field.map { |value|
       # Prefix with the root of the project
-      pattern = Path.new(config.prefix, value).to_s
+      pattern = Path.new(workspace_root, value).to_s
       # Needed to make sure that the globbing works
       pattern += "/" if pattern.ends_with?("**")
       pattern
@@ -80,7 +80,7 @@ class Zap::Workspaces
         workspaces << Workspace.new(
           package: Package.init(path),
           path: path,
-          relative_path: path.relative_to(config.prefix)
+          relative_path: path.relative_to(workspace_root)
         )
       end
     end
