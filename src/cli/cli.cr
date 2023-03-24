@@ -100,7 +100,7 @@ module Zap
           on_init(parser)
         end
 
-        command("store", "Manage the global store used to save packages and cache registry responses.") do
+        command(["store", "s"], "Manage the global store used to save packages and cache registry responses.") do
           @command_config = nil
 
           separator("Options")
@@ -135,7 +135,7 @@ module Zap
           exit
         end
 
-        subSeparator("Workspace options")
+        separator("Workspace options")
 
         parser.on("-F FILTER", "--filter FILTER", "Filtering allows you to restrict commands to specific subsets of packages.") do |filter|
           filters = @config.filters || Array(Utils::Filter).new
