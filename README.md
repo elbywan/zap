@@ -26,36 +26,83 @@ npm i -g @zap.org/zap
 zap --help
 ```
 
-## Features
+## Commands
+
+| Command       | Aliases               | Description                                             | Status  |
+| ------------- | --------------------- | ------------------------------------------------------- | ------- |
+| `zap install` | `i` `add`             | Install dependencies                                    | ✅       |
+| `zap remove`  | `rm` `uninstall` `un` | Remove dependencies                                     | ✅       |
+| `zap init`    | `create`              | Create a new project or initialiaze a package.json file | ✅       |
+| `zap dlx`     | `x`                   | Execute a command in a temporary environment            | ✅       |
+| `zap store`   | `s`                   | Manage the store                                        | ✅       |
+| `zap run`     | `r`                   | Run a script defined in package.json                    | ⏳ _WIP_ |
+| `zap upgrade` | `up`                  | Upgrade dependencies                                    | ⏳ _WIP_ |
 
 #### Check the [project board](https://github.com/users/elbywan/projects/1/views/1) for the current status of the project.
+
+## Features
 
 Here is a non exhaustive list of features that are currently implemented:
 
 - **Classic (npm-like) or isolated (pnpm-like) installs**
 
 ```bash
+# Classic install by default
+zap i
+# Isolated install
 zap i --install-strategy isolated
 ```
 
-```json
+_or:_
+
+```js
 "zap": {
-  "install_strategy": "isolated"
+  "install_strategy": "isolated",
+  "hoist_patterns": [
+    "react*"
+  ],
+  "public_hoist_patterns": [
+    "*eslint*", "*prettier*"
+  ]
 }
+// package.json
 ```
 
 - **[Workspaces](https://docs.npmjs.com/cli/v9/using-npm/workspaces?v=true#defining-workspaces)**
 
-```json
+```js
 "workspaces": [
   "core/*",
   "packages/*"
-],
+]
+// package.json
+```
+
+_or to prevent hoisting:_
+
+```js
+"workspaces": {
+  "packages": ["packages/**"],
+  "nohoist": [
+    "react",
+    "react-dom",
+    "*babel*
+  ]
+}
+// package.json
+```
+
+```bash
+# Install all workspaces
+zap i
+# Using pnpm-flavored filters (see: https://pnpm.io/filtering)
+zap i -F "./libs/**" -F ...@my/package...[origin/develop]
+zap i -w add pkg
 ```
 
 - **[Overrides](https://docs.npmjs.com/cli/v9/configuring-npm/package-json?v=true#overrides) / [Package Extensions](https://pnpm.io/package_json#pnpmpackageextensions)**
 
-```json
+```js
 "overrides": {
   "foo": {
     ".": "1.0.0",
@@ -71,9 +118,10 @@ zap i --install-strategy isolated
     }
   }
 }
+// package.json
 ```
 
-- **Aliases**
+- **[Aliases](https://github.com/npm/rfcs/blob/main/implemented/0001-package-aliases.md)**
 
 ```bash
 zap i my-react@npm:react
@@ -90,7 +138,7 @@ zap i jquery3@npm:jquery@3
 
 ### Setup
 
-```
+```bash
 git clone https://github.com/elbywan/zap
 shards install
 # Run the specs
