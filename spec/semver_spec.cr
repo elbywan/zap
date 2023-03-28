@@ -45,10 +45,6 @@ describe Zap::Utils::Semver do
     RANGE_EXCLUSION_FIXTURES.each { |fixture|
       shift_fixture = fixture.size == 2
 
-      # it "should parse { \"version\": \"#{fixture[0]}\" }" do
-      #   Semver.canonical(Semver.parse(fixture[0])).should eq(fixture[shift_fixture ? 0 : 1])
-      # end
-
       it "should reject #{fixture[shift_fixture ? 1 : 2]} against { \"version\": \"#{fixture[0]}\" }" do
         semver = Semver.parse(fixture[0])
         semver.valid?(fixture[shift_fixture ? 1 : 2]).should be_false

@@ -212,7 +212,7 @@ module Zap::Commands::Install
 
       if workspaces
         puts <<-TERM
-            #{"install scope".colorize.blue}: #{inferred_context.install_scope.size} package(s) • #{inferred_context.scope_names(:install).join(", ")}
+            #{"install scope".colorize.blue}: #{inferred_context.install_scope.size} package(s) • #{inferred_context.scope_names(:install).sort.join(", ")}
         TERM
       end
 
@@ -221,7 +221,7 @@ module Zap::Commands::Install
            inferred_context.add_remove_scope.size != inferred_context.install_scope.size
          )
         puts <<-TERM
-            #{"add/remove scope".colorize.blue}: #{inferred_context.add_remove_scope.size} package(s) • #{inferred_context.scope_names(:add_remove).join(", ")}
+            #{"add/remove scope".colorize.blue}: #{inferred_context.add_remove_scope.size} package(s) • #{inferred_context.scope_names(:add_remove).sort.join(", ")}
         TERM
       end
       puts "\n"

@@ -1,51 +1,134 @@
-require "string_scanner"
-
 module Zap::Utils::Semver
-  # -----------------------------------------------------
-  # Range Grammar
-  #
-  # See: https://github.com/npm/node-semver#range-grammar
-  # -----------------------------------------------------
-  #
-  # range-set  ::= range ( logical-or range ) *
-  # RANGE_SET = /#{RANGE}(?:#{LOGICAL_OR}#{RANGE})*/
-  # logical-or ::= ( ' ' ) * '||' ( ' ' ) *
-  LOGICAL_OR = /\s*\|\|\s*/
-  # range      ::= hyphen | simple ( ' ' simple ) * | ''
-  # RANGE = /#{HYPHEN}|#{SIMPLE}(?:\s+#{SIMPLE})*|/
-  # hyphen     ::= partial ' - ' partial
-  # HYPHEN        = /#{PARTIAL}#{HYPHEN_CLAUSE}#{PARTIAL}/
-  HYPHEN_CLAUSE = /\s*-\s*/
-  # simple     ::= primitive | partial | tilde | caret
-  # SIMPLE = /(?:#{PRIMITIVE}|#{TILDE}|#{CARET})?#{PARTIAL}/
-  # primitive  ::= ( '<' | '>' | '>=' | '<=' | '=' ) partial
-  PRIMITIVE = /(?:[<>]=?|=)/
-  # partial    ::= xr ( '.' xr ( '.' xr qualifier ? )? )?
-  PARTIAL = /(?P<major>#{XR})(?:\.(?P<minor>#{XR})(?:\.(?P<patch>#{XR})#{QUALIFIER}?)?)?/
-  # xr         ::= 'x' | 'X' | '*' | nr
-  XR = /x|X|\*|#{NR}/
-  # nr         ::= '0' | ['1'-'9'] ( ['0'-'9'] ) *
-  NR = /0|[1-9][0-9]*/
-  # tilde      ::= '~' partial
-  TILDE = /~/
-  # caret      ::= '^' partial
-  CARET = /\^/
-  # qualifier  ::= ( '-' pre )? ( '+' build )?
-  QUALIFIER = /(?:-(?P<prerelease>#{PRE}))?(?:\+(?P<buildmetadata>#{BUILD}))?/
-  # parts      ::= part ( '.' part ) *
-  PARTS = /#{PART}(?:\.#{PART})*/
-  # pre        ::= parts
-  PRE = PARTS
-  # build      ::= parts
-  BUILD = PARTS
-  # part       ::= nr | [-0-9A-Za-z]+
-  # PART = /#{NR}|[-0-9A-Za-z]+/
-  PART = /[-0-9A-Za-z]+/
-  # -----------------------------------------------------
+  private class Scanner
+    def initialize(str : String)
+      @reader = Char::Reader.new(str)
+    end
 
-  # Recommended regex for parsing SemVer version strings
-  # See: https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string
-  # SEMVER_REGEX = /^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
+    def eos? : Bool
+      current_char == '\0'
+    end
+
+    def space? : Bool
+      current_char == ' '
+    end
+
+    def skip_next!(char : Char)
+      curr = current_char
+      raise "Invalid character #{curr} (should be: #{char})" unless curr == char
+      next_char
+    end
+
+    def skip?(*char : Char)
+      while curr = current_char
+        break if !curr.in?(char) || curr == '\0'
+        next_char
+      end
+    end
+
+    forward_missing_to @reader
+  end
+
+  struct SemverPartial
+    getter comparison
+    getter major : String
+    getter minor : String? = nil
+    getter patch : String? = nil
+    getter prerelease : String? = nil
+    getter build_metadata : String? = nil
+
+    XR         = {'x', 'X', '*'}
+    ZERO_ORD   =  48
+    A_CAPS_ORD =  65
+    Z_CAPS_ORD =  90
+    A_ORD      =  97
+    Z_ORD      = 122
+
+    def initialize(input : String)
+      scanner = Scanner.new(input)
+      initialize(scanner)
+    end
+
+    def initialize(scanner : Scanner)
+      @major = self.class.xr!(scanner)
+      return if scanner.eos? || scanner.space?
+      scanner.skip_next!('.')
+      @minor = self.class.xr!(scanner)
+      return if scanner.eos? || scanner.space?
+      scanner.skip_next!('.')
+      @patch = self.class.xr!(scanner)
+      return if scanner.eos? || scanner.space?
+      @prerelease = self.class.prerelease?(scanner)
+      return if scanner.eos? || scanner.space?
+      @build_metadata = self.class.build_metadata?(scanner)
+    end
+
+    def self.parse?(scanner : Scanner) : SemverPartial?
+      return nil if scanner.eos?
+      new(scanner)
+    rescue e
+      nil
+    end
+
+    protected def self.xr!(scanner : Scanner) : String
+      xr?(scanner) || exception!(scanner, "should be a number, '*', 'x', or 'X'")
+    end
+
+    protected def self.xr?(scanner : Scanner) : String?
+      char = scanner.current_char
+      if char.in?(XR)
+        scanner.next_char
+        char.to_s
+      elsif char.ord == ZERO_ORD
+        scanner.next_char
+        char.to_s
+      elsif char.ord >= ZERO_ORD + 1 && char.ord <= ZERO_ORD + 9
+        String.build do |result|
+          result << char.to_s
+          scanner.next_char
+          while scanner.current_char.ord >= ZERO_ORD && scanner.current_char.ord <= ZERO_ORD + 9
+            result << scanner.current_char.to_s
+            scanner.next_char
+          end
+        end
+      else
+        nil
+      end
+    end
+
+    protected def self.prerelease?(scanner : Scanner) : String?
+      return nil unless scanner.current_char == '-'
+      String.build do |str|
+        scanner.skip_next!('-')
+        while char = scanner.current_char
+          break if char == '+' || char == '\0' || char == ' '
+          exception!(scanner, "should be alphanumeric, '-' or '.'") unless is_alpha?(char) || char == '-' || char == '.'
+          str << char.to_s
+          scanner.next_char
+        end
+      end
+    end
+
+    protected def self.build_metadata?(scanner : Scanner) : String?
+      return nil unless scanner.current_char == '+'
+      scanner.skip_next!('+')
+      String.build do |str|
+        while char = scanner.current_char
+          break if char == '\0' || char == ' '
+          exception!(scanner, "should should be alphanumeric, '-' or '.'") unless is_alpha?(char) || char == '-' || char == '.'
+          str << char.to_s
+          scanner.next_char
+        end
+      end
+    end
+
+    def self.is_alpha?(char : Char) : Bool
+      char.ord >= ZERO_ORD && char.ord <= ZERO_ORD + 9 || char.ord >= A_ORD && char.ord <= Z_ORD || char.ord >= A_CAPS_ORD && char.ord <= Z_CAPS_ORD
+    end
+
+    def self.exception!(scanner : Scanner, suffix : String? = nil)
+      raise %(Invalid semver "#{scanner.string}" (invalid char: '#{scanner.current_char}'#{suffix ? " #{suffix}" : ""}) [codepoint: #{scanner.current_char.ord}, position: #{scanner.pos}])
+    end
+  end
 
   enum Comparison
     # >
@@ -81,9 +164,16 @@ module Zap::Utils::Semver
       @build_metadata = partial["buildmetadata"]?
     end
 
+    def initialize(@comparison : Comparison, partial : SemverPartial)
+      @major = partial.major.to_u128? || 0_u128
+      @minor = partial.minor.try(&.to_u128?) || 0_u128
+      @patch = partial.patch.try(&.to_u128?) || 0_u128
+      @prerelease = partial.prerelease
+      @build_metadata = partial.build_metadata
+    end
+
     def self.parse(version_str : String)
-      version = PARTIAL.match(version_str)
-      raise "Invalid semver #{version}" unless version
+      version = SemverPartial.new(version_str)
       Comparator.new(Comparison::ExactMatch, version)
     end
 
@@ -175,10 +265,11 @@ module Zap::Utils::Semver
     @comparator_sets = [] of ComparatorSet
 
     def valid?(version_str : String)
-      version = PARTIAL.match(version_str)
-      return false unless version
+      version = SemverPartial.new(version_str)
       semver = Comparator.new(Comparison::ExactMatch, version)
       @comparator_sets.any? &.valid?(semver)
+    rescue ex
+      false
     end
 
     def canonical : String
@@ -206,27 +297,48 @@ module Zap::Utils::Semver
       return range_set
     end
 
-    scanner = StringScanner.new(str)
+    scanner = Scanner.new(str)
 
     loop do
       # parse range
       comparator_set = self.parse_range(scanner)
       range_set << comparator_set
       # check for logical or
-      check_or = scanner.scan(LOGICAL_OR)
+      check_or = logical_or?(scanner)
       # if logical or, continue
       break unless check_or
       break if scanner.eos?
     end
 
     range_set
+  ensure
+    GC.free(scanner.as(Pointer(Void))) if scanner
   end
 
-  private def self.parse_range(scanner : StringScanner) : ComparatorSet
+  private def self.logical_or?(scanner : Scanner)
+    result = false
+    while char = scanner.current_char
+      case char
+      when ' '
+        scanner.next_char
+      when '|'
+        scanner.next_char
+        if scanner.current_char == '|'
+          scanner.next_char
+          result = true
+        end
+      else
+        break
+      end
+    end
+    result
+  end
+
+  private def self.parse_range(scanner : Scanner) : ComparatorSet
     comparator_set = ComparatorSet.new
 
     loop do
-      prefix = scanner.scan(PRIMITIVE) || scanner.scan(TILDE) || scanner.scan(CARET)
+      prefix = primitive?(scanner) || tilde?(scanner) || caret?(scanner)
       comparison = Comparison::ExactMatch
       tilde = false
       caret = false
@@ -251,29 +363,61 @@ module Zap::Utils::Semver
           caret = true
         end
       end
-      scanner.scan(/\s*/)
+      scanner.skip?(' ', '\t')
       break if self.parse_partial(scanner, comparison, comparator_set, tilde, caret)
-      scanner.scan(/\s+/)
+      scanner.skip?(' ', '\t')
       break if scanner.eos?
     end
 
     comparator_set
   end
 
-  private def self.parse_partial(scanner : StringScanner, comparison, comparator_set, tilde, caret)
-    # parse partial
-    # use regexp and capture groups to parse partial
-    partial = scanner.scan(PARTIAL)
+  private def self.primitive?(scanner : Scanner) : String?
+    if scanner.current_char == '>' || scanner.current_char == '<'
+      String.build do |str|
+        str << scanner.current_char
+        scanner.next_char
+        if scanner.current_char == '='
+          str << scanner.current_char
+          scanner.next_char
+        end
+      end
+    elsif scanner.current_char == '='
+      scanner.next_char
+      "="
+    else
+      nil
+    end
+  end
+
+  private def self.tilde?(scanner : Scanner) : String?
+    if scanner.current_char == '~'
+      scanner.next_char
+      "~"
+    end
+  end
+
+  private def self.caret?(scanner : Scanner) : String?
+    if scanner.current_char == '^'
+      scanner.next_char
+      "^"
+    end
+  end
+
+  private def self.parse_partial(scanner : Scanner, comparison, comparator_set, tilde, caret)
+    partial = SemverPartial.parse?(scanner)
     return true unless partial
 
-    hyphen = scanner.scan(HYPHEN_CLAUSE)
-    partial = PARTIAL.match(partial).not_nil!
+    scanner.skip?(' ', '\t')
+    hyphen = scanner.current_char == '-'
+    scanner.next_char if hyphen
+    scanner.skip?(' ', '\t')
 
-    major = partial["major"]?.try &.to_u128?
-    minor = partial["minor"]?.try &.to_u128?
-    patch = partial["patch"]?.try &.to_u128?
-    prerelease = partial["prerelease"]?
-    build_metadata = partial["buildmetadata"]?
+    major = partial.major.to_u128?
+    minor = partial.minor.try &.to_u128?
+    patch = partial.patch.try &.to_u128?
+    prerelease = partial.prerelease
+    build_metadata = partial.build_metadata
 
     if hyphen
       comparator_set << Comparator.new(
@@ -284,16 +428,14 @@ module Zap::Utils::Semver
         prerelease,
         build_metadata
       )
-      partial = scanner.scan(PARTIAL)
-      raise "Invalid semver hyphen partial scan, fails at: #{scanner.scan(/.*/)}" unless partial
-      partial = PARTIAL.match(partial).not_nil!
+      partial = SemverPartial.new(scanner)
       comparator_set << Comparator.new(
         Comparison::LessThanOrEqual,
-        partial["major"]?.try &.to_u128? || UInt128::MAX,
-        partial["minor"]?.try &.to_u128? || 0_u128,
-        partial["patch"]?.try &.to_u128? || 0_u128,
-        partial["prerelease"]?,
-        partial["buildmetadata"]?
+        partial.major.to_u128? || UInt128::MAX,
+        partial.minor.try &.to_u128? || 0_u128,
+        partial.patch.try &.to_u128? || 0_u128,
+        partial.prerelease,
+        partial.build_metadata
       )
       true
       # *,x,X - any version
