@@ -17,6 +17,7 @@ require "../reporters/*"
 require "./install"
 require "./dlx"
 require "./init"
+require "./store"
 require "../commands/**"
 require "../constants"
 
@@ -57,10 +58,9 @@ module Zap
   end
 
   class CLI
-    alias CommandConfig = Config::Install | Config::Dlx | Config::Init
-    getter! command_config : CommandConfig?
+    getter! command_config : Config::CommandConfig?
 
-    def initialize(@config : Config = Config.new, @command_config : CommandConfig? = Config::Install.new)
+    def initialize(@config : Config = Config.new, @command_config : Config::CommandConfig? = nil)
     end
 
     def parse
@@ -101,59 +101,18 @@ module Zap
         end
 
         command(["store", "s"], "Manage the global store used to save packages and cache registry responses.") do
-          @command_config = nil
-
-          separator("Options")
-
-          command("clear", "Clears the stored packages.") do
-            puts "💣 Nuking store at '#{@config.global_store_path}'…"
-            FileUtils.rm_rf(@config.global_store_path)
-            puts "💥 Done!"
-          end
-          command("clear-http-cache", "Clears the cached registry responses.") do
-            http_cache_path = Path.new(@config.global_store_path) / Fetch::CACHE_DIR
-            puts "💣 Nuking http cache at '#{http_cache_path}'…"
-            FileUtils.rm_rf(http_cache_path)
-            puts "💥 Done!"
-          end
+          on_store(parser)
         end
 
-        separator("Common Options")
-
-        parser.on("-h", "--help", "Show this help.") do
+        parser.unknown_args do |args|
+          # TODO: check if we can run / exec
+          # puts "Run is not supported yet. #{args}"
           puts parser
           exit
         end
-        parser.on("-g", "--global", "Operates in \"global\" mode, so that packages are installed into the global folder instead of the current working directory.") do |path|
-          @config = @config.copy_with(prefix: @config.deduce_global_prefix, global: true)
-        end
-        parser.on("-C PATH", "--dir PATH", "Use PATH as the root directory of the project.") do |path|
-          @config = @config.copy_with(prefix: Path.new(path).expand.to_s, global: false)
-        end
-        parser.on("--version", "Show version.") do
-          puts "v#{VERSION}"
-          exit
-        end
 
-        separator("Workspace options")
-
-        parser.on("-F FILTER", "--filter FILTER", "Filtering allows you to restrict commands to specific subsets of packages.") do |filter|
-          filters = @config.filters || Array(Utils::Filter).new
-          filters << Utils::Filter.new(filter)
-          @config = @config.copy_with(filters: filters)
-        end
-
-        parser.on("-r", "--recursive", "Will apply the command to all packages in the workspace.") do
-          @config = @config.copy_with(recursive: true)
-        end
-
-        parser.on("-w", "--workspace-root", "Will apply the command to the root workspace package.") do
-          @config = @config.copy_with(root_workspace: true)
-        end
-
-        parser.on("--ignore-workspaces", "Will completely ignore workspaces when applying the command.") do
-          @config = @config.copy_with(no_workspaces: true)
-        end
+        common_options()
+        workspace_options()
       end.parse
 
       # Return both configs
@@ -161,6 +120,47 @@ module Zap
     end
 
     # -- Utility methods --
+
+    macro common_options(sub = false)
+      {% if sub %}subSeparator{% else %}separator{% end %}("Common Options")
+
+      parser.on("-h", "--help", "Show this help.") do
+        puts parser
+        exit
+      end
+      parser.on("-g", "--global", "Operates in \"global\" mode, so that packages are installed into the global folder instead of the current working directory.") do |path|
+        @config = @config.copy_with(prefix: @config.deduce_global_prefix, global: true)
+      end
+      parser.on("-C PATH", "--dir PATH", "Use PATH as the root directory of the project.") do |path|
+        @config = @config.copy_with(prefix: Path.new(path).expand.to_s, global: false)
+      end
+      parser.on("--version", "Show version.") do
+        puts "v#{VERSION}"
+        exit
+      end
+    end
+
+    macro workspace_options(sub = false)
+      {% if sub %}subSeparator{% else %}separator{% end %}("Workspace Options")
+
+      parser.on("-F FILTER", "--filter FILTER", "Filtering allows you to restrict commands to specific subsets of packages.") do |filter|
+        filters = @config.filters || Array(Utils::Filter).new
+        filters << Utils::Filter.new(filter)
+        @config = @config.copy_with(filters: filters)
+      end
+
+      parser.on("-r", "--recursive", "Will apply the command to all packages in the workspace.") do
+        @config = @config.copy_with(recursive: true)
+      end
+
+      parser.on("-w", "--workspace-root", "Will apply the command to the root workspace package.") do
+        @config = @config.copy_with(root_workspace: true)
+      end
+
+      parser.on("--ignore-workspaces", "Will completely ignore workspaces when applying the command.") do
+        @config = @config.copy_with(no_workspaces: true)
+      end
+    end
 
     private def banner(parser, command, description, *, args = "[options]")
       parser.banner = <<-BANNER
@@ -189,7 +189,7 @@ module Zap
       {% else %}
         {% for a, idx in input %}
           {% if idx == 0 %}
-            parser.on({{a}},{{description}} + %(\nAliases: #{{{input[1..]}}.join(", ")})) do
+            parser.on({{a}},{{description}} + %(\n#{"Aliases".colorize.underline}: #{{{input[1..]}}.join(", ")})) do
               banner(parser, {{a}}, {{description}}{% if args %}, args: {{args}}{% end %})
               {{ yield }}
             end

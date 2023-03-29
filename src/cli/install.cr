@@ -14,7 +14,7 @@ struct Zap::Config
   end
 
   # Configuration specific for the install command
-  record(Install,
+  record(Install < CommandConfig,
     file_backend : Backend::Backends = (
       {% if flag?(:darwin) %}
         Backend::Backends::CloneFile

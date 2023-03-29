@@ -1,7 +1,7 @@
 struct Zap::Config
   SPACE_REGEX = /\s+/
 
-  record(Dlx,
+  record(Dlx < CommandConfig,
     packages : Array(String) = Array(String).new,
     command : String = "",
     args : Array(String)? = nil,

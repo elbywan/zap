@@ -1,5 +1,5 @@
 struct Zap::Config
-  record Init, yes : Bool = !STDIN.tty?
+  record Init < CommandConfig, yes : Bool = !STDIN.tty?
 end
 
 class Zap::CLI

@@ -18,6 +18,9 @@ module Zap
     recursive : Bool = false,
     root_workspace : Bool = false,
   ) do
+    abstract struct CommandConfig
+    end
+
     getter node_modules : String do
       if global
         {% if flag?(:windows) %}
