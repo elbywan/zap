@@ -372,7 +372,6 @@ class Zap::Package
       end
     rescue e
       puts "Error parsing #{json_path}: #{e}"
-    ensure
     end
   end
 

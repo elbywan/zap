@@ -97,6 +97,7 @@ describe Workspaces do
     workspaces.filter("...^./pkgs/b").should eq [WORKSPACE_A]
     workspaces.filter("...^{pkgs/b}").should eq [WORKSPACE_A]
     workspaces.filter("a...").should eq [WORKSPACE_A, WORKSPACE_B, WORKSPACE_C, WORKSPACE_D]
+    workspaces.filter("b...").should eq [WORKSPACE_B, WORKSPACE_D]
     workspaces.filter("{pkgs/a}...").should eq [WORKSPACE_A, WORKSPACE_B, WORKSPACE_C, WORKSPACE_D]
     workspaces.filter("a...", "!...b").should eq [WORKSPACE_C, WORKSPACE_D]
     workspaces.filter("a^...").should eq [WORKSPACE_B, WORKSPACE_C, WORKSPACE_D]

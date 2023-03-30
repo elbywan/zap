@@ -364,6 +364,7 @@ module Zap::Utils::Semver
         end
       end
       scanner.skip?(' ', '\t')
+      break if scanner.current_char == '|'
       break if self.parse_partial(scanner, comparison, comparator_set, tilde, caret)
       scanner.skip?(' ', '\t')
       break if scanner.eos?
@@ -405,8 +406,7 @@ module Zap::Utils::Semver
   end
 
   private def self.parse_partial(scanner : Scanner, comparison, comparator_set, tilde, caret)
-    partial = SemverPartial.parse?(scanner)
-    return true unless partial
+    partial = SemverPartial.new(scanner)
 
     scanner.skip?(' ', '\t')
     hyphen = scanner.current_char == '-'
