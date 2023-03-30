@@ -35,13 +35,13 @@ I also experimented with a lot of package managers over the years, and I have a 
 
 - [bun](https://bun.sh/) was a great source of inspiration for this project, but it comes with tradeoffs. While tremendously fast, it did not support some critical features when I started working on Zap and is not as flexible as I would like it to be.
 
-#### So I decided to build a package manager that would be fast, flexible and easy to use. For my own personal use, but also for the community.
+#### So I decided to build a package manager that would be fast, flexible and easy to use. For my own personal use, but also for the community (in the long run).
 
 ### How?
 
-Crystal is a compiled language, which means that it should be faster than JavaScript. It can easily tap into system calls and use the fastest ones depending on the platform. It is also an excellent fit when dealing with concurrent tasks.
+Zap is written in [Crystal](https://crystal-lang.org/) which is a compiled language, which means that it should be faster than JavaScript. It can easily tap into system calls and use the fastest ones depending on the platform (_for instance [clonefile](https://www.manpagez.com/man/2/clonefile/)_). It is also an excellent fit when dealing with concurrent tasks.
 
-Crystal also has _experimental_ support for parallelism and can dispatch fibers to a pool of worker threads, which means that it can take advantage of multiple cores. This is especially useful when dealing with CPU-bound tasks.
+Crystal also has _experimental_ support for parallelism and can dispatch fibers to a pool of worker threads, which means that Zap can take advantage of multiple cores. This is especially useful when dealing with CPU-bound tasks like parsing package manifests.
 
 ## Installation
 
