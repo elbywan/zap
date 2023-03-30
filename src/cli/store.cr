@@ -20,10 +20,5 @@ class Zap::CLI
       FileUtils.rm_rf(http_cache_path)
       puts "💥 Done!"
     end
-
-    if @command_config.nil?
-      puts parser
-      exit
-    end
   end
 end

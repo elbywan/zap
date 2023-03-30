@@ -65,7 +65,7 @@ module Zap
 
     def parse
       # Parse options and extract configs
-      OptionParser.new do |parser|
+      parser = OptionParser.new do |parser|
         banner(parser, "[command]", "Zap is a package manager for the Javascript language.")
 
         separator("Commands")
@@ -104,16 +104,16 @@ module Zap
           on_store(parser)
         end
 
-        parser.unknown_args do |args|
-          # TODO: check if we can run / exec
-          # puts "Run is not supported yet. #{args}"
-          puts parser
-          exit
-        end
-
         common_options()
         workspace_options()
-      end.parse
+      end
+
+      parser.parse
+
+      if @command_config.nil?
+        puts parser
+        exit
+      end
 
       # Return both configs
       {@config, @command_config}
