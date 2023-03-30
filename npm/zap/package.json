@@ -1,6 +1,6 @@
 {
   "name": "@zap.org/zap",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "description": "Zap is a package manager for the Javascript language",
   "main": "index.js",
   "scripts": {
@@ -26,9 +26,9 @@
     "zap": "bin/zap"
   },
   "optionalDependencies": {
-    "@zap.org/darwin-arm64": "0.0.12",
-    "@zap.org/darwin-x64": "0.0.12",
-    "@zap.org/linux-x64": "0.0.12",
-    "@zap.org/win32-x64": "0.0.12"
+    "@zap.org/darwin-arm64": "0.0.13",
+    "@zap.org/darwin-x64": "0.0.13",
+    "@zap.org/linux-x64": "0.0.13",
+    "@zap.org/win32-x64": "0.0.13"
   }
 }
