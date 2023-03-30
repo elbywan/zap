@@ -14,7 +14,7 @@ class Zap::Lockfile
     property dev_dependencies : Hash(String, String)? = nil
     property optional_dependencies : Hash(String, String)? = nil
     property peer_dependencies : Hash(String, String)? = nil
-    getter pinned_dependencies : Hash(String, String | Package::Alias) { Hash(String, String | Package::Alias).new }
+    getter pinned_dependencies : SafeHash(String, String | Package::Alias) { SafeHash(String, String | Package::Alias).new }
     getter? pinned_dependencies
 
     def initialize
