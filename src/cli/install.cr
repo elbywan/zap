@@ -82,7 +82,7 @@ class Zap::CLI
     ) do |strategy|
       @command_config = install_config.copy_with(install_strategy: Config::InstallStrategy.parse(strategy))
     end
-    parser.on("--no-logs", "If true, will not print logs like deprecation warnings") do
+    parser.on("--no-logs", "If true, will not print logs like deprecation warnings.") do
       @command_config = install_config.copy_with(print_logs: false)
     end
     parser.on(
@@ -94,10 +94,12 @@ class Zap::CLI
         - hardlink  (default on linux)
         - copyfile  (macOS only)
         - copy      (default fallback)
-        - symlink
       DESCRIPTION
     ) do |backend|
       @command_config = install_config.copy_with(file_backend: Backend::Backends.parse(backend))
+    end
+    parser.on("--production", "If true, will not install devDependencies.") do
+      @command_config = install_config.copy_with(omit: [Config::Omit::Dev])
     end
 
     subSeparator("Save flags")
