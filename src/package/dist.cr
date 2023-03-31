@@ -21,6 +21,16 @@ class Zap::Package
     end
   end
 
+  struct WorkspaceDist
+    include JSON::Serializable
+    include YAML::Serializable
+
+    property workspace : String
+
+    def initialize(@workspace)
+    end
+  end
+
   struct TarballDist
     include JSON::Serializable
     include YAML::Serializable

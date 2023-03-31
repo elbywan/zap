@@ -1,9 +1,13 @@
 require "../utils/semver"
 require "../store"
 
+module Zap::Resolver
+  Log = Zap::Log.for(self)
+end
+
 abstract struct Zap::Resolver::Base
   getter package_name : String
-  getter version : String | Utils::Semver::SemverSets?
+  getter version : String | Utils::Semver::SemverSets
   getter state : Commands::Install::State
   getter parent : (Package | Lockfile::Root)? = nil
   getter aliased_name : String?
@@ -78,26 +82,31 @@ module Zap::Resolver
   GH_SHORT_REGEX = /^[^@].*\/.*$/
 
   def self.make(state : Commands::Install::State, name : String, version_field : String = "latest", parent : Package | Lockfile::Root | Nil = nil) : Base
+    # Check if the package depending on the current one is a workspace
+    parent_is_workspace = !parent || parent.is_a?(Lockfile::Root)
+
     # Partial implementation of the pnpm workspace protocol
     # Does not support aliases for the moment
     # https://pnpm.io/workspaces#workspace-protocol-workspace
-    if (workspace_protocol = version_field.starts_with?("workspace:"))
-      version_field = version_field[10..]
-    end
+    workspace_protocol = version_field.starts_with?("workspace:")
 
     # Check if the package is a workspace
     workspaces = state.context.workspaces
-    if workspace_protocol
-      raise "Workspace protocol must be used inside a workspace." unless workspaces
-      workspace = workspaces.get!(name, version_field)
-    else
-      workspace = workspaces.try(&.get(name, version_field))
+    workspace = begin
+      if workspace_protocol
+        raise "workspace:// protocol is forbidden for non-direct dependencies." unless parent_is_workspace
+        raise "Workspace protocol must be used inside a workspace." unless workspaces
+        workspaces.get!(name, version_field)
+      elsif parent_is_workspace
+        workspaces.try(&.get(name, version_field))
+      end
     end
 
+    # Strip the workspace:// prefix
+    version_field = version_field[10..] if workspace_protocol
+
     # Will link the workspace in the parent node_modules folder
-    if workspace
-      return File.new(state, name, "file:#{workspace.relative_path}", nil, parent)
-    end
+    return Workspace.new(state, name, version_field, workspace, parent) if workspace
 
     # Special case for aliases
     # Extract the aliased name and the version field
@@ -130,9 +139,9 @@ module Zap::Resolver
     when .matches?(GH_SHORT_REGEX)
       Github.new(state, name, version_field, aliased_name, parent)
     else
-      version = Utils::Semver.parse(version_field)
-      raise "Invalid version: #{version_field}" unless version
-      Registry.new(state, name, Utils::Semver.parse(version_field), aliased_name, parent)
+      version = Utils::Semver.parse?(version_field)
+      Log.debug { "Failed to parse semver #{version_field} for #{name}. Treating as a dist-tag." } unless version
+      Registry.new(state, name, version || version_field, aliased_name, parent)
     end
   end
 
@@ -395,15 +404,15 @@ module Zap::Resolver
     end
   end
 
-  def self.resolve_added_packages(main_package : Package, *, state : Commands::Install::State)
+  def self.resolve_added_packages(root_package : Package, *, state : Commands::Install::State, root_directory : String)
     # Infer new dependency type based on CLI flags
     type = state.install_config.save_dev ? :dev_dependencies : state.install_config.save_optional ? :optional_dependencies : :dependencies
     # For each added dependency…
     state.install_config.added_packages.each do |new_dep|
       # Infer the package.json version from the CLI argument
-      inferred_version, inferred_name = parse_new_package(new_dep, state: state)
+      inferred_version, inferred_name = parse_new_package(new_dep, root_directory: root_directory)
       # Resolve the package
-      resolver = Resolver.make(state, inferred_name, inferred_version || "*", state.lockfile.roots[main_package.name])
+      resolver = Resolver.make(state, inferred_name, inferred_version || "*", state.lockfile.roots[root_package.name])
       metadata = resolver.resolve.not_nil!
       name = inferred_name.empty? ? metadata.name : inferred_name
       metadata.match_os_and_cpu!
@@ -423,7 +432,7 @@ module Zap::Resolver
           end
         end
         # Save the dependency in the package.json
-        main_package.add_dependency(name, saved_version.not_nil!, type)
+        root_package.add_dependency(name, saved_version.not_nil!, type)
       end
     rescue e
       state.reporter.stop
@@ -446,14 +455,14 @@ module Zap::Resolver
   # Try to detect what kind of target it is
   # See: https://docs.npmjs.com/cli/v9/commands/npm-install?v=true#description
   # Returns a {version, name} tuple
-  private def self.parse_new_package(cli_input : String, *, state : Commands::Install::State) : {String?, String}
+  private def self.parse_new_package(cli_input : String, *, root_directory : String) : {String?, String}
     fs_path = Path.new(cli_input).expand
     if ::File.directory?(fs_path)
       # 1. npm install <folder>
-      return "file:#{fs_path.relative_to(state.config.prefix)}", ""
+      return "file:#{fs_path.relative_to(root_directory)}", ""
       # 2. npm install <tarball file>
     elsif ::File.file?(fs_path) && (fs_path.to_s.ends_with?(".tgz") || fs_path.to_s.ends_with?(".tar.gz") || fs_path.to_s.ends_with?(".tar"))
-      return "file:#{fs_path.relative_to(state.config.prefix)}", ""
+      return "file:#{fs_path.relative_to(root_directory)}", ""
       # 3. npm install <tarball url>
     elsif cli_input.starts_with?("https://") || cli_input.starts_with?("http://")
       return cli_input, ""

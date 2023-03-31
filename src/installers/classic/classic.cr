@@ -100,7 +100,7 @@ module Zap::Installer::Classic
     private def install_dependency(dependency : Package, *, cache : Deque(CacheItem), ancestors : Array(Package), aliased_name : String?) : Deque(CacheItem)?
       case dependency.kind
       when .tarball_file?, .link?
-        Helpers::File.install(dependency, installer: self, cache: cache, state: state, aliased_name: aliased_name)
+        Helpers::File.install(dependency, installer: self, cache: cache, state: state, ancestors: ancestors, aliased_name: aliased_name)
       when .tarball_url?
         Helpers::Tarball.install(dependency, installer: self, cache: cache, state: state, aliased_name: aliased_name)
       when .git?
@@ -109,6 +109,8 @@ module Zap::Installer::Classic
         cache_item = Helpers::Registry.hoist(dependency, cache: cache, state: state, ancestors: ancestors, aliased_name: aliased_name)
         return unless cache_item
         Helpers::Registry.install(dependency, cache_item, installer: self, cache: cache, state: state, aliased_name: aliased_name)
+      when .workspace?
+        Helpers::Workspace.install(dependency, installer: self, cache: cache, state: state, aliased_name: aliased_name)
       end
     end
 

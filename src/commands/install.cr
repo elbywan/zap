@@ -249,8 +249,8 @@ module Zap::Commands::Install
     # Resolve overrides
     resolve_overrides(state)
     # Resolve and store dependencies
-    state.context.scope_packages(:add_remove).each do |package|
-      Resolver.resolve_added_packages(package, state: state)
+    state.context.scope_packages_and_paths(:add_remove).each do |(package, path)|
+      Resolver.resolve_added_packages(package, state: state, root_directory: path.to_s)
     end
     state.context.scope_packages(:install).each do |package|
       Resolver.resolve_dependencies_of(package, state: state)

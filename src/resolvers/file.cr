@@ -2,7 +2,15 @@ module Zap::Resolver
   struct File < Base
     def resolve(*, dependent : Package? = nil) : Package
       path = Path.new version.to_s.split("file:").last
-      absolute_path = path.expand(state.config.prefix)
+      base_path = begin
+        if parent.is_a?(Lockfile::Root)
+          state.context.workspaces.try(&.find { |w| w.package.name == parent.not_nil!.name }.try &.path) || state.config.prefix
+        else
+          nil
+        end
+      end
+      raise "file:// protocol is forbidden for non-direct dependencies." if base_path.nil?
+      absolute_path = path.expand(base_path)
       if Dir.exists? absolute_path
         Package.init(absolute_path).tap { |pkg|
           pkg.dist = Package::LinkDist.new(path.to_s)

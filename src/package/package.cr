@@ -64,7 +64,7 @@ class Zap::Package
   # Npm specific fields #
   #######################
 
-  property dist : RegistryDist | LinkDist | TarballDist | GitDist | Nil = nil
+  property dist : RegistryDist | LinkDist | TarballDist | GitDist | WorkspaceDist | Nil = nil
   getter deprecated : String? = nil
   @[JSON::Field(key: "hasInstallScript")]
   property has_install_script : Bool? = nil
@@ -154,6 +154,8 @@ class Zap::Package
       end
     when LinkDist
       Kind::Link
+    when WorkspaceDist
+      Kind::Workspace
     when GitDist
       Kind::Git
     else
@@ -166,6 +168,8 @@ class Zap::Package
     case dist = self.dist
     when LinkDist
       "#{name}@file:#{dist.link}"
+    when WorkspaceDist
+      "#{name}@workspace:#{dist.workspace}"
     when TarballDist
       case kind
       when .tarball_file?
@@ -364,7 +368,7 @@ class Zap::Package
       loop do
         break if pull_parser.kind.end_object?
         key = pull_parser.read_object_key
-        if key === "version"
+        if key == "version"
           break pull_parser.read_string
         else
           pull_parser.skip
@@ -385,7 +389,7 @@ class Zap::Package
 
   # Do not crawl the dependencies for linked packages
   protected def should_resolve_dependencies?(state : Commands::Install::State)
-    !kind.link?
+    !kind.link? && !kind.workspace?
   end
 
   __do_not_serialize__

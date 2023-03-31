@@ -1,9 +1,10 @@
 class Zap::Package
   enum Kind
-    Link
     Git
+    Link
     Registry
     TarballFile
     TarballUrl
+    Workspace
   end
 end

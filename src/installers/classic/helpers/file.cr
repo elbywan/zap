@@ -1,8 +1,8 @@
 module Zap::Installer::Classic::Helpers::File
-  def self.install(dependency : Package, *, installer : Zap::Installer::Base, cache : Deque(CacheItem), state : Commands::Install::State, aliased_name : String?) : Deque(CacheItem)?
+  def self.install(dependency : Package, *, installer : Zap::Installer::Base, cache : Deque(CacheItem), state : Commands::Install::State, ancestors : Array(Package), aliased_name : String?) : Deque(CacheItem)?
     case dist = dependency.dist
     when Package::LinkDist
-      install_link(dependency, dist, installer: installer, cache: cache, state: state, aliased_name: aliased_name)
+      install_link(dependency, dist, installer: installer, cache: cache, state: state, ancestors: ancestors, aliased_name: aliased_name)
     when Package::TarballDist
       install_tarball(dependency, dist, installer: installer, cache: cache, state: state, aliased_name: aliased_name)
     else
@@ -10,9 +10,11 @@ module Zap::Installer::Classic::Helpers::File
     end
   end
 
-  def self.install_link(dependency : Package, dist : Package::LinkDist, *, installer : Zap::Installer::Base, cache : Deque(CacheItem), state : Commands::Install::State, aliased_name : String?) : Deque(CacheItem)?
+  def self.install_link(dependency : Package, dist : Package::LinkDist, *, installer : Zap::Installer::Base, cache : Deque(CacheItem), ancestors : Array(Package), state : Commands::Install::State, aliased_name : String?) : Deque(CacheItem)?
     relative_path = dist.link
-    link_source = Path.new(relative_path).expand(state.config.prefix)
+    parent = ancestors[0]
+    base_path = state.context.workspaces.try(&.find { |w| w.package == parent }.try &.path) || state.config.prefix
+    link_source = Path.new(relative_path).expand(base_path)
     install_folder = aliased_name || dependency.name
     target_path = cache.last.node_modules / install_folder
     exists = ::File.symlink?(target_path) && ::File.realpath(target_path) == link_source.to_s

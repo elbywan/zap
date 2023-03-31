@@ -104,51 +104,108 @@ module Zap::Resolver
 
     # # PRIVATE ##########################
 
-    private def find_valid_version(manifest_str : String, version : Utils::Semver::SemverSets | String | Nil) : Package
+    private def find_valid_version(manifest_str : String, version : Utils::Semver::SemverSets | String) : Package
       matching = nil
       manifest_parser = JSON::PullParser.new(manifest_str)
       manifest_parser.read_begin_object
-      exact_match = version.nil? || version.is_a?(String) || version.exact_match?
+      dist_tag = version.is_a?(String) ? version : nil
+      semantic_version = version.is_a?(Utils::Semver::SemverSets) ? version : nil
+      versions_raw = nil
       loop do
         break if manifest_parser.kind.end_object?
         key = manifest_parser.read_object_key
-        if key === "versions"
-          manifest_parser.read_begin_object
-          loop do
-            break if manifest_parser.kind.end_object?
-            version_str = manifest_parser.read_string
-            semver = Utils::Semver::Comparator.parse(version_str)
-            if exact_match && version_str == (version.is_a?(String) ? version : version.to_s)
-              matching = {semver, manifest_parser.read_raw}
+        if key == "dist-tags"
+          if semantic_version
+            # No need to parse dist-tags, we already have a target version
+            manifest_parser.skip
+          elsif dist_tag
+            # Find the version that matches the dist-tag
+            semantic_version = parse_dist_tags_field(manifest_parser, dist_tag)
+            break unless semantic_version
+            if versions_raw
+              # Parse the versions field that was stored as a raw string
+              versions_parser = JSON::PullParser.new(versions_raw)
+              # Find the version that matches the dist-tag
+              matching = parse_versions_field(versions_parser, semantic_version)
               break
-            elsif matching.nil? || matching[0] < semver
-              if version.as(Utils::Semver::SemverSets).valid?(version_str)
-                matching = {semver, manifest_parser.read_raw}
-              else
-                manifest_parser.skip
-              end
-            else
-              manifest_parser.skip
             end
           end
-          break
+        elsif key == "versions"
+          if semantic_version
+            # Find the version that matches the semver formatted specifier
+            matching = parse_versions_field(manifest_parser, semantic_version)
+            break
+          else
+            # It means that the dist-tags field was not parsed yet
+            # We store the versions field as a raw string for later consumption
+            versions_raw = manifest_parser.read_raw
+          end
         else
+          # Skip the rest of the fields
           manifest_parser.skip
         end
       end
 
       unless matching
-        raise "No version matching range #{version} for package #{package_name} found in the module registry"
+        raise "No version matching range or dist-tag #{version} for package #{package_name} found in the module registry"
       end
       Package.from_json matching[1]
     end
 
+    private def parse_dist_tags_field(parser : JSON::PullParser, dist_tag : String) : String?
+      semantic_version = nil
+      parser.read_begin_object
+      loop do
+        break parser.read_end_object if parser.kind.end_object?
+        if !semantic_version
+          tag = parser.read_object_key
+          if tag == dist_tag
+            version_str = parser.read_string
+            # Store it as an exact specifier for later consumption
+            semantic_version = version_str
+          else
+            parser.skip
+          end
+        else
+          # skip key
+          parser.skip
+          # skip value
+          parser.skip
+        end
+      end
+      semantic_version
+    end
+
+    private def parse_versions_field(parser : JSON::PullParser, semantic_version : Utils::Semver::SemverSets | String) : Tuple(Utils::Semver::Comparator, String)?
+      parser.read_begin_object
+      matching = nil
+      loop do
+        break parser.read_end_object if parser.kind.end_object?
+        version_str = parser.read_object_key
+        semver = Utils::Semver::Comparator.parse(version_str)
+        if (semantic_version.is_a?(String) || semantic_version.exact_match?) && version_str == semantic_version.to_s
+          # For exact comparisons - we compare the version string
+          matching = {semver, parser.read_raw}
+          break
+        elsif semantic_version.is_a?(Utils::Semver::SemverSets) && (matching.nil? || matching[0] < semver)
+          # For range comparisons - take the highest version that matches the range
+          if semantic_version.valid?(version_str)
+            matching = {semver, parser.read_raw}
+          else
+            parser.skip
+          end
+        else
+          parser.skip
+        end
+      end
+      matching
+    end
+
     private def fetch_metadata : Package?
       raise "Resolver::Registry has not been initialized" unless client_pool = @@client_pool
-      version = self.version
       base_url = @@base_url
       manifest = client_pool.cached_fetch("/#{package_name}", HEADERS)
-      find_valid_version(manifest, version)
+      find_valid_version(manifest, self.version)
     end
   end
 end

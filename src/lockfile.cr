@@ -6,9 +6,12 @@ class Zap::Lockfile
   include Utils::Macros
 
   NAME = ".zap-lock.yml"
+  Log  = Zap::Log.for(self)
 
   class Root
     include YAML::Serializable
+
+    getter name : String
 
     property dependencies : Hash(String, String)? = nil
     property dev_dependencies : Hash(String, String)? = nil
@@ -17,13 +20,13 @@ class Zap::Lockfile
     getter pinned_dependencies : SafeHash(String, String | Package::Alias) { SafeHash(String, String | Package::Alias).new }
     getter? pinned_dependencies
 
-    def initialize
+    def initialize(@name)
     end
   end
 
   getter roots : Hash(String, Root) do |hash, key|
     Hash(String, Root).new do |hash, key|
-      hash[key] = Root.new
+      hash[key] = Root.new(key)
     end
   end
   property overrides : Package::Overrides? = nil
@@ -107,10 +110,17 @@ class Zap::Lockfile
       if dependents = pkg.dependents
         # Remove pruned dependencies and unused transitive dependencies
         pkg.dependents = dependents & pinned_deps
-        pkg.dependents.size > 0
+        unless keep = pkg.dependents.size > 0
+          Log.debug { "Pruned #{pkg.key} from lockfile" }
+        end
+        keep
       else
         false
       end
+    end
+
+    if pruned_direct_dependencies.size > 0
+      Log.debug { "Pruned #{pruned_direct_dependencies.size} direct dependencies: #{pruned_direct_dependencies.join(" ")}" }
     end
 
     pruned_direct_dependencies

@@ -49,6 +49,7 @@ module Zap::Utils::Semver
     end
 
     def initialize(scanner : Scanner)
+      scanner.skip?(' ', 'v')
       @major = self.class.xr!(scanner)
       return if scanner.eos? || scanner.space?
       scanner.skip_next!('.')
@@ -287,10 +288,16 @@ module Zap::Utils::Semver
     forward_missing_to @comparator_sets
   end
 
+  def self.parse?(str : String) : SemverSets?
+    parse(str)
+  rescue ex
+    nil
+  end
+
   def self.parse(str : String) : SemverSets
     range_set = SemverSets.new
 
-    if (str.empty? || str === "*")
+    if (str.empty? || str == "*")
       comparator_set = ComparatorSet.new
       range_set << comparator_set
       comparator_set << Comparator.new(Comparison::GreaterThanOrEqual)

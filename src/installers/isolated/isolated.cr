@@ -57,9 +57,14 @@ module Zap::Installer::Isolated
       resolved_peers = nil
       overrides = nil
       if package.is_a?(Package)
+        # Links/Workspaces are easy, we just need to return the target path
         if package.kind.link?
-          # Links are easy, we just need to return the path
-          return Path.new(package.dist.as(Package::LinkDist).link).expand(state.config.prefix)
+          root = ancestors.last
+          base_path = state.context.workspaces.try(&.find { |w| w.package.name == root.name }.try &.path) || state.config.prefix
+          return Path.new(package.dist.as(Package::LinkDist).link).expand(base_path)
+        elsif package.kind.workspace?
+          workspace = state.context.workspaces.not_nil!.find! { |w| w.package.name == package.name }
+          return Path.new(workspace.path)
         end
 
         resolved_peers = resolve_peers(package, ancestors)
