@@ -131,7 +131,7 @@ class Zap::Lockfile
   end
 
   def set_root(package : Package)
-    root = self.roots[package.name]
+    root = self.roots[package.name]? || Root.new(package.name)
     root.dependencies = package.dependencies
     root.dev_dependencies = package.dev_dependencies
     root.optional_dependencies = package.optional_dependencies

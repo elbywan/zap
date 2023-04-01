@@ -363,31 +363,74 @@ module Zap::Commands::Install
     end
   end
 
+  COLORS = {
+    # IndianRed1
+    Colorize::Color256.new(203),
+    # DeepSkyBlue2
+    Colorize::Color256.new(38),
+    # Chartreuse3
+    Colorize::Color256.new(76),
+    # LightGoldenrod1
+    Colorize::Color256.new(227),
+    # MediumVioletRed
+    Colorize::Color256.new(126),
+    :blue,
+    :light_red,
+    :light_green,
+    :yellow,
+    :red,
+    :magenta,
+    :cyan,
+    :light_gray,
+    :green,
+    :dark_gray,
+    :light_yellow,
+    :light_blue,
+    :light_magenta,
+    :light_cyan,
+  }
+
   private def self.run_own_install_hooks(state : State)
     unless state.install_config.ignore_scripts
       targets = state.context.scope_packages_and_paths(:install)
-      ran_once = false
 
-      targets.each do |package, path|
-        ran_once = run_root_package_install_lifecycle_scripts(package, path, state, print_hooks: !ran_once)
-      end
-    end
-  end
+      scripts = targets.flat_map { |package, path|
+        lifecycle_scripts = package.scripts.try(&.install_lifecycle_scripts)
+        next unless lifecycle_scripts
+        next lifecycle_scripts.map { |s| {package, path, s} }
+      }.compact
 
-  private def self.run_root_package_install_lifecycle_scripts(package : Package, chdir : Path | String, state : State, *, print_hooks = false) : Bool?
-    package.scripts.try do |scripts|
-      if scripts.has_self_install_lifecycle?
-        if print_hooks
-          state.reporter.output << state.reporter.header("⏳", "Hooks") + "\n"
+      child_concurrency = state.config.child_concurrency
+      single_script = scripts.size == 1
+
+      if scripts.size > 0
+        state.reporter.output << state.reporter.header("⏳", "Hooks", Colorize::Color256.new(29)) << "\n\n"
+        state.pipeline.reset
+        state.pipeline.set_concurrency(child_concurrency)
+
+        scripts.each_with_index do |(package, path, script), index|
+          color = COLORS[index % COLORS.size]? || :default
+          state.pipeline.process do
+            output_prefix = single_script ? "" : "  #{package.name.colorize(color).bold} #{script.colorize.cyan} "
+            output_io = Reporter::ReporterFormattedAppendPipe.new(state.reporter, "\n", output_prefix)
+            time = uninitialized Time::Span
+            package.scripts.not_nil!.run_script(script, path.to_s, state.config, output_io: output_io) do |command, hook_name|
+              state.reporter.output_sync do |output|
+                if hook_name == :before
+                  output << "•".colorize(:yellow) << " " << "#{package.name.colorize(color).bold} #{script.colorize.cyan} #{%(#{command}).colorize.dim}" << "\n"
+                  time = Time.monotonic
+                else
+                  total_time = Time.monotonic - time
+                  output << "•".colorize(:green) << " " << "#{package.name.colorize(color).bold} #{script.colorize.cyan} #{"success".colorize.bold.green} #{"(took: #{total_time.seconds.humanize}s)".colorize.dim}" << "\n"
+                end
+              end
+            end
+          end
         end
-        output_io = Reporter::ReporterFormattedAppendPipe.new(state.reporter)
-        Package::LifecycleScripts::SELF_LIFECYCLE_SCRIPTS.each do |script|
-          scripts.run_script(script, chdir.to_s, state.config, output_io: output_io) { |command|
-            state.reporter.output << "\n   • #{package.name.colorize.bold} #{script.colorize.cyan} #{%(#{command}).colorize.dim}\n"
-          }
-        end
-        state.reporter.output << "\n"
-        return true
+
+        state.pipeline.await
+
+        state.reporter.output << "\n\n"
       end
     end
   end

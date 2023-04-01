@@ -17,9 +17,8 @@ abstract class Zap::Reporter
   end
 
   class ReporterFormattedAppendPipe < IO
-    @first_write = true
-
-    def initialize(@reporter : Reporter, @separator = "\n", @prefix = "\n     ")
+    def initialize(@reporter : Reporter, @separator = "\n", @prefix = "     ")
+      @separator_and_prefix = @separator + @prefix
     end
 
     def read(slice : Bytes)
@@ -27,15 +26,10 @@ abstract class Zap::Reporter
     end
 
     def write(slice : Bytes) : Nil
-      if @first_write
-        @first_write = false
-        @reporter.io_lock.synchronize do
-          @reporter.output << @prefix
-        end
-      end
-      str = String.new(slice).split(@separator).join(@prefix)
-      @reporter.io_lock.synchronize do
-        @reporter.output << str
+      @reporter.output_sync do |output|
+        str_array = String.new(slice).split(@separator)
+        str_array.pop if str_array.last.empty?
+        output << @prefix << str_array.join(@separator_and_prefix) << @separator
       end
     end
   end

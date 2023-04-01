@@ -10,6 +10,12 @@ class Zap::Reporter::Interactive < Zap::Reporter
     @out
   end
 
+  def output_sync
+    @lock.synchronize do
+      yield @out
+    end
+  end
+
   @lines = Atomic(Int32).new(0)
   @written : Bool = false
   @logs : Array(String) = [] of String

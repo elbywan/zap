@@ -63,6 +63,12 @@ class Zap::Package
         !!prepare
     end
 
+    def install_lifecycle_scripts : Array(Symbol)
+      SELF_LIFECYCLE_SCRIPTS.map { |name|
+        field(name) ? name : nil
+      }.compact
+    end
+
     def run_script(kind : Symbol, chdir : Path | String, config : Config, raise_on_error_code = true, output_io = nil, **args)
       field(kind).try do |command|
         return unless command.is_a?(String) && !command.empty?
@@ -77,11 +83,12 @@ class Zap::Package
         env = {
           "PATH" => (paths << config.bin_path << ENV["PATH"]).join(Process::PATH_DELIMITER),
         }
-        yield command
+        yield command, :before
         status = Process.run(command, **args, shell: true, env: env, chdir: chdir.to_s, output: output, error: output)
         if !status.success? && raise_on_error_code
-          raise "#{output_io ? "" : output}\nCommand failed: #{command} (#{status.exit_status})"
+          raise "#{output_io ? "" : output}Command failed: #{command} (#{status.exit_status})"
         end
+        yield command, :after
       end
     end
 

@@ -77,7 +77,7 @@ class Zap::Pipeline
 
   class PipelineException < Exception
     def initialize(@exceptions : Array(Exception))
-      super("\n\n •" + exceptions.map(&.message).join("\n  •"))
+      super("\n  • " + exceptions.map(&.message).join("\n  • "))
     end
   end
 
