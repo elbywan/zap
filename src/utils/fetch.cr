@@ -45,8 +45,10 @@ module Zap::Fetch
     end
 
     class InStore < Cache
-      BODY_FILE_NAME = "body"
-      META_FILE_NAME = "meta.json"
+      BODY_FILE_NAME      = "body"
+      BODY_FILE_NAME_TEMP = "body.temp"
+      META_FILE_NAME      = "meta.json"
+      META_FILE_NAME_TEMP = "meta.json.temp"
       @path : Path
 
       def initialize(global_store_path)
@@ -79,8 +81,10 @@ module Zap::Fetch
         root_path = @path / key
         Log.debug { "(#{url}) Storing metadata at #{root_path}" }
         Dir.mkdir_p(root_path)
-        File.write(root_path / BODY_FILE_NAME, value)
-        File.write(root_path / META_FILE_NAME, {"etag": etag, expiry: expiry ? (Time.utc + expiry).to_unix : nil}.to_json)
+        File.write(root_path / BODY_FILE_NAME_TEMP, value)
+        File.rename(root_path / BODY_FILE_NAME_TEMP, root_path / BODY_FILE_NAME)
+        File.write(root_path / META_FILE_NAME_TEMP, {"etag": etag, expiry: expiry ? (Time.utc + expiry).to_unix : nil}.to_json)
+        File.rename(root_path / META_FILE_NAME_TEMP, root_path / META_FILE_NAME)
       end
     end
   end
