@@ -20,5 +20,12 @@ class Zap::CLI
       FileUtils.rm_rf(http_cache_path)
       puts "💥 Done!"
     end
+
+    parser.before_each do |arg|
+      if @command_config.nil? && !parser.@handlers.keys.includes?(arg)
+        puts parser
+        exit
+      end
+    end
   end
 end

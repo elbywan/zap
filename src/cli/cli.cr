@@ -18,6 +18,7 @@ require "./install"
 require "./dlx"
 require "./init"
 require "./store"
+require "./run"
 require "../commands/**"
 require "../constants"
 
@@ -54,6 +55,11 @@ module Zap
       Commands::Dlx.run(config, command_config)
     when Config::Init
       Commands::Init.run(config, command_config)
+    when Config::Run
+      script_name = ARGV[0]?
+      args = ARGV[1..-1]? || Array(String).new
+      command_config = command_config.copy_with(script: script_name, args: args)
+      Commands::Run.run(config, command_config)
     end
   end
 
@@ -96,12 +102,23 @@ module Zap
           on_dlx(parser)
         end
 
+        command(["run", "r"], "This command runs a package's \"script\" command.", "[options] <script>") do
+          on_run(parser)
+        end
+
         command(["init", "innit", "create"], "This command creates a new package.json file.", "[options] <initializer>") do
           on_init(parser)
         end
 
         command(["store", "s"], "Manage the global store used to save packages and cache registry responses.") do
           on_store(parser)
+        end
+
+        parser.before_each do |arg|
+          if @command_config.nil? && !parser.@handlers.keys.includes?(arg)
+            @command_config = Config::Run.new
+            parser.stop
+          end
         end
 
         common_options()
@@ -133,6 +150,12 @@ module Zap
       end
       parser.on("-C PATH", "--dir PATH", "Use PATH as the root directory of the project.") do |path|
         @config = @config.copy_with(prefix: Path.new(path).expand.to_s, global: false)
+      end
+      parser.on("--silent", "Minimize the output.") do
+        @config = @config.copy_with(silent: true)
+      end
+      parser.on("--concurrency NB", "Set the maximum number of tasks that will be run in parallel. (default: 5)") do |concurrency|
+        @config = @config.copy_with(concurrency: concurrency.to_i32)
       end
       parser.on("--version", "Show version.") do
         puts "v#{VERSION}"

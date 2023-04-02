@@ -55,6 +55,7 @@ class Zap::Pipeline
     end
     spawn do
       wait_for_sync do
+        next if @errors
         block.call
       rescue Channel::ClosedError
         # Ignore
@@ -77,7 +78,7 @@ class Zap::Pipeline
 
   class PipelineException < Exception
     def initialize(@exceptions : Array(Exception))
-      super("\n  • " + exceptions.map(&.message).join("\n  • "))
+      super(exceptions.map(&.message).join("\n  • "))
     end
   end
 

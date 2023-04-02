@@ -69,26 +69,9 @@ class Zap::Package
       }.compact
     end
 
-    def run_script(kind : Symbol, chdir : Path | String, config : Config, raise_on_error_code = true, output_io = nil, **args)
+    def run_script(kind : Symbol, chdir : Path | String, config : Config, raise_on_error_code = true, output_io = nil, **args, &block : String, Symbol ->)
       field(kind).try do |command|
-        return unless command.is_a?(String) && !command.empty?
-        output = output_io || IO::Memory.new
-        # See: https://docs.npmjs.com/cli/v9/commands/npm-run-script
-        paths = [] of Path | String
-        Path.new(chdir).each_parent { |parent|
-          if parent.basename == "node_modules" && File.directory?(parent / ".bin")
-            paths << parent / ".bin"
-          end
-        }
-        env = {
-          "PATH" => (paths << config.bin_path << ENV["PATH"]).join(Process::PATH_DELIMITER),
-        }
-        yield command, :before
-        status = Process.run(command, **args, shell: true, env: env, chdir: chdir.to_s, output: output, error: output)
-        if !status.success? && raise_on_error_code
-          raise "#{output_io ? "" : output}Command failed: #{command} (#{status.exit_status})"
-        end
-        yield command, :after
+        Utils::Scripts.run_script(command, chdir, config, raise_on_error_code, output_io, **args, &block)
       end
     end
 

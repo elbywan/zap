@@ -9,8 +9,8 @@ module Zap::Commands::Install
     store : Store,
     main_package : Package,
     lockfile : Lockfile,
-    context : InferredContext,
-    pipeline = Pipeline.new,
+    context : Config::InferredContext,
+    pipeline : Pipeline = Pipeline.new,
     reporter : Reporter = Reporter::Interactive.new
 
   def self.run(
@@ -29,7 +29,7 @@ module Zap::Commands::Install
       Resolver::Registry.init(config.global_store_path)
 
       # Infer context like the nearest package.json file and workspaces
-      inferred_context = infer_context(config)
+      inferred_context = config.infer_context
       workspaces, config = inferred_context.workspaces, inferred_context.config
       lockfile = Lockfile.new(config.prefix)
       reporter ||= config.silent ? Reporter::Interactive.new(null_io) : Reporter::Interactive.new
@@ -84,7 +84,7 @@ module Zap::Commands::Install
     state.reporter.report_done(realtime, memory, state.install_config)
     null_io.try &.close
   rescue e
-    puts %(\n\n❌ #{"Error(s):".colorize.red.bold}\n#{e.message})
+    reporter.try &.error(e)
     Zap::Log.debug { e.backtrace.map { |line| "\t#{line}" }.join("\n").colorize.red }
     null_io.try &.close
     exit ErrorCodes::INSTALL_COMMAND_FAILED.to_i32
@@ -102,111 +102,17 @@ module Zap::Commands::Install
     {realtime, memory}
   end
 
-  alias WorkspaceScope = Array(WorkspaceOrPackage)
-  alias WorkspaceOrPackage = Package | Workspaces::Workspace
-
-  private record(InferredContext,
-    main_package : Package,
-    config : Config,
-    workspaces : Workspaces?,
-    install_scope : WorkspaceScope,
-    add_remove_scope : WorkspaceScope
-  ) do
-    enum ScopeType
-      Install
-      AddRemove
-    end
-
-    private def get_scope(type : ScopeType)
-      type.install? ? @install_scope : @add_remove_scope
-    end
-
-    def scope_names(type : ScopeType)
-      get_scope(type).map { |pkg|
-        pkg.is_a?(Package) ? pkg.name : pkg.package.name
-      }
-    end
-
-    def scope_packages(type : ScopeType)
-      get_scope(type).map { |pkg|
-        pkg.is_a?(Package) ? pkg : pkg.package
-      }
-    end
-
-    def scope_packages_and_paths(type : ScopeType)
-      get_scope(type).map { |pkg|
-        pkg.is_a?(Package) ? {pkg, config.prefix} : {pkg.package, pkg.path}
-      }
-    end
-  end
-
-  private def self.infer_context(config : Config) : InferredContext
-    install_scope = [] of WorkspaceOrPackage
-    add_remove_scope = [] of WorkspaceOrPackage
-
-    if config.global
-      # Do not check for workspaces if the global flag is set
-      main_package = Package.read_package(config)
-      install_scope << main_package
-      add_remove_scope << main_package
-    else
-      # Find the nearest package.json file and workspace package.json file
-      packages_data = Utils::File.find_package_files(config.prefix)
-      nearest_package = packages_data.nearest_package
-      nearest_package_dir = packages_data.nearest_package_dir
-
-      raise "Could not find a package.json file in #{config.prefix} or its parent folders!" unless nearest_package && nearest_package_dir
-
-      # Initialize workspaces if a workspace root has been found
-      if (workspace_package_dir = packages_data.workspace_package_dir.try(&.to_s)) && (workspace_package = packages_data.workspace_package)
-        workspaces = Workspaces.new(workspace_package, workspace_package_dir)
-      end
-      # Check if the nearest package.json file is the workspace root
-      nearest_is_workspace_root = workspace_package && workspace_package.object_id == nearest_package.object_id
-      # Find the nearest workspace if it exists
-      nearest_workspace = workspaces.try &.find { |w| w.path == nearest_package_dir }
-      # Check if the nearest package.json file is in the workspace
-      if !config.no_workspaces && workspace_package && workspace_package_dir && workspaces && (nearest_is_workspace_root || nearest_workspace)
-        main_package = workspace_package
-        # Use the workspace root directory as the prefix
-        config = config.copy_with(prefix: workspace_package_dir)
-        # Compute the scope of the workspace based on cli flags
-        if filters = config.filters
-          install_scope << main_package if config.root_workspace
-          install_scope += workspaces.filter(filters)
-          add_remove_scope = install_scope
-        elsif config.recursive
-          install_scope = [main_package, *workspaces.workspaces]
-          add_remove_scope = install_scope
-        elsif config.root_workspace
-          install_scope << main_package
-          add_remove_scope << main_package
-        else
-          install_scope = [main_package, *workspaces.workspaces]
-          add_remove_scope = [nearest_workspace || main_package]
-        end
-      else
-        # Disable workspaces if the nearest package.json file is not in the workspace
-        main_package = nearest_package
-        workspaces = nil
-        install_scope << main_package
-        add_remove_scope << main_package
-        # Use the nearest package.json base directory as the prefix
-        config = config.copy_with(prefix: nearest_package_dir.to_s)
-      end
-    end
-
-    raise "Could not find a package.json file in #{config.prefix} and parent folders." unless main_package
-
-    main_package = main_package.tap(&.refine)
-
-    InferredContext.new(main_package, config, workspaces, install_scope, add_remove_scope)
-  end
-
-  private def self.print_info(config : Config, inferred_context : InferredContext, install_config : Config::Install, lockfile : Lockfile, workspaces : Workspaces?)
+  private def self.print_info(config : Config, inferred_context : Config::InferredContext, install_config : Config::Install, lockfile : Lockfile, workspaces : Workspaces?)
     unless config.silent
+      workers_info = begin
+        {% if flag?(:preview_mt) %}
+          " • #{"workers:".colorize.blue} #{Crystal::Scheduler.nb_of_workers}"
+        {% else %}
+          ""
+        {% end %}
+      end
       puts <<-TERM
-          #{"project:".colorize.blue} #{config.prefix} • #{"store:".colorize.blue} #{config.global_store_path} • #{"workers:".colorize.blue} #{Crystal::Scheduler.nb_of_workers}
+          #{"project:".colorize.blue} #{config.prefix} • #{"store:".colorize.blue} #{config.global_store_path}#{workers_info}
           #{"lockfile:".colorize.blue} #{lockfile.read_status.from_disk? ? "ok".colorize.green : lockfile.read_status.error? ? "read error".colorize.red : "not found".colorize.red} • #{"install strategy:".colorize.blue} #{install_config.install_strategy.to_s.downcase}
       TERM
 
@@ -218,10 +124,10 @@ module Zap::Commands::Install
 
       if (
            (install_config.removed_packages.size > 0 || install_config.added_packages.size > 0) &&
-           inferred_context.add_remove_scope.size != inferred_context.install_scope.size
+           inferred_context.command_scope.size != inferred_context.install_scope.size
          )
         puts <<-TERM
-            #{"add/remove scope".colorize.blue}: #{inferred_context.add_remove_scope.size} package(s) • #{inferred_context.scope_names(:add_remove).sort.join(", ")}
+            #{"add/remove scope".colorize.blue}: #{inferred_context.command_scope.size} package(s) • #{inferred_context.scope_names(:command).sort.join(", ")}
         TERM
       end
       puts "\n"
@@ -231,7 +137,7 @@ module Zap::Commands::Install
   private def self.remove_packages(state : State)
     return unless state.install_config.removed_packages.size > 0
 
-    [*state.context.scope_packages(:add_remove)].each do |package|
+    [*state.context.scope_packages(:command)].each do |package|
       state.install_config.removed_packages.each do |name|
         if package.dependencies && package.dependencies.try &.has_key?(name)
           package.dependencies.not_nil!.delete(name)
@@ -249,7 +155,7 @@ module Zap::Commands::Install
     # Resolve overrides
     resolve_overrides(state)
     # Resolve and store dependencies
-    state.context.scope_packages_and_paths(:add_remove).each do |(package, path)|
+    state.context.scope_packages_and_paths(:command).each do |(package, path)|
       Resolver.resolve_added_packages(package, state: state, root_directory: path.to_s)
     end
     state.context.scope_packages(:install).each do |package|
@@ -299,7 +205,7 @@ module Zap::Commands::Install
 
   private def self.write_package_json_files(state : State)
     if state.install_config.added_packages.size > 0 || state.install_config.removed_packages.size > 0
-      [*state.context.scope_packages_and_paths(:add_remove)].each do |package, location|
+      [*state.context.scope_packages_and_paths(:command)].each do |package, location|
         package_json = JSON.parse(File.read(Path.new(location).join("package.json"))).as_h
         if (deps = package.dependencies) && deps.size > 0
           package_json["dependencies"] = JSON::Any.new(deps.transform_values { |v| JSON::Any.new(v) })
@@ -341,7 +247,7 @@ module Zap::Commands::Install
     if !state.install_config.ignore_scripts && installer.installed_packages_with_hooks.size > 0
       state.pipeline.reset
       # Process hooks in parallel
-      state.pipeline.set_concurrency(state.config.child_concurrency)
+      state.pipeline.set_concurrency(state.config.concurrency)
       state.reporter.report_builder_updates
       installer.installed_packages_with_hooks.each do |package, path|
         package.scripts.try do |scripts|
@@ -363,33 +269,6 @@ module Zap::Commands::Install
     end
   end
 
-  COLORS = {
-    # IndianRed1
-    Colorize::Color256.new(203),
-    # DeepSkyBlue2
-    Colorize::Color256.new(38),
-    # Chartreuse3
-    Colorize::Color256.new(76),
-    # LightGoldenrod1
-    Colorize::Color256.new(227),
-    # MediumVioletRed
-    Colorize::Color256.new(126),
-    :blue,
-    :light_red,
-    :light_green,
-    :yellow,
-    :red,
-    :magenta,
-    :cyan,
-    :light_gray,
-    :green,
-    :dark_gray,
-    :light_yellow,
-    :light_blue,
-    :light_magenta,
-    :light_cyan,
-  }
-
   private def self.run_own_install_hooks(state : State)
     unless state.install_config.ignore_scripts
       targets = state.context.scope_packages_and_paths(:install)
@@ -397,41 +276,17 @@ module Zap::Commands::Install
       scripts = targets.flat_map { |package, path|
         lifecycle_scripts = package.scripts.try(&.install_lifecycle_scripts)
         next unless lifecycle_scripts
-        next lifecycle_scripts.map { |s| {package, path, s} }
+        next lifecycle_scripts.map { |s| {package, path, s, nil} }
       }.compact
 
-      child_concurrency = state.config.child_concurrency
-      single_script = scripts.size == 1
+      Utils::Scripts.parallel_run(
+        config: state.config,
+        scripts: scripts,
+        reporter: state.reporter,
+        pipeline: state.pipeline
+      )
 
-      if scripts.size > 0
-        state.reporter.output << state.reporter.header("⏳", "Hooks", Colorize::Color256.new(29)) << "\n\n"
-        state.pipeline.reset
-        state.pipeline.set_concurrency(child_concurrency)
-
-        scripts.each_with_index do |(package, path, script), index|
-          color = COLORS[index % COLORS.size]? || :default
-          state.pipeline.process do
-            output_prefix = single_script ? "" : "  #{package.name.colorize(color).bold} #{script.colorize.cyan} "
-            output_io = Reporter::ReporterFormattedAppendPipe.new(state.reporter, "\n", output_prefix)
-            time = uninitialized Time::Span
-            package.scripts.not_nil!.run_script(script, path.to_s, state.config, output_io: output_io) do |command, hook_name|
-              state.reporter.output_sync do |output|
-                if hook_name == :before
-                  output << "•".colorize(:yellow) << " " << "#{package.name.colorize(color).bold} #{script.colorize.cyan} #{%(#{command}).colorize.dim}" << "\n"
-                  time = Time.monotonic
-                else
-                  total_time = Time.monotonic - time
-                  output << "•".colorize(:green) << " " << "#{package.name.colorize(color).bold} #{script.colorize.cyan} #{"success".colorize.bold.green} #{"(took: #{total_time.seconds.humanize}s)".colorize.dim}" << "\n"
-                end
-              end
-            end
-          end
-        end
-
-        state.pipeline.await
-
-        state.reporter.output << "\n\n"
-      end
+      puts "\n" if scripts.size > 0
     end
   end
 end

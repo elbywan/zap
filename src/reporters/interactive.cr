@@ -118,7 +118,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
     @lock.synchronize do
       @out << header("⚠️", "Warning", :yellow) + location
       @out << "\n"
-      @out << "\n   • #{error.message}".colorize.yellow
+      @out << "\n  • #{error.message}".colorize.yellow
       @out << "\n"
       Zap::Log.debug { error.backtrace?.try &.map { |line| "\t#{line}" }.join("\n").colorize.yellow }
     end
@@ -126,10 +126,8 @@ class Zap::Reporter::Interactive < Zap::Reporter
 
   def error(error : Exception, location : String? = "")
     @lock.synchronize do
-      @out << header("❌", "Error!", :red) + location
-      @out << "\n"
-      @out << "\n   • #{error.message}".colorize.red
-      @out << "\n"
+      @out << header("❌", "Error(s):", :red) + location << "\n"
+      @out << "  • #{error.message}".colorize.red << "\n"
       Zap::Log.debug { error.backtrace.map { |line| "\t#{line}" }.join("\n").colorize.red }
     end
   end
