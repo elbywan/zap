@@ -117,10 +117,10 @@ class Zap::Workspaces
         workspace.package.dev_dependencies,
         workspace.package.optional_dependencies,
       }.each do |value|
+        result[workspace] ||= {dependencies: Set(Workspace).new, dependents: Set(Workspace).new}
         next if value.nil?
         value.each do |name, version|
           if dependency_workspace = get(name, version)
-            result[workspace] ||= {dependencies: Set(Workspace).new, dependents: Set(Workspace).new}
             result[dependency_workspace] ||= {dependencies: Set(Workspace).new, dependents: Set(Workspace).new}
             result[workspace][:dependencies] << dependency_workspace
             result[dependency_workspace][:dependents] << workspace

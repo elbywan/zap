@@ -24,11 +24,9 @@ class Zap::Lockfile
     end
   end
 
-  getter roots : Hash(String, Root) do |hash, key|
-    Hash(String, Root).new do |hash, key|
-      hash[key] = Root.new(key)
-    end
-  end
+  @[YAML::Field(ignore: true)]
+  @roots_lock = Mutex.new
+  getter roots : Hash(String, Root) = Hash(String, Root).new
   property overrides : Package::Overrides? = nil
   getter packages : Hash(String, Package) = Hash(String, Package).new
 
@@ -73,7 +71,7 @@ class Zap::Lockfile
     pruned_direct_dependencies = Set({String, String | Package::Alias, String}).new
     pinned_deps = Set(String).new
 
-    self.roots.each do |root_name, root|
+    roots.each do |root_name, root|
       # All dependencies from the root
       all_dependencies =
         (root.dependencies.try(&.keys) || [] of String) +
@@ -131,7 +129,7 @@ class Zap::Lockfile
   end
 
   def set_root(package : Package)
-    root = self.roots[package.name]? || Root.new(package.name)
+    root = roots[package.name] ||= Root.new(package.name)
     root.dependencies = package.dependencies
     root.dev_dependencies = package.dev_dependencies
     root.optional_dependencies = package.optional_dependencies
@@ -139,21 +137,24 @@ class Zap::Lockfile
   end
 
   def add_dependency(name : String, version : String, type : Symbol, scope : String)
-    case type
-    when :dependencies
-      (self.roots[scope].dependencies ||= Hash(String, String).new)[name] = version
-      self.roots[scope].dev_dependencies.try &.delete(name)
-      self.roots[scope].optional_dependencies.try &.delete(name)
-    when :optional_dependencies
-      (self.roots[scope].optional_dependencies ||= Hash(String, String).new)[name] = version
-      self.roots[scope].dependencies.try &.delete(name)
-      self.roots[scope].dev_dependencies.try &.delete(name)
-    when :dev_dependencies
-      (self.roots[scope].dev_dependencies ||= Hash(String, String).new)[name] = version
-      self.roots[scope].dependencies.try &.delete(name)
-      self.roots[scope].optional_dependencies.try &.delete(name)
-    else
-      raise "Wrong dependency type: #{type}"
+    @roots_lock.synchronize do
+      scoped_root = roots[scope] ||= Root.new(scope)
+      case type
+      when :dependencies
+        (scoped_root.dependencies ||= Hash(String, String).new)[name] = version
+        scoped_root.dev_dependencies.try &.delete(name)
+        scoped_root.optional_dependencies.try &.delete(name)
+      when :optional_dependencies
+        (scoped_root.optional_dependencies ||= Hash(String, String).new)[name] = version
+        scoped_root.dependencies.try &.delete(name)
+        scoped_root.dev_dependencies.try &.delete(name)
+      when :dev_dependencies
+        (scoped_root.dev_dependencies ||= Hash(String, String).new)[name] = version
+        scoped_root.dependencies.try &.delete(name)
+        scoped_root.optional_dependencies.try &.delete(name)
+      else
+        raise "Wrong dependency type: #{type}"
+      end
     end
   end
 end
