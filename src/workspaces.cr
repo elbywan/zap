@@ -107,8 +107,24 @@ class Zap::Workspaces
     raise "Workspace #{name} not found"
   end
 
-  getter relationships : Hash(Workspace, {dependencies: Set(Workspace), dependents: Set(Workspace)}) do
-    result = {} of Workspace => {dependencies: Set(Workspace), dependents: Set(Workspace)}
+  class CycleException < Exception
+    def initialize(path : Array(Workspace)?)
+      if path
+        cycle_path = path.map(&.package.name).join(" -> ")
+        super("Cycle detected: [#{cycle_path}].\nPlease check your workspace dependencies and try again!")
+      else
+        super("Cycle detected. Please check your workspace dependencies and try again!")
+      end
+    end
+  end
+
+  record WorkspaceRelationships,
+    dependencies : Set(Workspace) = Set(Workspace).new,
+    direct_dependencies : Array(Workspace) = Array(Workspace).new,
+    dependents : Set(Workspace) = Set(Workspace).new,
+    direct_dependents : Array(Workspace) = Array(Workspace).new
+  getter relationships : Hash(Workspace, WorkspaceRelationships) do
+    relationships = {} of Workspace => WorkspaceRelationships
 
     # Calculate direct dependencies / dependents
     workspaces.each do |workspace|
@@ -117,13 +133,15 @@ class Zap::Workspaces
         workspace.package.dev_dependencies,
         workspace.package.optional_dependencies,
       }.each do |value|
-        result[workspace] ||= {dependencies: Set(Workspace).new, dependents: Set(Workspace).new}
+        relationships[workspace] ||= WorkspaceRelationships.new
         next if value.nil?
         value.each do |name, version|
           if dependency_workspace = get(name, version)
-            result[dependency_workspace] ||= {dependencies: Set(Workspace).new, dependents: Set(Workspace).new}
-            result[workspace][:dependencies] << dependency_workspace
-            result[dependency_workspace][:dependents] << workspace
+            relationships[dependency_workspace] ||= WorkspaceRelationships.new
+            relationships[workspace].dependencies << dependency_workspace
+            relationships[workspace].direct_dependencies << dependency_workspace
+            relationships[dependency_workspace].direct_dependents << workspace
+            relationships[dependency_workspace].dependents << workspace
           end
         end
       end
@@ -131,29 +149,47 @@ class Zap::Workspaces
 
     # Calculate deep dependencies / dependents
     workspaces.each do |workspace|
-      dependencies = result[workspace][:dependencies]
-      queue = Deque(Workspace).new(dependencies.size)
-      dependencies.each { |dep| queue << dep }
-      while dep = queue.shift?
-        result[dep][:dependencies].each do |dependency|
-          next if dependency == workspace || dependencies.includes?(dependency)
-          dependencies << dependency
-          queue << dependency
+      relationships[workspace].dependencies.tap do |dependencies|
+        queue = Deque(Workspace).new(dependencies.size)
+        dependencies.each { |dep| queue << dep }
+        while dep = queue.shift?
+          relationships[dep].dependencies.each do |dependency|
+            if dependency == workspace
+              raise CycleException.new(cyclic_path(relationships, workspace))
+            end
+            next if dependencies.includes?(dependency)
+            dependencies << dependency
+            queue << dependency
+          end
         end
       end
-      dependents = result[workspace][:dependents]
-      queue = Deque(Workspace).new(dependents.size)
-      dependents.each { |dep| queue << dep }
-      while dep = queue.shift?
-        result[dep][:dependents].each do |dependent|
-          next if dependent == workspace || dependents.includes?(dependent)
-          dependents << dependent
-          queue << dependent
+      relationships[workspace].dependents.tap do |dependents|
+        queue = Deque(Workspace).new(dependents.size)
+        dependents.each { |dep| queue << dep }
+        while dep = queue.shift?
+          relationships[dep].dependents.each do |dependent|
+            next if dependent == workspace || dependents.includes?(dependent)
+            dependents << dependent
+            queue << dependent
+          end
         end
       end
     end
 
-    result
+    relationships
+  end
+
+  private def cyclic_path(relationships : Hash(Workspace, WorkspaceRelationships), workspace : Workspace, *, target : Workspace = workspace, path = Deque(Workspace){workspace}) : Array(Workspace)?
+    relationships[workspace].direct_dependencies.each do |dependency|
+      if dependency == target
+        return path.to_a << dependency
+      end
+
+      path << dependency
+      maybe_path = cyclic_path(relationships, dependency, target: target, path: path)
+      path.pop
+      return maybe_path unless maybe_path.nil?
+    end
   end
 
   def filter(*filters : String) : Array(Workspace)
@@ -172,10 +208,10 @@ class Zap::Workspaces
       end
       scoped_workspaces.each do |workspace|
         if filter.include_dependencies
-          matching_workspaces += relationships[workspace][:dependencies]
+          matching_workspaces += relationships[workspace].dependencies
         end
         if filter.include_dependents
-          matching_workspaces += relationships[workspace][:dependents]
+          matching_workspaces += relationships[workspace].dependents
         end
       end
 

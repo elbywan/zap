@@ -56,23 +56,67 @@ describe Workspaces do
   it "should compute deep relationships between workspaces" do
     workspaces = Workspaces.new([WORKSPACE_A, WORKSPACE_B, WORKSPACE_C, WORKSPACE_D])
     workspaces.relationships.should eq({
-      WORKSPACE_A => {
+      WORKSPACE_A => Workspaces::WorkspaceRelationships.new(
+        direct_dependencies: [WORKSPACE_B, WORKSPACE_C],
         dependencies: Set{WORKSPACE_B, WORKSPACE_C, WORKSPACE_D},
-        dependents:   Set(Workspace).new,
-      },
-      WORKSPACE_B => {
+      ),
+      WORKSPACE_B => Workspaces::WorkspaceRelationships.new(
+        direct_dependencies: [WORKSPACE_D],
         dependencies: Set{WORKSPACE_D},
-        dependents:   Set{WORKSPACE_A},
-      },
-      WORKSPACE_C => {
-        dependencies: Set(Workspace).new,
-        dependents:   Set{WORKSPACE_A},
-      },
-      WORKSPACE_D => {
-        dependencies: Set(Workspace).new,
-        dependents:   Set{WORKSPACE_B, WORKSPACE_A},
-      },
+        direct_dependents: [WORKSPACE_A],
+        dependents: Set{WORKSPACE_A},
+      ),
+      WORKSPACE_C => Workspaces::WorkspaceRelationships.new(
+        direct_dependents: [WORKSPACE_A],
+        dependents: Set{WORKSPACE_A},
+      ),
+      WORKSPACE_D => Workspaces::WorkspaceRelationships.new(
+        direct_dependents: [WORKSPACE_B],
+        dependents: Set{WORKSPACE_B, WORKSPACE_A},
+      ),
     })
+  end
+
+  it "should raise when a workspace has cycles" do
+    workspaces = Workspaces.new([
+      Workspace.new(
+        package: Package.from_json(%({
+          "name": "a",
+          "version": "1.0.0",
+          "dependencies": {
+            "b": "*"
+          }
+        })),
+        path: Path.new("/my-app/pkgs/a"),
+        relative_path: Path.new("pkgs/a")
+      ),
+      Workspace.new(
+        package: Package.from_json(%({
+          "name": "b",
+          "version": "1.0.0",
+          "dependencies": {
+            "c": "*"
+          }
+        })),
+        path: Path.new("/my-app/pkgs/b"),
+        relative_path: Path.new("pkgs/b")
+      ),
+      Workspace.new(
+        package: Package.from_json(%({
+          "name": "c",
+          "version": "1.0.0",
+          "dependencies": {
+            "a": "*"
+          }
+        })),
+        path: Path.new("/my-app/pkgs/c"),
+        relative_path: Path.new("pkgs/c")
+      ),
+    ])
+
+    expect_raises Workspaces::CycleException do
+      workspaces.relationships
+    end
   end
 
   it "should filter workspaces" do
