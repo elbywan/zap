@@ -243,7 +243,7 @@ module Zap::Resolver
     end
     # Multithreaded dependency resolution (if enabled)
     state.pipeline.process do
-      parent = package.try { |package| is_direct_dependency ? state.lockfile.roots[package.name] : package }
+      parent = package.try { |package| is_direct_dependency ? state.lockfile.get_root(package.name) : package }
       # Create the appropriate resolver depending on the version (git, tarball, registry, local folder…)
       resolver = Resolver.make(state, name, version, parent)
       # Attempt to use the package data from the lockfile
@@ -412,7 +412,7 @@ module Zap::Resolver
       # Infer the package.json version from the CLI argument
       inferred_version, inferred_name = parse_new_package(new_dep, root_directory: root_directory)
       # Resolve the package
-      resolver = Resolver.make(state, inferred_name, inferred_version || "*", state.lockfile.roots[root_package.name])
+      resolver = Resolver.make(state, inferred_name, inferred_version || "*", state.lockfile.get_root(root_package.name))
       metadata = resolver.resolve.not_nil!
       name = inferred_name.empty? ? metadata.name : inferred_name
       metadata.match_os_and_cpu!

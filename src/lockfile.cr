@@ -128,6 +128,14 @@ class Zap::Lockfile
     File.write(@lockfile_path.to_s, self.to_yaml)
   end
 
+  def get_root(name : String)
+    @roots_lock.synchronize do
+      (roots[name]? || Root.new(name)).tap do |root|
+        roots[name] = root
+      end
+    end
+  end
+
   def set_root(package : Package)
     root = roots[package.name] ||= Root.new(package.name)
     root.dependencies = package.dependencies
