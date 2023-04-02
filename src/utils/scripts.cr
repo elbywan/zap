@@ -96,7 +96,8 @@ module Zap::Utils::Scripts
       end
     }
     env = {
-      "PATH" => (paths << config.bin_path << ENV["PATH"]).join(Process::PATH_DELIMITER),
+      "PATH"         => (paths << config.bin_path << ENV["PATH"]).join(Process::PATH_DELIMITER),
+      "npm_execpath" => "zap",
     }
     yield command, :before
     status = Process.run(command, **args, shell: true, env: env, chdir: chdir.to_s, output: output, error: output)
