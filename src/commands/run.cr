@@ -32,18 +32,25 @@ module Zap::Commands::Run
           raise "Script #{script_name} not found in #{package.name}." if !run_config.if_present && targets.size == 1
           next nil
         end
-        next {package, path, script_name, "#{command} #{script_arguments.join(" ")}"}
+        next Utils::Scripts::ScriptData.new(package, path, script_name, "#{command} #{script_arguments.join(" ")}")
       end.compact
 
-      # if run_config.parallel
-      Utils::Scripts.parallel_run(
-        config: config,
-        scripts: scripts,
-        print_header: false,
-      )
-      # else
-      # TODO: Sort scripts by topological order
-      # end
+      workspace_relationships = workspaces.try(&.relationships)
+
+      if !workspace_relationships || run_config.parallel
+        Utils::Scripts.parallel_run(
+          config: config,
+          scripts: scripts,
+          print_header: false,
+        )
+      else
+        Utils::Scripts.topological_run(
+          config: config,
+          scripts: scripts,
+          relationships: workspace_relationships,
+          print_header: false,
+        )
+      end
     rescue ex : Exception
       reporter.error(ex)
       exit 1
