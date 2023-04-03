@@ -178,6 +178,7 @@ module Zap::Utils::Scripts
     output = output_io || IO::Memory.new
     # See: https://docs.npmjs.com/cli/v9/commands/npm-run-script
     paths = [] of Path | String
+    paths << Path.new(chdir, "node_modules", ".bin")
     Path.new(chdir).each_parent { |parent|
       if parent.basename == "node_modules" && ::File.directory?(parent / ".bin")
         paths << parent / ".bin"
