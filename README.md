@@ -59,7 +59,8 @@ zap --help
 | `zap init`    | `create`              | Create a new project or initialiaze a package.json file | ✅       |
 | `zap dlx`     | `x`                   | Execute a command in a temporary environment            | ✅       |
 | `zap store`   | `s`                   | Manage the store                                        | ✅       |
-| `zap run`     | `r`                   | Run a script defined in package.json                    | ⏳ _WIP_ |
+| `zap run`     | `r`                   | Run a script defined in package.json                    | ✅       |
+| `zap exec`    | _n/a_                 | Execute a binary installed as a dependency              | ⏳ _WIP_ |
 | `zap upgrade` | `up`                  | Upgrade dependencies                                    | ⏳ _WIP_ |
 
 #### Check the [project board](https://github.com/users/elbywan/projects/1/views/1) for the current status of the project.
@@ -122,6 +123,20 @@ zap i
 # Using pnpm-flavored filters (see: https://pnpm.io/filtering)
 zap i -F "./libs/**" -F ...@my/package...[origin/develop]
 zap i -w add pkg
+
+## Scripts can be scoped too
+
+# Run a single script in the current workspace.
+zap run my-script
+# Run scripts in all workspaces in parallel.
+# Will use topological ordering by default: dependencies will run first.
+zap -r run test
+# …or omit the "run" argument.
+zap -r test
+# Scope to the dependencies of a specific workspace, and pack the output.
+zap -F "my_app^..." --deferred-output run build
+# Disregard the topological ordering and run the scripts in parallel.
+zap run --parallel -r build
 ```
 
 - **[Overrides](https://docs.npmjs.com/cli/v9/configuring-npm/package-json?v=true#overrides) / [Package Extensions](https://pnpm.io/package_json#pnpmpackageextensions)**
