@@ -157,6 +157,9 @@ module Zap
       parser.on("--concurrency NB", "Set the maximum number of tasks that will be run in parallel. (default: 5)") do |concurrency|
         @config = @config.copy_with(concurrency: concurrency.to_i32)
       end
+      parser.on("--deferred-output", "Do not print the output in real time when running multiple scripts in parallel but instead defer it to have a nicer packed output. (default: false unless CI)") do
+        @config = @config.copy_with(deferred_output: true)
+      end
       parser.on("--version", "Show version.") do
         puts "v#{VERSION}"
         exit

@@ -19,8 +19,8 @@ module Zap::Commands::Run
           puts <<-TERM
             #{"scope".colorize.blue}: #{inferred_context.command_scope.size} package(s) • #{targets.map(&.[0].name).sort.join(", ")}
           TERM
-          puts "\n"
         end
+        puts "\n"
       end
 
       scripts = targets.flat_map do |package, path|
@@ -39,7 +39,7 @@ module Zap::Commands::Run
       Utils::Scripts.parallel_run(
         config: config,
         scripts: scripts,
-        print_header: false
+        print_header: false,
       )
       # else
       # TODO: Sort scripts by topological order

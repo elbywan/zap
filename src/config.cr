@@ -17,6 +17,7 @@ module Zap
     filters : Array(Utils::Filter)? = nil,
     recursive : Bool = false,
     root_workspace : Bool = false,
+    deferred_output : Bool = !!ENV["CI"]?
   ) do
     abstract struct CommandConfig
     end
