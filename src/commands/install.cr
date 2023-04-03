@@ -112,13 +112,13 @@ module Zap::Commands::Install
         {% end %}
       end
       puts <<-TERM
-          #{"project:".colorize.blue} #{config.prefix} • #{"store:".colorize.blue} #{config.global_store_path}#{workers_info}
-          #{"lockfile:".colorize.blue} #{lockfile.read_status.from_disk? ? "ok".colorize.green : lockfile.read_status.error? ? "read error".colorize.red : "not found".colorize.red} • #{"install strategy:".colorize.blue} #{install_config.install_strategy.to_s.downcase}
+         #{"project:".colorize.blue} #{config.prefix} • #{"store:".colorize.blue} #{config.global_store_path}#{workers_info}
+         #{"lockfile:".colorize.blue} #{lockfile.read_status.from_disk? ? "ok".colorize.green : lockfile.read_status.error? ? "read error".colorize.red : "not found".colorize.red} • #{"install strategy:".colorize.blue} #{install_config.install_strategy.to_s.downcase}
       TERM
 
       if workspaces
         puts <<-TERM
-            #{"install scope".colorize.blue}: #{inferred_context.install_scope.size} package(s) • #{inferred_context.scope_names(:install).sort.join(", ")}
+           #{"install scope".colorize.blue}: #{inferred_context.install_scope.size} package(s) • #{inferred_context.scope_names(:install).sort.join(", ")}
         TERM
       end
 
@@ -127,7 +127,7 @@ module Zap::Commands::Install
            inferred_context.command_scope.size != inferred_context.install_scope.size
          )
         puts <<-TERM
-            #{"add/remove scope".colorize.blue}: #{inferred_context.command_scope.size} package(s) • #{inferred_context.scope_names(:command).sort.join(", ")}
+           #{"add/remove scope".colorize.blue}: #{inferred_context.command_scope.size} package(s) • #{inferred_context.scope_names(:command).sort.join(", ")}
         TERM
       end
       puts "\n"

@@ -17,7 +17,7 @@ module Zap::Commands::Run
         Zap.print_banner
         if workspaces
           puts <<-TERM
-            #{"scope".colorize.blue}: #{inferred_context.command_scope.size} package(s) • #{targets.map(&.[0].name).sort.join(", ")}
+             #{"scope".colorize.blue}: #{inferred_context.command_scope.size} package(s) • #{targets.map(&.[0].name).sort.join(", ")}
           TERM
         end
         puts "\n"
