@@ -84,7 +84,10 @@ module Zap::Commands::Install
     state.reporter.report_done(realtime, memory, state.install_config)
     null_io.try &.close
   rescue e
-    reporter.try &.error(e)
+    reporter.try { |r|
+      r.output << "\n"
+      r.error(e)
+    }
     Zap::Log.debug { e.backtrace.map { |line| "\t#{line}" }.join("\n").colorize.red }
     null_io.try &.close
     exit ErrorCodes::INSTALL_COMMAND_FAILED.to_i32
