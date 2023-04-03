@@ -126,8 +126,8 @@ class Zap::Reporter::Interactive < Zap::Reporter
 
   def error(error : Exception, location : String? = "")
     @lock.synchronize do
-      @out << header("❌", "Error(s):", :red) + location << "\n"
-      @out << "  • #{error.message}".colorize.red << "\n"
+      @out << header("❌", "Error(s):", :red) + location << "\n" << "\n"
+      @out << " • #{error.message.try &.split("\n").join("\n   ")}" << "\n"
       Zap::Log.debug { error.backtrace.map { |line| "\t#{line}" }.join("\n").colorize.red }
     end
   end

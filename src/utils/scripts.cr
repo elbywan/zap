@@ -63,7 +63,6 @@ module Zap::Utils::Scripts
         @reporter.output_sync do |output|
           output << "\n" if @single_script
           output << "⏺".colorize(196) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{"failed".colorize.bold.red} #{"(took: #{time.seconds.humanize}s)".colorize.dim}" << "\n"
-          output << "\n"
         end
       end
     end
@@ -87,13 +86,13 @@ module Zap::Utils::Scripts
       def on_finish(time : Time::Span)
         @reporter.output_sync do |output|
           self_output = @output
-          unless @single_script || !self_output.is_a?(IO::Memory) || self_output.size == 0
+          if @single_script
             output << "\n"
-            # output << "⏺".colorize(46) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{"Output:".colorize.bold}" << "\n"
-            # output << "\n"
+          elsif self.output.as?(IO::Memory).try(&.size.> 0)
+            output << "\n"
             output << self_output
+            output << "\n"
           end
-          output << "\n"
           output << "⏺".colorize(46) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{"success".colorize.bold.green} #{"(took: #{time.seconds.humanize}s)".colorize.dim}" << "\n"
         end
       end
@@ -101,16 +100,14 @@ module Zap::Utils::Scripts
       def on_error(error : Exception, time : Time::Span)
         @reporter.output_sync do |output|
           self_output = @output
-          unless @single_script || !self_output.is_a?(IO::Memory) || self_output.size == 0
+          if @single_script
             output << "\n"
-            # output << "⏺".colorize(196) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{"Output:".colorize.bold}" << "\n"
-            # output << "\n"
+          elsif self.output.as?(IO::Memory).try(&.size.> 0)
+            output << "\n"
             output << self_output
             output << "\n"
           end
-          output << "\n"
           output << "⏺".colorize(196) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{"failed".colorize.bold.red} #{"(took: #{time.seconds.humanize}s)".colorize.dim}" << "\n"
-          output << "\n"
         end
       end
     end
@@ -257,7 +254,7 @@ module Zap::Utils::Scripts
     yield command, :before
     status = Process.run(command, **args, shell: true, env: env, chdir: chdir.to_s, output: output, error: output)
     if !status.success? && raise_on_error_code
-      raise "#{output.is_a?(IO::Memory) && output_io.nil? ? output.to_s : ""}Command failed: #{command} (#{status.exit_status})"
+      raise "#{output.is_a?(IO::Memory) && output_io.nil? ? output.to_s + "\n" : ""}Command failed: #{command} (#{status.exit_status})"
     end
     yield command, :after
   end
@@ -305,7 +302,7 @@ module Zap::Utils::Scripts
       rescue ex : Exception
         total_time = Time.monotonic - time
         printer.on_error(ex, total_time)
-        raise "Failed to run #{package.name} #{script_name}: #{ex.message}"
+        raise "Error while running script #{package.name.colorize(color).bold} #{script_name.colorize.cyan}\n#{ex.message}"
       end
     end
   end
