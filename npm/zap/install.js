@@ -22,13 +22,12 @@ const intermediatePath = path.join(__dirname, "bin", "zap.bin");
 
 try {
   fs.chmodSync(originalPath, 0o755);
-  fs.rmSync(intermediatePath, { force: true });
   fs.linkSync(originalPath, intermediatePath);
   fs.renameSync(intermediatePath, targetPath);
   fs.rmSync(intermediatePath, { force: true });
 } catch (error) {
-  fs.rmSync(intermediatePath, { force: true });
   console.error("Error while installing the zap binary!");
   console.error(error);
-  process.exit(2);
+  // Swallow the error and continue.
+  // process.exit(2);
 }
