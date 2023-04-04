@@ -17,7 +17,26 @@ if (!modulePath) {
   process.exit(1);
 }
 
+// The actual binary is located in the [platform]-[arch] package's bin directory.
 const binaryPath = path.join(path.dirname(modulePath), "bin", "zap");
+
+// Attempt to replace this node.js script with the binary.
+try {
+  const targetPath = path.join(__dirname, "zap");
+  const intermediatePath = path.join(__dirname, "zap.bin");
+
+  // Make the binary executable.
+  fs.chmodSync(binaryPath, 0o755);
+  // Remove any existing intermediate file.
+  fs.rmSync(intermediatePath, { force: true });
+  // Create a hard link to the binary.
+  fs.linkSync(binaryPath, intermediatePath);
+  // Atomically replace this script with the binary.
+  fs.renameSync(intermediatePath, targetPath);
+} catch (err) {
+  /* silently swallow errors */
+}
+
 const args = process.argv.slice(2);
 
 childProcess.execFileSync(binaryPath, args, {

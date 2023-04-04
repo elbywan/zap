@@ -3,9 +3,6 @@
   "version": "0.0.20",
   "description": "Zap is a package manager for the Javascript language",
   "main": "index.js",
-  "scripts": {
-    "postinstall": "node install.js"
-  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/elbywan/zap.git"
