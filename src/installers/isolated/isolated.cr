@@ -222,7 +222,8 @@ module Zap::Installer::Isolated
         Set(Package).new.tap do |resolved_peers|
           ancestors.each do |ancestor|
             ancestor.pinned_dependencies.each do |name, version_or_alias|
-              dependency = state.lockfile.get_package(name, version_or_alias)
+              dependency = state.lockfile.get_package?(name, version_or_alias)
+              next unless dependency
               resolved_peers << dependency if peers.has_key?(version_or_alias.is_a?(String) ? dependency.name : name)
             end
             break if resolved_peers.size == peers.size

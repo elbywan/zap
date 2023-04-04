@@ -67,6 +67,10 @@ class Zap::Lockfile
     packages[version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key]
   end
 
+  def get_package?(name : String, version_or_alias : String | Package::Alias)
+    packages[version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key]?
+  end
+
   def prune : Set({String, String | Package::Alias, String})
     pruned_direct_dependencies = Set({String, String | Package::Alias, String}).new
     pinned_deps = Set(String).new
