@@ -149,7 +149,7 @@ zap run --parallel -r build
   }
 },
 "zap": {
-  "packageExtensions": {
+  "package_extensions": {
     "react-redux@1": {
       "peerDependencies": {
         "react-dom": "*"
