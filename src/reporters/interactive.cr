@@ -109,6 +109,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
         @out.print "\n"
       end
       @written = false
+      @lines.set(0)
     rescue Channel::ClosedError
       # Ignore
     end
@@ -126,9 +127,23 @@ class Zap::Reporter::Interactive < Zap::Reporter
 
   def error(error : Exception, location : String? = "")
     @lock.synchronize do
+      @out << "\n"
       @out << header("❌", "Error(s):", :red) + location << "\n" << "\n"
       @out << " • #{error.message.try &.split("\n").join("\n   ")}" << "\n"
+      @out << "\n"
       Zap::Log.debug { error.backtrace.map { |line| "\t#{line}" }.join("\n").colorize.red }
+    end
+  end
+
+  def errors(errors : Array(Tuple(Exception, String)))
+    @lock.synchronize do
+      @out << "\n"
+      @out << header("❌", "Error(s):", :red) << "\n" << "\n"
+      errors.each do |(error, message)|
+        @out << " • #{message.try &.split("\n").join("\n   ")}" << "\n"
+        Zap::Log.debug { error.backtrace.map { |line| "\t#{line}" }.join("\n").colorize.red }
+      end
+      @out << "\n"
     end
   end
 
@@ -172,7 +187,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
     end
   end
 
-  def header(emoji, str, color = :default)
+  def header(emoji : String, str : String, color = :default)
     %( ○ #{emoji} #{str.ljust(25).colorize(color).bright})
   end
 
@@ -180,23 +195,26 @@ class Zap::Reporter::Interactive < Zap::Reporter
     @update_channel = Channel(Int32?).new
     Utils::Thread.worker do
       @lines.set(1)
+      resolving_header = header("🔍", "Resolving…", :yellow)
+      downloading_header = header("📡", "Downloading…", :cyan)
+      packing_header = header("🎁", "Packing…")
       loop do
         msg = @update_channel.receive?
         break if msg.nil?
         output = String.build do |str|
           str << @cursor.clear_lines(@lines.get, :up)
-          str << header("🔍", "Resolving…", :yellow)
+          str << resolving_header
           str << %([#{@resolved_packages.get}/#{@resolving_packages.get}])
           @lines.set(1)
           if (downloading = @downloading_packages.get) > 0
             str << "\n"
-            str << header("📡", "Downloading…", :cyan)
+            str << downloading_header
             str << %([#{@downloaded_packages.get}/#{downloading}])
             @lines.add(1)
           end
           if (packing = @packing_packages.get) > 0
             str << "\n"
-            str << header("🎁", "Packing…")
+            str << packing_header
             str << %([#{@packed_packages.get}/#{packing}])
             @lines.add(1)
           end
@@ -214,13 +232,14 @@ class Zap::Reporter::Interactive < Zap::Reporter
   def report_installer_updates
     @update_channel = Channel(Int32?).new
     Utils::Thread.worker do
+    installing_header = header("💽", "Installing…", :magenta)
       loop do
         msg = @update_channel.receive?
         break if msg.nil?
         next if @installing_packages.get == 0
         @io_lock.synchronize do
           @out << @cursor.clear_line
-          @out << header("💽", "Installing…", :magenta)
+          @out << installing_header
           @out << %([#{@installed_packages.get}/#{@installing_packages.get}])
           @out.flush
         end
@@ -230,13 +249,14 @@ class Zap::Reporter::Interactive < Zap::Reporter
 
   def report_builder_updates
     @update_channel = Channel(Int32?).new
+    building_header = header("🏗️", "Building…", :light_red)
     Utils::Thread.worker do
       loop do
         msg = @update_channel.receive?
         break if msg.nil?
         @io_lock.synchronize do
           @out << @cursor.clear_line
-          @out << header("🏗️", "Building…", :light_red)
+          @out << building_header
           @out << %([#{@built_packages.get}/#{@building_packages.get}])
           @out.flush
         end

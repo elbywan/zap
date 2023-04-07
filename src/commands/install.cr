@@ -120,8 +120,10 @@ module Zap::Commands::Install
       TERM
 
       if workspaces
+        install_scope_packages = inferred_context.scope_names(:install).sort.join(", ")
+        suffix = install_scope_packages.size > 0 ? " • #{install_scope_packages}" : ""
         puts <<-TERM
-           #{"install scope".colorize.blue}: #{inferred_context.install_scope.size} package(s) • #{inferred_context.scope_names(:install).sort.join(", ")}
+           #{"install scope".colorize.blue}: #{inferred_context.install_scope.size} package(s)#{suffix}}
         TERM
       end
 
@@ -129,8 +131,10 @@ module Zap::Commands::Install
            (install_config.removed_packages.size > 0 || install_config.added_packages.size > 0) &&
            inferred_context.command_scope.size != inferred_context.install_scope.size
          )
+        command_scope_packages = inferred_context.scope_names(:command).sort.join(", ")
+        suffix = command_scope_packages.size > 0 ? " • #{command_scope_packages}" : ""
         puts <<-TERM
-           #{"add/remove scope".colorize.blue}: #{inferred_context.command_scope.size} package(s) • #{inferred_context.scope_names(:command).sort.join(", ")}
+           #{"add/remove scope".colorize.blue}: #{inferred_context.command_scope.size} package(s)#{suffix}}
         TERM
       end
       puts "\n"
@@ -248,6 +252,7 @@ module Zap::Commands::Install
 
   private def self.run_install_hooks(state : State, installer : Installer::Base)
     if !state.install_config.ignore_scripts && installer.installed_packages_with_hooks.size > 0
+      error_messages = [] of {Exception, String}
       state.pipeline.reset
       # Process hooks in parallel
       state.pipeline.set_concurrency(state.config.concurrency)
@@ -260,7 +265,8 @@ module Zap::Commands::Install
             scripts.run_script(:install, path, state.config)
             scripts.run_script(:postinstall, path, state.config)
           rescue e
-            raise Exception.new("Error while running install scripts for #{package.name}@#{package.version} at #{path}\n\n#{e.message}", e)
+            error_messages << {e, "Error while running install scripts for #{package.name}@#{package.version} at #{path}\n\n#{e.message}"}
+            # raise Exception.new("Error while running install scripts for #{package.name}@#{package.version} at #{path}\n\n#{e.message}", e)
           ensure
             state.reporter.on_package_built
           end
@@ -269,6 +275,8 @@ module Zap::Commands::Install
 
       state.pipeline.await
       state.reporter.stop
+
+      state.reporter.errors(error_messages) if error_messages.size > 0
     end
   end
 

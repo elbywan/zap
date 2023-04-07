@@ -52,7 +52,6 @@ module Zap::Commands::Run
         )
       end
     rescue ex : Exception
-      reporter.output << "\n"
       reporter.error(ex)
       exit 1
     end
