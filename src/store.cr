@@ -28,7 +28,7 @@ struct Zap::Store
     Utils::TarGzip.unpack(io) do |entry, file_path, io|
       if (entry.flag === Crystar::DIR)
         store_package_dir(name, version, file_path)
-      else
+      elsif (entry.flag === Crystar::REG)
         store_package_file(name, version, file_path, entry.io, permissions: entry.mode)
       end
     end

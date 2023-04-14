@@ -18,7 +18,7 @@ module Zap::Utils::TarGzip
       next if file_path.to_s.empty?
       if (entry.flag === Crystar::DIR)
         Dir.mkdir_p(destination / file_path)
-      else
+      elsif (entry.flag === Crystar::REG)
         Dir.mkdir_p(destination / file_path.dirname)
         ::File.write(destination / file_path, io, perm: entry.mode.to_i32)
       end
