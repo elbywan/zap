@@ -236,7 +236,7 @@ module Zap::Utils::Scripts
     pipeline.await
   end
 
-  def self.run_script(command : String, chdir : Path | String, config : Config, raise_on_error_code = true, output_io = nil, **args, &block : String, Symbol ->)
+  def self.run_script(command : String, chdir : Path | String, config : Config, raise_on_error_code = true, output_io = nil, stdin = Process::Redirect::Close, **args, &block : String, Symbol ->)
     return if command.empty?
     output = output_io || IO::Memory.new
     # See: https://docs.npmjs.com/cli/v9/commands/npm-run-script
@@ -252,7 +252,7 @@ module Zap::Utils::Scripts
       "npm_execpath" => "zap",
     }
     yield command, :before
-    status = Process.run(command, **args, shell: true, env: env, chdir: chdir.to_s, output: output, error: output)
+    status = Process.run(command, **args, shell: true, env: env, chdir: chdir.to_s, output: output, input: stdin, error: output)
     if !status.success? && raise_on_error_code
       raise "#{output.is_a?(IO::Memory) && output_io.nil? ? output.to_s + "\n" : ""}Command failed: #{command} (#{status.exit_status})"
     end
@@ -273,6 +273,7 @@ module Zap::Utils::Scripts
   )
     package, path, script_name, script_command = script_data.package, script_data.path, script_data.script_name, script_data.script_command
     color = COLORS[index % COLORS.size]? || :default
+    inherit_stdin = single_script
     printer = begin
       if config.deferred_output
         Printer::Deferred.new(package, script_name, color, reporter, single_script)
@@ -296,7 +297,14 @@ module Zap::Utils::Scripts
         if script_name.is_a?(Symbol)
           package.scripts.not_nil!.run_script(script_name, path.to_s, config, output_io: printer.output, &hook)
         elsif script_command.is_a?(String)
-          Utils::Scripts.run_script(script_command, path.to_s, config, output_io: printer.output, &hook)
+          Utils::Scripts.run_script(
+            script_command,
+            path.to_s,
+            config,
+            output_io: printer.output,
+            stdin: inherit_stdin ? Process::Redirect::Inherit : Process::Redirect::Close,
+            &hook
+          )
         end
         on_completion.try(&.call(script_data))
       rescue ex : Exception
