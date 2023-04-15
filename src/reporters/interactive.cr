@@ -249,7 +249,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
 
   def report_builder_updates
     @update_channel = Channel(Int32?).new
-    building_header = header("🏗️", "Building…", :light_red)
+    building_header = header("🧱", "Building…", :light_red)
     Utils::Thread.worker do
       loop do
         msg = @update_channel.receive?
