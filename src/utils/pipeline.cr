@@ -19,6 +19,7 @@ class Zap::Pipeline
       @errors = nil
       @end_channel.close unless @end_channel.closed?
       @end_channel = Channel(Array(Exception)?).new
+      @sync_channel.try { |c| c.close unless c.closed? }
       @sync_channel = nil
       @awaited = false
     rescue
@@ -41,7 +42,10 @@ class Zap::Pipeline
       begin
         sync.send(nil)
         yield
-      ensure
+        sync.receive
+      rescue Channel::ClosedError
+        # Ignore
+      rescue ex
         sync.receive
       end
     end

@@ -84,11 +84,7 @@ module Zap::Commands::Install
     state.reporter.report_done(realtime, memory, state.install_config)
     null_io.try &.close
   rescue e
-    reporter.try { |r|
-      r.output << "\n"
-      r.error(e)
-    }
-    Zap::Log.debug { e.backtrace.map { |line| "\t#{line}" }.join("\n").colorize.red }
+    reporter.try &.error(e)
     null_io.try &.close
     exit ErrorCodes::INSTALL_COMMAND_FAILED.to_i32
   end
@@ -123,7 +119,7 @@ module Zap::Commands::Install
         install_scope_packages = inferred_context.scope_names(:install).sort.join(", ")
         suffix = install_scope_packages.size > 0 ? " • #{install_scope_packages}" : ""
         puts <<-TERM
-           #{"install scope".colorize.blue}: #{inferred_context.install_scope.size} package(s)#{suffix}}
+           #{"install scope".colorize.blue}: #{inferred_context.install_scope.size} package(s)#{suffix}
         TERM
       end
 
@@ -134,7 +130,7 @@ module Zap::Commands::Install
         command_scope_packages = inferred_context.scope_names(:command).sort.join(", ")
         suffix = command_scope_packages.size > 0 ? " • #{command_scope_packages}" : ""
         puts <<-TERM
-           #{"add/remove scope".colorize.blue}: #{inferred_context.command_scope.size} package(s)#{suffix}}
+           #{"add/remove scope".colorize.blue}: #{inferred_context.command_scope.size} package(s)#{suffix}
         TERM
       end
       puts "\n"
