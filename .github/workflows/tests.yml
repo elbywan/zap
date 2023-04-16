@@ -18,3 +18,5 @@ jobs:
         run: shards install
       - name: Run tests
         run: crystal spec
+      - name: Run tests (multithreaded)
+        run: crystal spec -Dpreview_mt
