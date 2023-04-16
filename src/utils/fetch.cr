@@ -21,7 +21,7 @@ module Zap::Fetch
         @cache = SafeHash(String, String).new
       end
 
-      def get(url, etag : String? = nil, *, fallback = true) : String?
+      def get(url : String, etag : String? = nil, *, fallback = true) : String?
         key = self.class.hash(url)
         own = @cache[key]?
         return own if own
@@ -34,7 +34,7 @@ module Zap::Fetch
         # cache miss
       end
 
-      def set(url, value, expiry : Time::Span? = nil, etag : String? = nil, *, fallback = true) : Nil
+      def set(url : String, value : String, expiry : Time::Span? = nil, etag : String? = nil, *, fallback = true) : Nil
         key = self.class.hash(url)
         @cache[key] = value
         @fallback.try &.set(key, value, expiry, etag) if fallback
@@ -56,7 +56,7 @@ module Zap::Fetch
         Dir.mkdir_p(@path)
       end
 
-      def get(url, etag : String? = nil) : String?
+      def get(url : String, etag : String? = nil) : String?
         key = self.class.hash(url)
         path = @path / key / BODY_FILE_NAME
         return nil unless File.readable?(path)
@@ -76,7 +76,7 @@ module Zap::Fetch
         end
       end
 
-      def set(url, value, expiry : Time::Span? = nil, etag : String? = nil) : Nil
+      def set(url : String, value : String, expiry : Time::Span? = nil, etag : String? = nil) : Nil
         key = self.class.hash(url)
         root_path = @path / key
         Log.debug { "(#{url}) Storing metadata at #{root_path}" }
@@ -95,7 +95,7 @@ module Zap::Fetch
     @size = 0
     @pool : Channel(HTTP::Client)
 
-    def initialize(@base_url : String, @size = 20, @cache : Cache = Cache::InMemory.new, &block)
+    def initialize(@base_url : String, @size = 20, @cache : Cache = Cache::InMemory.new, &)
       @pool = Channel(HTTP::Client).new(@size)
       @size.times do
         client = HTTP::Client.new(URI.parse base_url)
@@ -108,7 +108,7 @@ module Zap::Fetch
       initialize(base_url, max_clients) { }
     end
 
-    def client(retry_attempts = 3)
+    def client(retry_attempts = 3, &)
       retry_count = 0
       begin
         client = @pool.receive
@@ -128,7 +128,7 @@ module Zap::Fetch
       client.try { |c| @pool.send(c) }
     end
 
-    def cached_fetch(*args, **kwargs, &block) : String
+    def cached_fetch(*args, **kwargs, &) : String
       url = args[0]
       full_url = @base_url + url
 

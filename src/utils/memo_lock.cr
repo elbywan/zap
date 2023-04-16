@@ -27,6 +27,7 @@ module Zap::Utils::MemoLock(T)
     @sync_channel.delete(key).try do |chan|
       if value.is_a?(T)
         loop do
+          Fiber.yield
           select
           when chan.send(value)
             next
@@ -81,6 +82,7 @@ module Zap::Utils::MemoLock::Global
       @@%sync_channel.delete(key).try do |chan|
         if value.is_a?({{type}})
           loop do
+            Fiber.yield
             select
             when chan.send(value)
               next
