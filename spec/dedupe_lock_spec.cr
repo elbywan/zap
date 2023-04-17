@@ -1,17 +1,17 @@
 require "./spec_helper"
-require "../src/utils/memo_lock"
+require "../src/utils/dedupe_lock"
 
-class MemoLocked
-  include Zap::Utils::MemoLock(Int32)
+class Deduped
+  include Zap::Utils::DedupeLock(Int32)
 end
 
-module GloballyMemoLocked
-  Zap::Utils::MemoLock::Global.memo_lock(:global, Int32)
+module GloballyDeduped
+  Zap::Utils::DedupeLock::Global.setup(:global, Int32)
 end
 
-describe Zap::Utils::MemoLock do
+describe Zap::Utils::DedupeLock do
   it "should lock and memoize a block" do
-    s = MemoLocked.new
+    s = Deduped.new
 
     check = Atomic(Int32).new(0)
     results = Array(Int32).new(10, 0)
@@ -19,8 +19,8 @@ describe Zap::Utils::MemoLock do
 
     1..10.times do |i|
       spawn do
-        results[i] = s.memo_lock("key") do
-          10.times { Fiber.yield }
+        results[i] = s.dedupe("key") do
+          sleep 0.1.seconds
           check.add(1)
           i + 10
         end
@@ -44,8 +44,8 @@ describe Zap::Utils::MemoLock do
     1..10.times do |i|
       spawn do
         # Key is either 0 or 1
-        results[i] = s.memo_lock((i % 2).to_s) do
-          10.times { Fiber.yield }
+        results[i] = s.dedupe((i % 2).to_s) do
+          sleep 0.1.seconds
           check.add(1)
           i
         end
@@ -67,7 +67,7 @@ describe Zap::Utils::MemoLock do
   end
 end
 
-describe Zap::Utils::MemoLock::Global do
+describe Zap::Utils::DedupeLock::Global do
   it "should lock and memoize a block" do
     check = Atomic(Int32).new(0)
     results = Array(Int32).new(10, 0)
@@ -75,8 +75,8 @@ describe Zap::Utils::MemoLock::Global do
 
     1..10.times do |i|
       spawn do
-        results[i] = GloballyMemoLocked.memo_lock_global("key") do
-          10.times { Fiber.yield }
+        results[i] = GloballyDeduped.dedupe_global("key") do
+          sleep 0.1.seconds
           check.add(1)
           i + 10
         end
@@ -100,8 +100,8 @@ describe Zap::Utils::MemoLock::Global do
     1..10.times do |i|
       spawn do
         # Key is either 0 or 1
-        results[i] = GloballyMemoLocked.memo_lock_global((i % 2).to_s) do
-          10.times { Fiber.yield }
+        results[i] = GloballyDeduped.dedupe_global((i % 2).to_s) do
+          sleep 0.1.seconds
           check.add(1)
           i
         end

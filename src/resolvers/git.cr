@@ -2,7 +2,7 @@ module Zap::Resolver
   @git_url : Utils::GitUrl
 
   private abstract struct GitBase < Base
-    Utils::MemoLock::Global.memo_lock(:clone, Package)
+    Utils::DedupeLock::Global.setup(:clone, Package)
 
     getter git_url : Utils::GitUrl
 
@@ -31,7 +31,7 @@ module Zap::Resolver
       yield
 
       # Clone the repo and run the prepare script if needed
-      self.class.memo_lock_clone(cache_key) do
+      GitBase.dedupe_clone(cache_key) do
         clone_to(cloned_folder_path) unless packed || cloned
         @state.reporter.on_packing_package
         prepare_package(cloned_folder_path) if metadata.scripts.try &.has_install_from_git_related_scripts?
@@ -59,7 +59,7 @@ module Zap::Resolver
       metadata_path = @package_name.empty? ? nil : @state.store.package_path(@package_name, cache_key + ".package.json")
       cloned_repo_path = Path.new(Dir.tempdir, cache_key)
 
-      self.class.memo_lock_clone(cache_key) do
+      GitBase.dedupe_clone(cache_key) do
         cloned = ::File.directory?(cloned_repo_path)
         metadata_cached = metadata_path && ::File.exists?(metadata_path)
         clone_to(cloned_repo_path) unless cloned || metadata_cached

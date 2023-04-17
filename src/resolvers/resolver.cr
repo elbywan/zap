@@ -76,7 +76,7 @@ abstract struct Zap::Resolver::Base
 end
 
 module Zap::Resolver
-  Utils::MemoLock::Global.memo_lock(:store, Bool)
+  Utils::DedupeLock::Global.setup(:store, Bool)
 
   GH_URL_REGEX   = /^https:\/\/github.com\/(?P<owner>[a-zA-Z0-9\-_]+)\/(?P<package>[^#^\/]+)(?:#(?P<hash>[.*]))?/
   GH_SHORT_REGEX = /^[^@].*\/.*$/
@@ -289,7 +289,7 @@ module Zap::Resolver
         end
       end
       # Attempt to store the package in the filesystem or in the cache if needed
-      stored = memo_lock_store(metadata.key) do
+      stored = dedupe_store(metadata.key) do
         resolver.store(metadata) { state.reporter.on_downloading_package }
       end
       # Call the on_resolve callback
