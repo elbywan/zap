@@ -1,4 +1,5 @@
 require "../zap"
+require "crystar"
 require "../ext/**"
 require "log"
 require "colorize"
