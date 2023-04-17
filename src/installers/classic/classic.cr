@@ -132,7 +132,7 @@ module Zap::Installer::Classic
           non_root = cache.find! { |c| !c.root }
           bin_folder_path = non_root.node_modules / ".bin"
         end
-        Dir.mkdir_p(bin_folder_path)
+        Utils::Directories.mkdir_p(bin_folder_path)
         if bin.is_a?(Hash)
           bin.each do |name, path|
             bin_name = name.split("/").last

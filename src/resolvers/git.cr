@@ -66,7 +66,7 @@ module Zap::Resolver
         Package.init(metadata_cached ? metadata_path.not_nil! : cloned_repo_path, append_filename: !metadata_cached).tap do |pkg|
           unless metadata_cached
             metadata_path ||= @state.store.package_path(pkg.name, cache_key + ".package.json")
-            ::Dir.mkdir_p(::File.dirname(metadata_path))
+            Utils::Directories.mkdir_p(::File.dirname(metadata_path))
             ::File.write(metadata_path, pkg.to_json)
           end
           pkg.dist = Package::GitDist.new(commit_hash, version.to_s, cache_key)
@@ -90,7 +90,7 @@ module Zap::Resolver
     end
 
     private def pack_package(package_path : Path, target_path : Path)
-      Dir.mkdir_p(target_path.dirname) # Create folder if needed
+      Utils::Directories.mkdir_p(target_path.dirname) # Create folder if needed
       Compress::Gzip::Writer.open(::File.new(target_path.to_s, "w"), sync_close: true) do |gzip|
         tar_writer = Crystar::Writer.new(gzip, sync_close: true)
         Utils::File.crawl_package_files(package_path) do |path|

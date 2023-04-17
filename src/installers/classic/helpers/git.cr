@@ -9,7 +9,7 @@ module Zap::Installer::Classic::Helpers::Git
     exists = Zap::Installer.package_already_installed?(dependency, target_path)
 
     unless exists
-      Dir.mkdir_p(target_path.dirname)
+      Utils::Directories.mkdir_p(target_path.dirname)
       state.reporter.on_installing_package
       ::File.open(packed_tarball_path, "r") do |tarball|
         Utils::TarGzip.unpack_to(tarball, target_path)

@@ -48,7 +48,7 @@ struct Zap::Store
     path = package_path(name, version)
     FileUtils.rm_rf(path) if Dir.exists?(path)
     File.delete?(package_metadata_path(name, version))
-    Dir.mkdir_p(path)
+    Utils::Directories.mkdir_p(path)
   end
 
   private def seal_package(name : String, version : String)
@@ -57,7 +57,7 @@ struct Zap::Store
 
   private def store_package_file(package_name : String, package_version : String, relative_file_path : String | Path, file_io : IO, permissions : Int64 = DEFAULT_CREATE_PERMISSIONS)
     file_path = package_path(package_name, package_version) / relative_file_path
-    Dir.mkdir_p(file_path.dirname)
+    Utils::Directories.mkdir_p(file_path.dirname)
     File.open(file_path, "w", perm: permissions.to_i32) do |file|
       IO.copy file_io, file
     end
@@ -65,6 +65,6 @@ struct Zap::Store
 
   private def store_package_dir(package_name : String, package_version : String, relative_dir_path : String | Path)
     file_path = package_path(package_name, package_version) / relative_dir_path
-    Dir.mkdir_p(file_path)
+    Utils::Directories.mkdir_p(file_path)
   end
 end

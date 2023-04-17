@@ -53,7 +53,7 @@ module Zap::Fetch
 
       def initialize(global_store_path)
         @path = Path.new(global_store_path, CACHE_DIR)
-        Dir.mkdir_p(@path)
+        Utils::Directories.mkdir_p(@path)
       end
 
       def get(url : String, etag : String? = nil) : String?
@@ -80,7 +80,7 @@ module Zap::Fetch
         key = self.class.hash(url)
         root_path = @path / key
         Log.debug { "(#{url}) Storing metadata at #{root_path}" }
-        Dir.mkdir_p(root_path)
+        Utils::Directories.mkdir_p(root_path)
         File.write(root_path / BODY_FILE_NAME_TEMP, value)
         File.rename(root_path / BODY_FILE_NAME_TEMP, root_path / BODY_FILE_NAME)
         File.write(root_path / META_FILE_NAME_TEMP, {"etag": etag, expiry: expiry ? (Time.utc + expiry).to_unix : nil}.to_json)

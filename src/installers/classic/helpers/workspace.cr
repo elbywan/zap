@@ -8,7 +8,7 @@ module Zap::Installer::Classic::Helpers::Workspace
     exists = ::File.symlink?(target_path) && ::File.realpath(target_path) == link_source.to_s
     unless exists
       state.reporter.on_installing_package
-      Dir.mkdir_p(target_path.dirname)
+      Utils::Directories.mkdir_p(target_path.dirname)
       FileUtils.rm_rf(target_path) if ::File.directory?(target_path)
       ::File.symlink(link_source, target_path)
       installer.on_install(dependency, target_path, state: state, cache: cache)

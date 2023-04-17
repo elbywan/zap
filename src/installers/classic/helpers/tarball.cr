@@ -5,7 +5,7 @@ module Zap::Installer::Classic::Helpers::Tarball
     end
 
     target = cache.last.node_modules
-    Dir.mkdir_p(target)
+    Utils::Directories.mkdir_p(target)
     installed = Backend.install(backend: :copy, dependency: dependency, target: target, store: state.store, aliased_name: aliased_name) {
       state.reporter.on_installing_package
     }

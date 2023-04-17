@@ -24,10 +24,10 @@ module Zap::Installer::Isolated
       super(state)
       @node_modules = Path.new(state.config.node_modules)
       @modules_store = @node_modules / ".zap"
-      Dir.mkdir_p(@modules_store)
+      Utils::Directories.mkdir_p(@modules_store)
 
       @hoisted_store = @modules_store / "node_modules"
-      Dir.mkdir_p(@hoisted_store)
+      Utils::Directories.mkdir_p(@hoisted_store)
 
       @hoist_patterns = hoist_patterns.map { |pattern| Regex.new("^#{Regex.escape(pattern).gsub("\\*", ".*")}$") }
       @public_hoist_patterns = public_hoist_patterns.map { |pattern| Regex.new("^#{Regex.escape(pattern).gsub("\\*", ".*")}$") }
@@ -39,7 +39,7 @@ module Zap::Installer::Isolated
       state.lockfile.roots.each do |name, root|
         workspace = state.context.workspaces.try &.find { |w| w.package.name == name }
         root_path = workspace.try(&.path./ "node_modules") || Path.new(state.config.node_modules)
-        Dir.mkdir_p(root_path)
+        Utils::Directories.mkdir_p(root_path)
         install_package(
           root,
           root_path: root_path,
@@ -89,7 +89,7 @@ module Zap::Installer::Isolated
           return install_path / package.name
         end
 
-        Dir.mkdir_p(install_path)
+        Utils::Directories.mkdir_p(install_path)
         case package.kind
         when .tarball_file?
           Helpers::File.install(package, install_path, installer: self, state: state)
@@ -191,7 +191,7 @@ module Zap::Installer::Isolated
     protected def self.link_binaries(package : Package, *, package_path : Path, target_node_modules : Path)
       if bin = package.bin
         base_bin_path = target_node_modules / ".bin"
-        Dir.mkdir_p(base_bin_path)
+        Utils::Directories.mkdir_p(base_bin_path)
         if bin.is_a?(Hash)
           bin.each do |name, path|
             bin_name = name.split("/").last
@@ -256,7 +256,7 @@ module Zap::Installer::Isolated
           File.symlink(source, target)
         end
       else
-        Dir.mkdir_p(target.dirname)
+        Utils::Directories.mkdir_p(target.dirname)
         File.symlink(source, target)
       end
     end

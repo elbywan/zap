@@ -46,9 +46,9 @@ module Zap::Resolver
         ::File.open(tar_path) do |io|
           Utils::TarGzip.unpack(io) do |entry, file_path, io|
             if (entry.flag === Crystar::DIR)
-              Dir.mkdir_p(temp_path / file_path)
+              Utils::Directories.mkdir_p(temp_path / file_path)
             elsif (entry.flag === Crystar::REG)
-              Dir.mkdir_p(temp_path / file_path.dirname)
+              Utils::Directories.mkdir_p(temp_path / file_path.dirname)
               ::File.write(temp_path / file_path, io)
             end
           end

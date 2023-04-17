@@ -20,7 +20,7 @@ module Zap::Installer::Classic::Helpers::File
     exists = ::File.symlink?(target_path) && ::File.realpath(target_path) == link_source.to_s
     unless exists
       state.reporter.on_installing_package
-      Dir.mkdir_p(target_path.dirname)
+      Utils::Directories.mkdir_p(target_path.dirname)
       FileUtils.rm_rf(target_path) if ::File.directory?(target_path)
       ::File.symlink(link_source, target_path)
       installer.on_install(dependency, target_path, state: state, cache: cache)
@@ -35,7 +35,7 @@ module Zap::Installer::Classic::Helpers::File
     target_path = cache.last.node_modules / install_folder
     exists = Zap::Installer.package_already_installed?(dependency, target_path)
     unless exists
-      Dir.mkdir_p(target_path.dirname)
+      Utils::Directories.mkdir_p(target_path.dirname)
       extracted_folder = Path.new(dist.path)
       state.reporter.on_installing_package
 
