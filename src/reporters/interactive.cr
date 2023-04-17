@@ -193,7 +193,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
 
   def report_resolver_updates
     @update_channel = Channel(Int32?).new
-    Utils::Thread.worker do
+    spawn do
       @lines.set(1)
       resolving_header = header("🔍", "Resolving…", :yellow)
       downloading_header = header("📡", "Downloading…", :cyan)
@@ -231,8 +231,8 @@ class Zap::Reporter::Interactive < Zap::Reporter
 
   def report_installer_updates
     @update_channel = Channel(Int32?).new
-    Utils::Thread.worker do
-    installing_header = header("💽", "Installing…", :magenta)
+    spawn do
+      installing_header = header("💽", "Installing…", :magenta)
       loop do
         msg = @update_channel.receive?
         break if msg.nil?
@@ -250,7 +250,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
   def report_builder_updates
     @update_channel = Channel(Int32?).new
     building_header = header("🧱", "Building…", :light_red)
-    Utils::Thread.worker do
+    spawn do
       loop do
         msg = @update_channel.receive?
         break if msg.nil?
