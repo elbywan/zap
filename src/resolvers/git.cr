@@ -56,11 +56,11 @@ module Zap::Resolver
     def fetch_metadata : Package
       commit_hash = @git_url.commitish_hash
       cache_key = Digest::SHA1.hexdigest("zap--git-#{@git_url.base_url}-#{commit_hash}")
-      metadata_path = @package_name.empty? ? nil : @state.store.package_path(@package_name, cache_key + ".package.json")
       cloned_repo_path = Path.new(Dir.tempdir, cache_key)
 
       GitBase.dedupe_clone(cache_key) do
         cloned = ::File.directory?(cloned_repo_path)
+        metadata_path = @package_name.empty? ? nil : @state.store.package_path(@package_name, cache_key + ".package.json")
         metadata_cached = metadata_path && ::File.exists?(metadata_path)
         clone_to(cloned_repo_path) unless cloned || metadata_cached
         Package.init(metadata_cached ? metadata_path.not_nil! : cloned_repo_path, append_filename: !metadata_cached).tap do |pkg|

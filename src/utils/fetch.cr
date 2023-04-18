@@ -128,19 +128,20 @@ module Zap::Fetch
       client.try { |c| @pool.send(c) }
     end
 
-    def cached_fetch(*args, **kwargs, &) : String
+    def cached_fetch(*args, **kwargs, &block : HTTP::Client ->) : String
       url = args[0]
       full_url = @base_url + url
 
       # Extract the body from the cache if possible
       # (will try in memory, then on disk if the expiry date is still valid)
-      body = @cache.get(full_url)
-      return body if body
+      if body = @cache.get(full_url)
+        return body
+      end
       # Dedupe requests by having an inflight channel for each URL
       dedupe(url) do
         # debug! "[fetch] getting client… #{url}"
         client do |http|
-          yield http
+          block.call(http)
 
           # debug! "[fetch] got client #{url}"
 
@@ -149,11 +150,10 @@ module Zap::Fetch
             raise "Invalid status code from #{url} (#{response.status_code})" unless response.status_code == 200
             etag = response.headers["ETag"]?
             # Attempt to extract the body from the cache again but this time with the etag
-            body = @cache.get(full_url, etag)
-            if body
+            if cached_body = @cache.get(full_url, etag)
               cache_control_directives, expiry = extract_cache_headers(response)
-              @cache.set(full_url, body, expiry, etag)
-              return body
+              @cache.set(full_url, cached_body, expiry, etag)
+              next body
             end
           end
 
@@ -163,14 +163,14 @@ module Zap::Fetch
 
             etag = response.headers["ETag"]?
             cache_control_directives, expiry = extract_cache_headers(response)
-            body = response.body_io.gets_to_end
+            response_body = response.body_io.gets_to_end
 
-            if (response.headers["Content-Length"].to_i != body.bytesize)
+            if (response.headers["Content-Length"].to_i != response_body.bytesize)
               # I do not know why this happens, but it does sometimes.
-              raise "Content-Length mismatch for #{url} (#{response.headers["Content-Length"]} != #{body.bytesize})"
+              raise "Content-Length mismatch for #{url} (#{response.headers["Content-Length"]} != #{response_body.bytesize})"
             end
 
-            @cache.set(full_url, body, expiry, etag)
+            @cache.set(full_url, response_body, expiry, etag)
           end
         end
       end
