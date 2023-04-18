@@ -47,7 +47,8 @@ module Zap::Utils::TarGzip
       # npm strips one directory layer when installing the package (an equivalent of tar x --strip-components=1 is run).
       name: Path.new("package", relative_path).to_s,
       mode: info.permissions.to_i64,
-      size: info.size
+      size: info.size,
+      flag: Crystar::REG.ord.to_u8,
     )
     tw.write_header(hdr)
     ::File.open(full_path, "r") do |file|
