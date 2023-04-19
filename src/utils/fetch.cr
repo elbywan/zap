@@ -79,12 +79,16 @@ module Zap::Fetch
       def set(url : String, value : String, expiry : Time::Span? = nil, etag : String? = nil) : Nil
         key = self.class.hash(url)
         root_path = @path / key
+        body_file_path = root_path / BODY_FILE_NAME
+        body_file_path_temp = root_path / BODY_FILE_NAME_TEMP
+        meta_file_path = root_path / META_FILE_NAME
+        meta_file_path_temp = root_path / META_FILE_NAME_TEMP
         Log.debug { "(#{url}) Storing metadata at #{root_path}" }
         Utils::Directories.mkdir_p(root_path)
-        File.write(root_path / BODY_FILE_NAME_TEMP, value)
-        File.rename(root_path / BODY_FILE_NAME_TEMP, root_path / BODY_FILE_NAME)
-        File.write(root_path / META_FILE_NAME_TEMP, {"etag": etag, expiry: expiry ? (Time.utc + expiry).to_unix : nil}.to_json)
-        File.rename(root_path / META_FILE_NAME_TEMP, root_path / META_FILE_NAME)
+        File.write(body_file_path_temp, value)
+        File.rename(body_file_path_temp, body_file_path)
+        File.write(meta_file_path_temp, {"etag": etag, expiry: expiry ? (Time.utc + expiry).to_unix : nil}.to_json)
+        File.rename(meta_file_path_temp, meta_file_path)
       end
     end
   end
@@ -92,6 +96,7 @@ module Zap::Fetch
   class Pool
     include Zap::Utils::DedupeLock(Nil)
 
+    getter base_url : String
     @size = 0
     @pool : Channel(HTTP::Client)
 

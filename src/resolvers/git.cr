@@ -32,14 +32,18 @@ module Zap::Resolver
 
       # Clone the repo and run the prepare script if needed
       GitBase.dedupe_clone(cache_key) do
-        clone_to(cloned_folder_path) unless packed || cloned
-        @state.reporter.on_packing_package
-        prepare_package(cloned_folder_path) if metadata.scripts.try &.has_install_from_git_related_scripts?
-        # Pack the package into a tarball and remove the cloned folder
-        pack_package(cloned_folder_path, tarball_path)
-        metadata
-      ensure
-        @state.reporter.on_package_packed
+        state.store.with_lock(cache_key) do
+          packed = ::File.exists?(tarball_path)
+          cloned = ::File.directory?(cloned_folder_path)
+          clone_to(cloned_folder_path) unless packed || cloned
+          @state.reporter.on_packing_package
+          prepare_package(cloned_folder_path) if metadata.scripts.try &.has_install_from_git_related_scripts?
+          # Pack the package into a tarball and remove the cloned folder
+          pack_package(cloned_folder_path, tarball_path)
+          metadata
+        ensure
+          @state.reporter.on_package_packed
+        end
       end
       FileUtils.rm_rf(cloned_folder_path)
       true
@@ -59,17 +63,19 @@ module Zap::Resolver
       cloned_repo_path = Path.new(Dir.tempdir, cache_key)
 
       GitBase.dedupe_clone(cache_key) do
-        cloned = ::File.directory?(cloned_repo_path)
-        metadata_path = @package_name.empty? ? nil : @state.store.package_path(@package_name, cache_key + ".package.json")
-        metadata_cached = metadata_path && ::File.exists?(metadata_path)
-        clone_to(cloned_repo_path) unless cloned || metadata_cached
-        Package.init(metadata_cached ? metadata_path.not_nil! : cloned_repo_path, append_filename: !metadata_cached).tap do |pkg|
-          unless metadata_cached
-            metadata_path ||= @state.store.package_path(pkg.name, cache_key + ".package.json")
-            Utils::Directories.mkdir_p(::File.dirname(metadata_path))
-            ::File.write(metadata_path, pkg.to_json)
+        state.store.with_lock(cache_key) do
+          cloned = ::File.directory?(cloned_repo_path)
+          metadata_path = @package_name.empty? ? nil : @state.store.package_path(@package_name, cache_key + ".package.json")
+          metadata_cached = metadata_path && ::File.exists?(metadata_path)
+          clone_to(cloned_repo_path) unless cloned || metadata_cached
+          Package.init(metadata_cached ? metadata_path.not_nil! : cloned_repo_path, append_filename: !metadata_cached).tap do |pkg|
+            unless metadata_cached
+              metadata_path ||= @state.store.package_path(pkg.name, cache_key + ".package.json")
+              Utils::Directories.mkdir_p(::File.dirname(metadata_path))
+              ::File.write(metadata_path, pkg.to_json)
+            end
+            pkg.dist = Package::GitDist.new(commit_hash, version.to_s, cache_key)
           end
-          pkg.dist = Package::GitDist.new(commit_hash, version.to_s, cache_key)
         end
       end
     end

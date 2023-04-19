@@ -37,60 +37,62 @@ module Zap::Resolver
 
     def store(metadata : Package, &on_downloading) : Bool
       raise "Resolver::Registry has not been initialized" unless client_pool = @@client_pool
-      return false if state.store.package_is_cached?(metadata.name, metadata.version)
+      state.store.with_lock(metadata.name, metadata.version) do
+        next false if state.store.package_is_cached?(metadata.name, metadata.version)
 
-      yield
+        yield
 
-      dist = metadata.dist.not_nil!.as(Package::RegistryDist)
-      tarball_url = dist.tarball
-      integrity = dist.integrity.try &.split(" ")[0]
-      shasum = dist.shasum
-      version = metadata.version
-      unsupported_algorithm = false
-      algorithm, hash, algorithm_instance = nil, nil, nil
+        dist = metadata.dist.not_nil!.as(Package::RegistryDist)
+        tarball_url = dist.tarball
+        integrity = dist.integrity.try &.split(" ")[0]
+        shasum = dist.shasum
+        version = metadata.version
+        unsupported_algorithm = false
+        algorithm, hash, algorithm_instance = nil, nil, nil
 
-      if integrity
-        algorithm, hash = integrity.split("-")
-      else
-        unsupported_algorithm = true
-      end
-
-      algorithm_instance = case algorithm
-                           when "sha1"
-                             Digest::SHA1.new
-                           when "sha256"
-                             Digest::SHA256.new
-                           when "sha512"
-                             Digest::SHA512.new
-                           else
-                             unsupported_algorithm = true
-                             Digest::SHA1.new
-                           end
-
-      client_pool.client &.get(tarball_url) do |response|
-        raise "Invalid status code from #{tarball_url} (#{response.status_code})" unless response.status_code == 200
-
-        IO::Digest.new(response.body_io, algorithm_instance).tap do |io|
-          state.store.store_unpacked_tarball(package_name, version, io)
-
-          io.skip_to_end
-          computed_hash = io.final
-          if unsupported_algorithm
-            if computed_hash.hexstring != shasum
-              state.store.remove_package(package_name, version)
-              raise "shasum mismatch for #{tarball_url} (#{shasum})"
-            end
-          else
-            if Base64.strict_encode(computed_hash) != hash
-              state.store.remove_package(package_name, version)
-              raise "integrity mismatch for #{tarball_url} (#{integrity})"
-            end
-          end
-        rescue e
-          state.store.remove_package(package_name, version)
-          raise e
+        if integrity
+          algorithm, hash = integrity.split("-")
+        else
+          unsupported_algorithm = true
         end
-        true
+
+        algorithm_instance = case algorithm
+                             when "sha1"
+                               Digest::SHA1.new
+                             when "sha256"
+                               Digest::SHA256.new
+                             when "sha512"
+                               Digest::SHA512.new
+                             else
+                               unsupported_algorithm = true
+                               Digest::SHA1.new
+                             end
+
+        client_pool.client &.get(tarball_url) do |response|
+          raise "Invalid status code from #{tarball_url} (#{response.status_code})" unless response.status_code == 200
+
+          IO::Digest.new(response.body_io, algorithm_instance).tap do |io|
+            state.store.store_unpacked_tarball(package_name, version, io)
+
+            io.skip_to_end
+            computed_hash = io.final
+            if unsupported_algorithm
+              if computed_hash.hexstring != shasum
+                state.store.remove_package(package_name, version)
+                raise "shasum mismatch for #{tarball_url} (#{shasum})"
+              end
+            else
+              if Base64.strict_encode(computed_hash) != hash
+                state.store.remove_package(package_name, version)
+                raise "integrity mismatch for #{tarball_url} (#{integrity})"
+              end
+            end
+          rescue e
+            state.store.remove_package(package_name, version)
+            raise e
+          end
+          true
+        end
       end
     end
 
@@ -204,8 +206,10 @@ module Zap::Resolver
     private def fetch_metadata : Package?
       raise "Resolver::Registry has not been initialized" unless client_pool = @@client_pool
       base_url = @@base_url
-      manifest = client_pool.cached_fetch("/#{package_name}", HEADERS)
-      find_valid_version(manifest, self.version)
+      state.store.with_lock("#{base_url}/#{package_name}") do
+        manifest = client_pool.cached_fetch("/#{package_name}", HEADERS)
+        find_valid_version(manifest, self.version)
+      end
     end
   end
 end

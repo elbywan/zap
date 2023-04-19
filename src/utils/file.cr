@@ -117,4 +117,16 @@ module Zap::Utils::File
     end
     PackagesData.new(workspace_package, workspace_package_dir, nearest_package, nearest_package_dir)
   end
+
+  def self.with_flock(path : Path | String, *, shared = false, &block : -> T) forall T
+    Dir.mkdir_p(path.dirname)
+    file = ::File.new(path, "w")
+    shared ? file.flock_shared : file.flock_exclusive
+    yield
+  ensure
+    if file
+      file.flock_unlock
+      file.close
+    end
+  end
 end
