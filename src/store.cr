@@ -53,16 +53,46 @@ struct Zap::Store
     temp_path
   end
 
-  def with_lock(name : String, version : String, &block)
-    with_lock(normalize_path("#{name}@#{version}")) do
+  def with_lock(name : String, version : String, config : Config, &block)
+    with_lock(normalize_path("#{name}@#{version}"), config) do
       yield
     end
   end
 
-  def with_lock(lock_name : String | Path, &block)
-    lock_path = Path.new(@global_locks_store_path, normalize_path "#{lock_name}.lock")
-    Utils::File.with_flock(lock_path) do
+  @@global_flock_lock = Mutex.new
+  @@global_flock_counter : Int32 = 0
+  @@global_flock : ::File | Nil = nil
+
+  def with_lock(lock_name : String | Path, config : Config, &block)
+    case config.flock_scope
+    in .none?
       yield
+    in .global?
+      begin
+        @@global_flock_lock.synchronize do
+          @@global_flock_counter += 1
+          if @@global_flock.nil?
+            # Open once once to avoid hitting the "too many open files" limit
+            @@global_flock = File.open(Path.new(@global_locks_store_path, "global.lock"), "w")
+          end
+        end
+        Utils::File.with_flock("", file: @@global_flock, close_fd: false, unlock_flock: false) do
+          yield
+        end
+      ensure
+        @@global_flock_lock.synchronize do
+          @@global_flock_counter -= 1
+          if @@global_flock_counter == 0
+            @@global_flock.try &.close
+            @@global_flock = nil
+          end
+        end
+      end
+    in .package?
+      lock_path = Path.new(@global_locks_store_path, normalize_path "#{lock_name}.lock")
+      Utils::File.with_flock(lock_path) do
+        yield
+      end
     end
   end
 

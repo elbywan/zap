@@ -37,7 +37,7 @@ module Zap::Resolver
 
     def store(metadata : Package, &on_downloading) : Bool
       raise "Resolver::Registry has not been initialized" unless client_pool = @@client_pool
-      state.store.with_lock(metadata.name, metadata.version) do
+      state.store.with_lock(metadata.name, metadata.version, state.config) do
         next false if state.store.package_is_cached?(metadata.name, metadata.version)
 
         yield
@@ -78,12 +78,10 @@ module Zap::Resolver
             computed_hash = io.final
             if unsupported_algorithm
               if computed_hash.hexstring != shasum
-                state.store.remove_package(package_name, version)
                 raise "shasum mismatch for #{tarball_url} (#{shasum})"
               end
             else
               if Base64.strict_encode(computed_hash) != hash
-                state.store.remove_package(package_name, version)
                 raise "integrity mismatch for #{tarball_url} (#{integrity})"
               end
             end
@@ -206,7 +204,7 @@ module Zap::Resolver
     private def fetch_metadata : Package?
       raise "Resolver::Registry has not been initialized" unless client_pool = @@client_pool
       base_url = @@base_url
-      state.store.with_lock("#{base_url}/#{package_name}") do
+      state.store.with_lock("#{base_url}/#{package_name}", state.config) do
         manifest = client_pool.cached_fetch("/#{package_name}", HEADERS)
         find_valid_version(manifest, self.version)
       end

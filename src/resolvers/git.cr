@@ -22,31 +22,32 @@ module Zap::Resolver
       cloned_folder_path = Path.new(Dir.tempdir, cache_key)
       tarball_path = @state.store.package_path(metadata.name, cache_key + ".tgz")
       packed = ::File.exists?(tarball_path)
-
+      did_store = false
       # If the tarball is there, early return
       return false if packed
-
-      cloned = ::File.directory?(cloned_folder_path)
 
       yield
 
       # Clone the repo and run the prepare script if needed
       GitBase.dedupe_clone(cache_key) do
-        state.store.with_lock(cache_key) do
+        state.store.with_lock(cache_key, state.config) do
           packed = ::File.exists?(tarball_path)
+          did_store = !packed
+          next metadata if packed
           cloned = ::File.directory?(cloned_folder_path)
-          clone_to(cloned_folder_path) unless packed || cloned
+          clone_to(cloned_folder_path) unless cloned
           @state.reporter.on_packing_package
           prepare_package(cloned_folder_path) if metadata.scripts.try &.has_install_from_git_related_scripts?
           # Pack the package into a tarball and remove the cloned folder
           pack_package(cloned_folder_path, tarball_path)
+          did_store = true
           metadata
         ensure
+          FileUtils.rm_rf(cloned_folder_path)
           @state.reporter.on_package_packed
         end
       end
-      FileUtils.rm_rf(cloned_folder_path)
-      true
+      did_store
     rescue e
       FileUtils.rm_rf(cloned_folder_path) if cloned_folder_path
       FileUtils.rm_rf(tarball_path) if tarball_path
@@ -63,7 +64,7 @@ module Zap::Resolver
       cloned_repo_path = Path.new(Dir.tempdir, cache_key)
 
       GitBase.dedupe_clone(cache_key) do
-        state.store.with_lock(cache_key) do
+        state.store.with_lock(cache_key, state.config) do
           cloned = ::File.directory?(cloned_repo_path)
           metadata_path = @package_name.empty? ? nil : @state.store.package_path(@package_name, cache_key + ".package.json")
           metadata_cached = metadata_path && ::File.exists?(metadata_path)
@@ -90,7 +91,7 @@ module Zap::Resolver
     )
       Commands::Install.run(
         config,
-        Config::Install.new,
+        Config::Install.new(save: false),
         store: state.store
       )
     end

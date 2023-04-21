@@ -161,6 +161,18 @@ module Zap
       parser.on("--deferred-output", "Do not print the output in real time when running multiple scripts in parallel but instead defer it to have a nicer packed output. (default: false unless CI)") do
         @config = @config.copy_with(deferred_output: true)
       end
+      parser.on(
+        "--flock-scope SCOPE",
+        <<-DESCRIPTION
+        Set the scope of the file lock mechanism used to prevent store corruption.
+        Possible values:
+          - global (default) : The lock is global to the whole store. Slower, but will not hit the maximum number of open files limit.
+          - package : The lock is scoped to the current package. Faster, but may hit the default maximum number of open files limit.
+          - none : No flock lock is used. Faster, but will not work if multiple Zap processes are running in parallel.
+        DESCRIPTION
+      ) do |scope|
+        @config = @config.copy_with(flock_scope: Config::FLockScope.parse(scope))
+      end
       parser.on("--version", "Show version.") do
         puts "v#{VERSION}"
         exit

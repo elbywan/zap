@@ -17,8 +17,15 @@ module Zap
     filters : Array(Utils::Filter)? = nil,
     recursive : Bool = false,
     root_workspace : Bool = false,
-    deferred_output : Bool = !!ENV["CI"]?
+    deferred_output : Bool = !!ENV["CI"]?,
+    flock_scope : FLockScope = FLockScope::Global,
   ) do
+    enum FLockScope
+      Global
+      Package
+      None
+    end
+
     abstract struct CommandConfig
     end
 
