@@ -247,11 +247,19 @@ module Zap::Installer::Isolated
     end
 
     protected def self.symlink(source, target)
-      # Is checking the path faster than always deleting?
-      # File.delete?(target)
-      # File.symlink(source, target)
-      if File.info?(target, follow_symlinks: false).try(&.type.symlink?)
-        if File.realpath(target) != source
+      info = File.info?(target, follow_symlinks: false)
+      if info
+        case info.type
+        when .symlink?
+          # Note: is checking the path and delete accordingly faster than always deleting?
+          if File.realpath(target) != source
+            File.delete(target)
+            File.symlink(source, target)
+          end
+        when .directory?
+          FileUtils.rm_rf(target)
+          File.symlink(source, target)
+        else
           File.delete(target)
           File.symlink(source, target)
         end
