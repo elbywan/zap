@@ -204,6 +204,10 @@ class Zap::Package
     raise "package.json not found at #{full_path}"
   end
 
+  def self.init_root_package(path : Path, *, append_filename : Bool = true) : self
+    init(path, append_filename: append_filename, name_if_nil: DEFAULT_ROOT)
+  end
+
   def self.init?(path : Path, *, append_filename : Bool = true) : self | Nil
     full_path = append_filename ? path / "package.json" : path
     return nil unless File.exists?(full_path)
