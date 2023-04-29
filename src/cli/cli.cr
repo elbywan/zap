@@ -31,12 +31,13 @@ module Zap
 
   def self.run
     if env = ENV["DEBUG"]?
+      backend = ::Log::IOBackend.new(formatter: Debug::Formatter)
       begin
         env.split(',').each { |source|
-          ::Log.setup(source, level: :debug)
+          ::Log.setup(source, level: :debug, backend: backend)
         }
       rescue
-        ::Log.setup_from_env(default_sources: "zap.*")
+        ::Log.setup_from_env(default_sources: "zap.*", backend: backend)
       end
     else
       ::Log.setup_from_env(default_sources: "zap.*")
@@ -241,5 +242,56 @@ module Zap
         {% end %}
       {% end %}
     end
+  end
+end
+
+struct Zap::Debug::Formatter < ::Log::StaticFormatter
+  COLORS = {
+    # IndianRed1
+    Colorize::Color256.new(203),
+    # DeepSkyBlue2
+    Colorize::Color256.new(38),
+    # Chartreuse3
+    Colorize::Color256.new(76),
+    # LightGoldenrod1
+    Colorize::Color256.new(227),
+    # MediumVioletRed
+    Colorize::Color256.new(126),
+    :blue,
+    :light_red,
+    :light_green,
+    :yellow,
+    :red,
+    :magenta,
+    :cyan,
+    :light_gray,
+    :green,
+    :dark_gray,
+    :light_yellow,
+    :light_blue,
+    :light_magenta,
+    :light_cyan,
+  }
+  @@sources = Hash(String, Colorize::Color256 | Symbol).new
+
+  def run
+    source = @entry.source
+    if source
+      source_color = @@sources[source]?
+      unless source_color
+        source_color = COLORS[@@sources.size % COLORS.size]
+        @@sources[source] = source_color
+      end
+      @io << source.colorize(source_color).bold
+    end
+    string " "
+    @io << @entry.severity.label.rjust(6).colorize.blue
+    string " ".colorize.dim
+    @io << @entry.timestamp.to_s("%H:%M:%S.%L").colorize.dim
+    string " - "
+    message
+    data(before: " -- ")
+    context(before: " -- ")
+    exception
   end
 end
