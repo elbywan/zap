@@ -94,9 +94,13 @@ module Zap::Resolver
     workspaces = state.context.workspaces
     workspace = begin
       if workspace_protocol
-        raise "workspace:// protocol is forbidden for non-direct dependencies." unless parent_is_workspace
-        raise "Workspace protocol must be used inside a workspace." unless workspaces
-        workspaces.get!(name, version_field)
+        raise "The workspace:* protocol is forbidden for non-direct dependencies." unless parent_is_workspace
+        raise "The workspace:* protocol must be used inside a workspace." unless workspaces
+        begin
+          workspaces.get!(name, version_field)
+        rescue e
+          raise "Workspace #{name} not found but required from package #{parent.try &.name} using #{version_field}. Did you forget to add it to the workspace list?"
+        end
       elsif parent_is_workspace
         workspaces.try(&.get(name, version_field))
       end
@@ -302,7 +306,6 @@ module Zap::Resolver
         state.reporter.stop
         package_in_error = "#{name}@#{version}"
         state.reporter.error(e, package_in_error.colorize.bold.to_s)
-        # raise e
         exit ErrorCodes::RESOLVER_ERROR.to_i32
       else
         # Silently ignore optional dependencies
@@ -436,7 +439,6 @@ module Zap::Resolver
       end
     rescue e
       state.reporter.stop
-      state.reporter.error(e, new_dep)
       raise e
     end
   end

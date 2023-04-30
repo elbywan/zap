@@ -32,13 +32,19 @@ module Zap::Installer::Classic
 
       # initialize the queue with all the root dependencies
       root_cache = CacheItem.new(node_modules: node_modules, root: true)
-      state.lockfile.roots.each do |name, root|
-        workspace = state.context.workspaces.try &.find { |w| w.package.name == name }
+
+      # for each root dependency, initialize the cache and queue the sub-dependencies
+      state.context.get_scope(:install).each do |workspace_or_main_package|
         initial_cache : Deque(CacheItem) = Deque(CacheItem).new
         initial_cache << root_cache
-        if workspace
+        if workspace_or_main_package.is_a?(Workspaces::Workspace)
+          workspace = workspace_or_main_package
           initial_cache << CacheItem.new(node_modules: workspace.path / "node_modules", root: true)
+          pkg_name = workspace.package.name
+        else
+          pkg_name = workspace_or_main_package.name
         end
+        root = state.lockfile.roots[pkg_name]
         root.pinned_dependencies?.try &.map { |name, version_or_alias|
           pkg = state.lockfile.get_package?(name, version_or_alias)
           next unless pkg

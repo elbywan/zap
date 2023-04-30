@@ -20,7 +20,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
   @written : Bool = false
   @logs : Array(String) = [] of String
 
-  def initialize(@out = Utils::Various::STDOUTSync.new)
+  def initialize(@out = STDOUT)
     @resolving_packages = Atomic(Int32).new(0)
     @resolved_packages = Atomic(Int32).new(0)
     @downloading_packages = Atomic(Int32).new(0)

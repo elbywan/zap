@@ -30,8 +30,7 @@ module Zap::Utils::Various
     if span.seconds > 0
       less_than_a_milli = false
       io << "#{span.seconds}s"
-    end
-    if span.milliseconds > 0
+    elsif span.milliseconds > 0
       less_than_a_milli = false
       io << "#{span.milliseconds}ms"
     end

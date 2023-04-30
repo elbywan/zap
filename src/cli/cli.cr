@@ -31,7 +31,7 @@ module Zap
 
   def self.run
     if env = ENV["DEBUG"]?
-      backend = ::Log::IOBackend.new(Utils::Various::STDOUTSync.new, formatter: Debug::Formatter)
+      backend = ::Log::IOBackend.new(STDOUT, formatter: Debug::Formatter)
       begin
         env.split(',').each { |source|
           ::Log.setup(source, level: :debug, backend: backend)

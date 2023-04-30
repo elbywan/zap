@@ -148,6 +148,18 @@ class Zap::Lockfile
     root.peer_dependencies = package.peer_dependencies
   end
 
+  def set_roots(package : Package, workspaces : Workspaces?)
+    root_keys = Set(String){package.name}
+    set_root(package)
+    workspaces.try &.each do |workspace|
+      root_keys << workspace.package.name
+      set_root(workspace.package)
+    end
+    roots.select! do |name|
+      name.in?(root_keys)
+    end
+  end
+
   def add_dependency(name : String, version : String, type : Symbol, scope : String)
     @roots_lock.synchronize do
       scoped_root = roots[scope] ||= Root.new(scope)

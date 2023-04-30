@@ -188,10 +188,7 @@ module Zap::Commands::Install
 
   private def self.clean_lockfile(state : State)
     workspaces, main_package = state.context.workspaces, state.main_package
-    state.lockfile.set_root(main_package)
-    workspaces.try &.each do |workspace|
-      state.lockfile.set_root(workspace.package)
-    end
+    state.lockfile.set_roots(main_package, workspaces)
     pruned_dependencies = state.lockfile.prune
     if state.config.global
       state.install_config.removed_packages.each do |name|

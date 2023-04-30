@@ -97,7 +97,7 @@ module Zap
         Command
       end
 
-      private def get_scope(type : ScopeType)
+      def get_scope(type : ScopeType)
         type.install? ? @install_scope : @command_scope
       end
 

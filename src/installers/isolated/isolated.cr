@@ -36,8 +36,14 @@ module Zap::Installer::Isolated
     alias Ancestors = Deque(Package | Lockfile::Root)
 
     def install : Nil
-      state.lockfile.roots.each do |name, root|
-        workspace = state.context.workspaces.try &.find { |w| w.package.name == name }
+      state.context.get_scope(:install).each do |workspace_or_main_package|
+        if workspace_or_main_package.is_a?(Workspaces::Workspace)
+          workspace = workspace_or_main_package
+          pkg_name = workspace.package.name
+        else
+          pkg_name = workspace_or_main_package.name
+        end
+        root = state.lockfile.roots[pkg_name]
         root_path = workspace.try(&.path./ "node_modules") || Path.new(state.config.node_modules)
         Utils::Directories.mkdir_p(root_path)
         install_package(
