@@ -55,14 +55,14 @@ module Zap::Utils::Scripts
       def on_finish(time : Time::Span)
         @reporter.output_sync do |output|
           output << "\n" if @single_script
-          output << "⏺".colorize(46) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{"success".colorize.bold.green} #{"(took: #{time.seconds.humanize}s)".colorize.dim}" << "\n"
+          output << "⏺".colorize(46) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{"success".colorize.bold.green} #{"(took: #{Utils::Various.format_time_span(time)})".colorize.dim}" << "\n"
         end
       end
 
       def on_error(error : Exception, time : Time::Span)
         @reporter.output_sync do |output|
           output << "\n" if @single_script
-          output << "⏺".colorize(196) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{"failed".colorize.bold.red} #{"(took: #{time.seconds.humanize}s)".colorize.dim}" << "\n"
+          output << "⏺".colorize(196) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{"failed".colorize.bold.red} #{"(took: #{Utils::Various.format_time_span(time)})".colorize.dim}" << "\n"
         end
       end
     end
@@ -93,7 +93,7 @@ module Zap::Utils::Scripts
             output << self_output
             output << "\n"
           end
-          output << "⏺".colorize(46) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{"success".colorize.bold.green} #{"(took: #{time.seconds.humanize}s)".colorize.dim}" << "\n"
+          output << "⏺".colorize(46) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{"success".colorize.bold.green} #{"(took: #{Utils::Various.format_time_span(time)})".colorize.dim}" << "\n"
         end
       end
 
@@ -107,7 +107,7 @@ module Zap::Utils::Scripts
             output << self_output
             output << "\n"
           end
-          output << "⏺".colorize(196) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{"failed".colorize.bold.red} #{"(took: #{time.seconds.humanize}s)".colorize.dim}" << "\n"
+          output << "⏺".colorize(196) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{"failed".colorize.bold.red} #{"(took: #{Utils::Various.format_time_span(time)})".colorize.dim}" << "\n"
         end
       end
     end

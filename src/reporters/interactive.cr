@@ -20,7 +20,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
   @written : Bool = false
   @logs : Array(String) = [] of String
 
-  def initialize(@out = STDOUT)
+  def initialize(@out = Utils::Various::STDOUTSync.new)
     @resolving_packages = Atomic(Int32).new(0)
     @resolved_packages = Atomic(Int32).new(0)
     @downloading_packages = Atomic(Int32).new(0)
@@ -299,7 +299,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
 
       @out << header("👌", "Done!", :green)
       if realtime
-        @out << "took #{realtime.total_seconds.humanize}s • ".colorize.dim
+        @out << "took #{Utils::Various.format_time_span(realtime)} • ".colorize.dim
       end
       if memory
         @out << "total memory allocated #{memory.humanize}B".colorize.dim
