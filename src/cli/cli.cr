@@ -20,6 +20,7 @@ require "./dlx"
 require "./init"
 require "./store"
 require "./run"
+require "./rebuild"
 require "../commands/**"
 require "../constants"
 
@@ -62,6 +63,8 @@ module Zap
       args = ARGV[1..-1]? || Array(String).new
       command_config = command_config.copy_with(script: script_name, args: args)
       Commands::Run.run(config, command_config)
+    when Config::Rebuild
+      Commands::Rebuild.run(config, command_config)
     end
   end
 
@@ -89,7 +92,7 @@ module Zap
         command(
           ["dlx", "x"],
           (
-            <<-BANNER
+            <<-DESCRIPTION
             Install one or more packages and run a command in a temporary environment.
 
             Examples:
@@ -97,7 +100,7 @@ module Zap
               - zap x -p typescript -p ts-node ts-node --transpile-only -e "console.log('hello!')"
               - zap x --package cowsay --package lolcatjs -c 'echo "hi zap" | cowsay | lolcatjs'
 
-            BANNER
+            DESCRIPTION
           ),
           "[options] <command>"
         ) do
@@ -110,6 +113,10 @@ module Zap
 
         command(["init", "innit", "create"], "This command creates a new package.json file.", "[options] <initializer>") do
           on_init(parser)
+        end
+
+        command("rebuild", "Rebuild native dependencies.", "<package(s)> [options are passed through]") do
+          on_rebuild(parser)
         end
 
         command(["store", "s"], "Manage the global store used to save packages and cache registry responses.") do
@@ -229,7 +236,7 @@ module Zap
       {% else %}
         {% for a, idx in input %}
           {% if idx == 0 %}
-            parser.on({{a}},{{description}} + %(\n#{"Aliases".colorize.underline}: #{{{input[1..]}}.join(", ")})) do
+            parser.on({{a}},{{description}} + %(\n#Aliases: #{{{input[1..]}}.join(", ")})) do
               banner(parser, {{a}}, {{description}}{% if args %}, args: {{args}}{% end %})
               {{ yield }}
             end

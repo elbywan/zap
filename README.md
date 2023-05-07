@@ -36,6 +36,7 @@ zap --help
 | `zap dlx`     | `x`                   | Execute a command in a temporary environment            | ✅       |
 | `zap store`   | `s`                   | Manage the store                                        | ✅       |
 | `zap run`     | `r`                   | Run a script defined in package.json                    | ✅       |
+| `zap rebuild` | _n/a_                 | Rebuild installed native node addons                    | ✅       |
 | `zap exec`    | _n/a_                 | Execute a binary installed as a dependency              | ⏳ _WIP_ |
 | `zap upgrade` | `up`                  | Upgrade dependencies                                    | ⏳ _WIP_ |
 

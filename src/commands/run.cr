@@ -41,6 +41,7 @@ module Zap::Commands::Run
         Utils::Scripts.parallel_run(
           config: config,
           scripts: scripts,
+          reporter: reporter,
           print_header: false,
         )
       else
@@ -48,6 +49,7 @@ module Zap::Commands::Run
           config: config,
           scripts: scripts,
           relationships: workspace_relationships,
+          reporter: reporter,
           print_header: false,
         )
       end

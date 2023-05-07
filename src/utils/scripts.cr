@@ -118,7 +118,7 @@ module Zap::Utils::Scripts
   def self.parallel_run(
     *,
     config : Config,
-    scripts : Array(ScriptData),
+    scripts : Array(ScriptData | Array(ScriptData)),
     reporter : Reporter = Reporter::Interactive.new,
     pipeline : Pipeline = Pipeline.new,
     print_header : Bool = true
@@ -135,14 +135,27 @@ module Zap::Utils::Scripts
     pipeline.set_concurrency(concurrency)
 
     scripts.each_with_index do |script_data, index|
-      process_script(
-        script_data,
-        index,
-        config: config,
-        reporter: reporter,
-        pipeline: pipeline,
-        single_script: scripts.size == 1
-      )
+      if script_data.is_a?(ScriptData)
+        process_script(
+          script_data,
+          index,
+          config: config,
+          reporter: reporter,
+          pipeline: pipeline,
+          single_script: scripts.size == 1
+        )
+      else
+        script_data.each_with_index do |script, idx|
+          process_script(
+            script,
+            index,
+            config: config,
+            reporter: reporter,
+            pipeline: pipeline,
+            single_script: scripts.size == 1
+          )
+        end
+      end
     end
 
     pipeline.await
@@ -310,7 +323,7 @@ module Zap::Utils::Scripts
       rescue ex : Exception
         total_time = Time.monotonic - time
         printer.on_error(ex, total_time)
-        raise "Error while running script #{package.name.colorize(color).bold} #{script_name.colorize.cyan}\n#{ex.message}"
+        raise "Error while running script #{package.name.colorize(color).bold} #{script_name.colorize.cyan} #{"(at: #{script_data.path})".colorize.dim}\n#{ex.message}"
       end
     end
   end
