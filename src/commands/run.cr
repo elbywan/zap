@@ -32,7 +32,20 @@ module Zap::Commands::Run
           raise "Script #{script_name} not found in #{package.name}." if !run_config.if_present && targets.size == 1
           next nil
         end
-        next Utils::Scripts::ScriptData.new(package, path, script_name, "#{command} #{script_arguments.join(" ")}")
+
+        precommand = json.dig?("scripts", "pre#{script_name}").try &.as_s?
+        postcommand = json.dig?("scripts", "post#{script_name}").try &.as_s?
+        prescript = precommand ? Utils::Scripts::ScriptDataNested.new(package, path, "pre#{script_name}", precommand) : nil
+        postscript = precommand ? Utils::Scripts::ScriptDataNested.new(package, path, "post#{script_name}", postcommand) : nil
+
+        next Utils::Scripts::ScriptData.new(
+          package,
+          path,
+          script_name,
+          "#{command} #{script_arguments.join(" ")}",
+          before: prescript.try { |s| [s] },
+          after: postscript.try { |s| [s] }
+        )
       end.compact
 
       workspace_relationships = workspaces.try(&.relationships)

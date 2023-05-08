@@ -113,12 +113,24 @@ module Zap::Utils::Scripts
     end
   end
 
-  record ScriptData, package : Package, path : Path | String, script_name : Symbol | String, script_command : String?
+  record ScriptData,
+    package : Package,
+    path : Path | String,
+    script_name : Symbol | String,
+    script_command : String?,
+    before : Enumerable(ScriptDataNested)? = nil,
+    after : Enumerable(ScriptDataNested)? = nil
+
+  record ScriptDataNested,
+    package : Package,
+    path : Path | String,
+    script_name : Symbol | String,
+    script_command : String?
 
   def self.parallel_run(
     *,
     config : Config,
-    scripts : Array(ScriptData | Array(ScriptData)),
+    scripts : Array(ScriptData),
     reporter : Reporter = Reporter::Interactive.new,
     pipeline : Pipeline = Pipeline.new,
     print_header : Bool = true
@@ -135,27 +147,14 @@ module Zap::Utils::Scripts
     pipeline.set_concurrency(concurrency)
 
     scripts.each_with_index do |script_data, index|
-      if script_data.is_a?(ScriptData)
-        process_script(
-          script_data,
-          index,
-          config: config,
-          reporter: reporter,
-          pipeline: pipeline,
-          single_script: scripts.size == 1
-        )
-      else
-        script_data.each_with_index do |script, idx|
-          process_script(
-            script,
-            index,
-            config: config,
-            reporter: reporter,
-            pipeline: pipeline,
-            single_script: scripts.size == 1
-          )
-        end
-      end
+      process_script(
+        script_data,
+        index,
+        config: config,
+        reporter: reporter,
+        pipeline: pipeline,
+        single_script: scripts.size == 1
+      )
     end
 
     pipeline.await
@@ -284,9 +283,24 @@ module Zap::Utils::Scripts
     single_script : Bool,
     on_completion : (ScriptData -> Void)? = nil
   )
-    package, path, script_name, script_command = script_data.package, script_data.path, script_data.script_name, script_data.script_command
+    package, script_name = script_data.package, script_data.script_name
     color = COLORS[index % COLORS.size]? || :default
+    pipeline.process do
+      script_data.before.try &.each do |script|
+        execute_script(script, config, reporter, single_script, color)
+      end
+      execute_script(script_data, config, reporter, single_script, color)
+      script_data.after.try &.each do |script|
+        execute_script(script, config, reporter, single_script, color)
+      end
+      on_completion.try(&.call(script_data))
+    end
+  end
+
+  private def self.execute_script(script_data : ScriptData | ScriptDataNested, config : Config, reporter : Reporter, single_script : Bool, color : Colorize::Color256 | Symbol)
+    package, path, script_name, script_command = script_data.package, script_data.path, script_data.script_name, script_data.script_command
     inherit_stdin = single_script
+    time = uninitialized Time::Span
     printer = begin
       if config.deferred_output
         Printer::Deferred.new(package, script_name, color, reporter, single_script)
@@ -294,37 +308,33 @@ module Zap::Utils::Scripts
         Printer::RealTime.new(package, script_name, color, reporter, single_script)
       end
     end
-    pipeline.process do
-      time = uninitialized Time::Span
-      hook = ->(command : String, hook_name : Symbol) do
-        return if config.silent
-        if hook_name == :before
-          printer.on_start(command)
-          time = Time.monotonic
-        else
-          total_time = Time.monotonic - time
-          printer.on_finish(total_time)
-        end
-      end
-      begin
-        if script_name.is_a?(Symbol)
-          package.scripts.not_nil!.run_script(script_name, path.to_s, config, output_io: printer.output, &hook)
-        elsif script_command.is_a?(String)
-          Utils::Scripts.run_script(
-            script_command,
-            path.to_s,
-            config,
-            output_io: printer.output,
-            stdin: inherit_stdin ? Process::Redirect::Inherit : Process::Redirect::Close,
-            &hook
-          )
-        end
-        on_completion.try(&.call(script_data))
-      rescue ex : Exception
+    hook = ->(command : String, hook_name : Symbol) do
+      return if config.silent
+      if hook_name == :before
+        printer.on_start(command)
+        time = Time.monotonic
+      else
         total_time = Time.monotonic - time
-        printer.on_error(ex, total_time)
-        raise "Error while running script #{package.name.colorize(color).bold} #{script_name.colorize.cyan} #{"(at: #{script_data.path})".colorize.dim}\n#{ex.message}"
+        printer.on_finish(total_time)
       end
+    end
+    begin
+      if script_name.is_a?(Symbol)
+        package.scripts.not_nil!.run_script(script_name, path.to_s, config, output_io: printer.output, &hook)
+      elsif script_command.is_a?(String)
+        Utils::Scripts.run_script(
+          script_command,
+          path.to_s,
+          config,
+          output_io: printer.output,
+          stdin: inherit_stdin ? Process::Redirect::Inherit : Process::Redirect::Close,
+          &hook
+        )
+      end
+    rescue ex : Exception
+      total_time = Time.monotonic - time
+      printer.on_error(ex, total_time)
+      raise "Error while running script #{package.name.colorize(color).bold} #{script_name.colorize.cyan} #{"(at: #{script_data.path})".colorize.dim}\n#{ex.message}"
     end
   end
 end

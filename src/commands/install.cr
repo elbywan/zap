@@ -280,7 +280,15 @@ module Zap::Commands::Install
       scripts = targets.flat_map { |package, path|
         lifecycle_scripts = package.scripts.try(&.install_lifecycle_scripts)
         next unless lifecycle_scripts
-        next lifecycle_scripts.map { |s| Utils::Scripts::ScriptData.new(package, path, s, nil) }
+        last_script = lifecycle_scripts.pop?
+        next unless last_script
+        script = Utils::Scripts::ScriptData.new(
+          package,
+          path,
+          last_script,
+          nil,
+          before: lifecycle_scripts.map { |s| Utils::Scripts::ScriptDataNested.new(package, path, s, nil) }
+        )
       }.compact
 
       Utils::Scripts.parallel_run(

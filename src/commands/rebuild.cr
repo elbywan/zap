@@ -20,7 +20,7 @@ module Zap::Commands::Rebuild
       puts "\n"
     end
 
-    scripts = [] of Array(Utils::Scripts::ScriptData)
+    scripts = [] of Utils::Scripts::ScriptData
 
     scope.each do |workspace_or_main_package|
       if workspace_or_main_package.is_a?(Workspaces::Workspace)
@@ -42,16 +42,23 @@ module Zap::Commands::Rebuild
           next unless matches
         end
         pkg_scripts = pkg.scripts || Zap::Package::LifecycleScripts.new
-        package_scripts = [] of Utils::Scripts::ScriptData
-        pkg_scripts.preinstall.try do |preinstall_script|
-          package_scripts << Utils::Scripts::ScriptData.new(pkg, module_path, :preinstall, preinstall_script)
-        end
+
         install_args = rebuild_config.flags.try { |flags| " #{flags.join(" ")}" } || ""
-        package_scripts << Utils::Scripts::ScriptData.new(pkg, module_path, "install", (pkg_scripts.install || "node-gyp rebuild") + install_args)
-        pkg_scripts.postinstall.try do |postinstall_script|
-          package_scripts << Utils::Scripts::ScriptData.new(pkg, module_path, :postinstall, postinstall_script)
+        preinstall_script = pkg_scripts.preinstall.try do |preinstall_script|
+          Utils::Scripts::ScriptDataNested.new(pkg, module_path, :preinstall, preinstall_script)
         end
-        scripts << package_scripts
+        postinstall_script = pkg_scripts.postinstall.try do |postinstall_script|
+          Utils::Scripts::ScriptDataNested.new(pkg, module_path, :preinstall, postinstall_script)
+        end
+        script_data = Utils::Scripts::ScriptData.new(
+          pkg,
+          module_path,
+          "install",
+          (pkg_scripts.install || "node-gyp rebuild") + install_args,
+          before: preinstall_script.try { |s| [s] },
+          after: postinstall_script.try { |s| [s] }
+        )
+        scripts << script_data
       end
     end
 
