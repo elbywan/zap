@@ -97,7 +97,7 @@ module Zap
 
             Examples:
               - zap x create-react-app my-app
-              - zap x -p typescript -p ts-node ts-node --transpile-only -e "console.log('hello!')"
+              - zap x -p ts-node -p typescript ts-node --transpile-only -e "console.log('hello!')"
               - zap x --package cowsay --package lolcatjs -c 'echo "hi zap" | cowsay | lolcatjs'
 
             DESCRIPTION
