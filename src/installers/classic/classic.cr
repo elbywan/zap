@@ -6,22 +6,39 @@ module Zap::Installer::Classic
     # the dependency to install
     dependency : Package,
     # a cache of all the possible install locations
-    cache : Deque(CacheItem),
+    location_node : LocationNode,
     # the list of ancestors of this dependency
     ancestors : Array(Package),
     # eventually the name alias
     alias : String?
 
-  # A cache item is comprised of:
-  # - node_modules: the path to a node_modules folder
-  # - installed_packages: the set of packages already installed in this folder
-  # - installed_packages_names: the names of the packages for faster indexing
-  # - is_root: whether this is a root node_modules folder
-  record CacheItem,
-    node_modules : Path,
-    installed_packages : Set(Package) = Set(Package).new,
-    installed_packages_names : Set(String) = Set(String).new,
-    root : Bool = false
+  class Node(T)
+    getter value : T
+    getter parent : Node(T)?
+
+    def initialize(@value : T, @parent : self? = nil)
+    end
+  end
+
+  class Location
+    getter node_modules : Path
+    getter package : Package
+    getter hoisted_packages : Hash(String, Package) = Hash(String, Package).new
+    getter root : Bool
+
+    def initialize(@node_modules : Path, @package : Package, @root : Bool = false)
+    end
+  end
+
+  class LocationNode < Node(Location)
+    def self.new(node_modules : Path, package : Package, root : Bool, parent : LocationNode? = nil)
+      self.new(Location.new(node_modules, package, root), parent)
+    end
+
+    def root
+      @parent.nil?
+    end
+  end
 
   class Installer < Base
     def install : Nil
@@ -31,17 +48,21 @@ module Zap::Installer::Classic
       dependency_queue = Deque(DependencyItem).new
 
       # initialize the queue with all the root dependencies
-      root_cache = CacheItem.new(node_modules: node_modules, root: true)
+      root_location = LocationNode.new(node_modules: node_modules, package: main_package, root: true)
 
       # for each root dependency, initialize the cache and queue the sub-dependencies
       state.context.get_scope(:install).each do |workspace_or_main_package|
-        initial_cache : Deque(CacheItem) = Deque(CacheItem).new
-        initial_cache << root_cache
         if workspace_or_main_package.is_a?(Workspaces::Workspace)
           workspace = workspace_or_main_package
-          initial_cache << CacheItem.new(node_modules: workspace.path / "node_modules", root: true)
+          location = LocationNode.new(
+            node_modules: workspace.path / "node_modules",
+            package: workspace.package,
+            root: true,
+            parent: root_location
+          )
           pkg_name = workspace.package.name
         else
+          location = root_location
           pkg_name = workspace_or_main_package.name
         end
         root = state.lockfile.roots[pkg_name]
@@ -50,7 +71,7 @@ module Zap::Installer::Classic
           next unless pkg
           dependency_queue << DependencyItem.new(
             dependency: pkg,
-            cache: initial_cache,
+            location_node: location,
             ancestors: workspace ? [workspace.package] : [main_package] of Package,
             alias: version_or_alias.is_a?(Package::Alias) ? name : nil,
           )
@@ -62,15 +83,20 @@ module Zap::Installer::Classic
         begin
           dependency = dependency_item.dependency
           # install a dependency and get the new cache to pass to the subdeps
-          subcache = install_dependency(dependency, cache: dependency_item.cache, ancestors: dependency_item.ancestors, aliased_name: dependency_item.alias)
-          # no subcache = do not process the sub dependencies
-          next unless subcache
+          install_location = install_dependency(
+            dependency,
+            location: dependency_item.location_node,
+            ancestors: dependency_item.ancestors,
+            aliased_name: dependency_item.alias
+          )
+          # no install location = do not process the sub dependencies
+          next unless install_location
           # shallow strategy means we only install direct deps at top-level
-          if state.install_config.install_strategy.classic_shallow?
-            while (subcache[0].root)
-              subcache.shift
-            end
-          end
+          # if state.install_config.install_strategy.classic_shallow?
+          #   while (subcache[0].root)
+          #     subcache.shift
+          #   end
+          # end
           # Append self to the dependency ancestors
           ancestors = dependency_item.ancestors.dup.push(dependency)
           # Process each child dependency
@@ -89,14 +115,14 @@ module Zap::Installer::Classic
             # Queue child dependency
             dependency_queue << DependencyItem.new(
               dependency: pkg,
-              cache: subcache,
+              location_node: install_location,
               ancestors: ancestors,
               alias: version_or_alias.is_a?(Package::Alias) ? name : nil,
             )
           end
         rescue e
           state.reporter.stop
-          parent_path = dependency_item.cache.last.node_modules
+          parent_path = dependency_item.location_node.value.node_modules
           ancestors = dependency_item.ancestors ? dependency_item.ancestors.map { |a| "#{a.name}@#{a.version}" }.join("~>") : ""
           package_in_error = dependency ? "#{dependency_item.alias.try &.+(":")}#{dependency.name}@#{dependency.version}" : ""
           state.reporter.error(e, "#{package_in_error.colorize.bold} (#{ancestors}) at #{parent_path.colorize.dim}")
@@ -105,25 +131,25 @@ module Zap::Installer::Classic
       end
     end
 
-    private def install_dependency(dependency : Package, *, cache : Deque(CacheItem), ancestors : Array(Package), aliased_name : String?) : Deque(CacheItem)?
+    private def install_dependency(dependency : Package, *, location : LocationNode, ancestors : Array(Package), aliased_name : String?) : LocationNode?
       case dependency.kind
       when .tarball_file?, .link?
-        Helpers::File.install(dependency, installer: self, cache: cache, state: state, ancestors: ancestors, aliased_name: aliased_name)
+        Helpers::File.install(dependency, installer: self, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
       when .tarball_url?
-        Helpers::Tarball.install(dependency, installer: self, cache: cache, state: state, aliased_name: aliased_name)
+        Helpers::Tarball.install(dependency, installer: self, location: location, state: state, aliased_name: aliased_name)
       when .git?
-        Helpers::Git.install(dependency, installer: self, cache: cache, state: state, aliased_name: aliased_name)
+        Helpers::Git.install(dependency, installer: self, location: location, state: state, aliased_name: aliased_name)
       when .registry?
-        cache_item = Helpers::Registry.hoist(dependency, cache: cache, state: state, ancestors: ancestors, aliased_name: aliased_name)
-        return unless cache_item
-        Helpers::Registry.install(dependency, cache_item, installer: self, cache: cache, state: state, aliased_name: aliased_name)
+        hoisted_location = Helpers::Registry.hoist(dependency, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
+        return unless hoisted_location
+        Helpers::Registry.install(dependency, installer: self, location: hoisted_location, state: state, aliased_name: aliased_name)
       when .workspace?
-        Helpers::Workspace.install(dependency, installer: self, cache: cache, state: state, aliased_name: aliased_name)
+        Helpers::Workspace.install(dependency, installer: self, location: location, state: state, aliased_name: aliased_name)
       end
     end
 
     # Actions to perform after the dependency has been freshly installed.
-    def on_install(dependency : Package, install_folder : Path, *, state : Commands::Install::State, cache : Deque(CacheItem))
+    def on_install(dependency : Package, install_folder : Path, *, state : Commands::Install::State, location : LocationNode)
       # Store package metadata
       unless File.symlink?(install_folder)
         File.open(install_folder / METADATA_FILE_NAME, "w") do |f|
@@ -135,8 +161,7 @@ module Zap::Installer::Classic
         bin_folder_path = state.config.bin_path
         is_direct_dependency = dependency.is_direct_dependency?
         if !is_direct_dependency && state.install_config.install_strategy.classic_shallow?
-          non_root = cache.find! { |c| !c.root }
-          bin_folder_path = non_root.node_modules / ".bin"
+          bin_folder_path = location.value.node_modules / ".bin"
         end
         Utils::Directories.mkdir_p(bin_folder_path)
         if bin.is_a?(Hash)

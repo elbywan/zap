@@ -1,11 +1,11 @@
 module Zap::Installer::Classic::Helpers::Git
-  def self.install(dependency : Package, *, installer : Zap::Installer::Base, cache : Deque(CacheItem), state : Commands::Install::State, aliased_name : String? = nil) : Deque(CacheItem)?
+  def self.install(dependency : Package, *, installer : Zap::Installer::Base, location : LocationNode, state : Commands::Install::State, aliased_name : String? = nil) : LocationNode?
     unless packed_tarball_path = dependency.dist.try &.as(Package::GitDist).cache_key.try { |key| state.store.package_path(dependency.name, key + ".tgz") }
       raise "Cannot install git dependency #{dependency.name} because the dist.cache_key field is missing."
     end
 
     install_folder = aliased_name || dependency.name
-    target_path = cache.last.node_modules / install_folder
+    target_path = location.value.node_modules / install_folder
     exists = Zap::Installer.package_already_installed?(dependency, target_path)
 
     unless exists
@@ -14,9 +14,9 @@ module Zap::Installer::Classic::Helpers::Git
       ::File.open(packed_tarball_path, "r") do |tarball|
         Utils::TarGzip.unpack_to(tarball, target_path)
       end
-      installer.on_install(dependency, target_path, state: state, cache: cache)
+      installer.on_install(dependency, target_path, state: state, location: location)
     end
 
-    Helpers.prepare_cache(dependency, target_path, cache, aliased_name)
+    Helpers.init_location(dependency, target_path, location, aliased_name)
   end
 end

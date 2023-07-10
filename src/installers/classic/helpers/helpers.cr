@@ -1,10 +1,11 @@
 module Zap::Installer::Classic::Helpers
-  def self.prepare_cache(dependency : Package, target_path : Path, cache : Deque(CacheItem), aliased_name : String? = nil) : Deque(CacheItem)
-    cache.last.installed_packages << dependency
-    cache.last.installed_packages_names << (aliased_name || dependency.name)
-    cache.dup.tap { |c|
-      c << CacheItem.new(node_modules: target_path / "node_modules")
-    }
+  def self.init_location(dependency : Package, target_path : Path, location : LocationNode, aliased_name : String? = nil) : LocationNode
+    LocationNode.new(
+      node_modules: target_path / "node_modules",
+      package: dependency,
+      root: false,
+      parent: location
+    )
   end
 end
 
