@@ -21,6 +21,7 @@ require "./init"
 require "./store"
 require "./run"
 require "./rebuild"
+require "./exec"
 require "../commands/**"
 require "../constants"
 
@@ -65,6 +66,9 @@ module Zap
       Commands::Run.run(config, command_config)
     when Config::Rebuild
       Commands::Rebuild.run(config, command_config)
+    when Config::Exec
+      command_config = command_config.copy_with(command: ARGV.join(" "))
+      Commands::Exec.run(config, command_config)
     end
   end
 
@@ -107,15 +111,19 @@ module Zap
           on_dlx(parser)
         end
 
-        command(["run", "r"], "This command runs a package's \"script\" command.", "[options] <script>") do
+        command(["run", "r"], "Run a package's \"script\" command.", "[options] <script>") do
           on_run(parser)
         end
 
-        command(["init", "innit", "create"], "This command creates a new package.json file.", "[options] <initializer>") do
+        command(["exec", "e"], "Execute a command in the project scope.", "<command>") do
+          on_exec(parser)
+        end
+
+        command(["init", "innit", "create"], "Create a new package.json file.", "[options] <initializer>") do
           on_init(parser)
         end
 
-        command("rebuild", "Rebuild native dependencies.", "<package(s)> [options are passed through]") do
+        command(["rebuild", "rb"], "Rebuild native dependencies.", "<package(s)> [options are passed through]") do
           on_rebuild(parser)
         end
 

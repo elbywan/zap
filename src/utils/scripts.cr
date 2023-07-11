@@ -200,7 +200,9 @@ module Zap::Utils::Scripts
 
     scripts.each do |script|
       relationship_map[script] ||= {depends_on: Deque(ScriptData).new, dependents: Deque(ScriptData).new}
-      workspace, relations = relationships.find! { |workspace, relations| workspace.package.object_id == script.package.object_id }
+      relationship = relationships.find { |workspace, relations| workspace.package.object_id == script.package.object_id }
+      next if relationship.nil?
+      workspace, relations = relationship
       relations.direct_dependencies.each do |dependency|
         dependency_script = scripts_by_packages[dependency.package]?
         next if dependency_script.nil?

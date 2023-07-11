@@ -123,6 +123,7 @@ class Zap::Workspaces
     direct_dependencies : Array(Workspace) = Array(Workspace).new,
     dependents : Set(Workspace) = Set(Workspace).new,
     direct_dependents : Array(Workspace) = Array(Workspace).new
+
   getter relationships : Hash(Workspace, WorkspaceRelationships) do
     relationships = {} of Workspace => WorkspaceRelationships
 

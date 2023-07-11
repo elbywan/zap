@@ -32,12 +32,12 @@ zap --help
 | ------------- | --------------------- | ------------------------------------------------------- | ------- |
 | `zap install` | `i` `add`             | Install dependencies                                    | ✅       |
 | `zap remove`  | `rm` `uninstall` `un` | Remove dependencies                                     | ✅       |
-| `zap init`    | `create`              | Create a new project or initialiaze a package.json file | ✅       |
+| `zap init`    | `create`              | Create a new project or initialize a package.json file  | ✅       |
 | `zap dlx`     | `x`                   | Execute a command in a temporary environment            | ✅       |
 | `zap store`   | `s`                   | Manage the store                                        | ✅       |
 | `zap run`     | `r`                   | Run a script defined in package.json                    | ✅       |
-| `zap rebuild` | _n/a_                 | Rebuild installed native node addons                    | ✅       |
-| `zap exec`    | _n/a_                 | Execute a binary installed as a dependency              | ⏳ _WIP_ |
+| `zap rebuild` | `rb`                  | Rebuild installed native node addons                    | ✅       |
+| `zap exec`    | `e`                   | Execute a shell command in the scope of the project     | ✅       |
 | `zap upgrade` | `up`                  | Upgrade dependencies                                    | ⏳ _WIP_ |
 
 #### Check the [project board](https://github.com/users/elbywan/projects/1/views/1) for the current status of the project.

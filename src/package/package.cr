@@ -30,7 +30,7 @@ class Zap::Package
 
   getter! name : String
   protected setter name
-  getter! version : String
+  getter version : String = "0.0.0"
   getter bin : (String | Hash(String, String))? = nil
   @[YAML::Field(ignore: true)]
   property dependencies : Hash(String, String)? = nil
