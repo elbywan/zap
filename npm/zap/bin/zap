@@ -5,13 +5,22 @@ const path = require("path");
 const childProcess = require("child_process");
 
 const packageName = `@zap.org/${process.platform}-${process.arch}`;
-const modulePath = require.resolve(packageName + "/package.json");
+
+let modulePath = "";
+
+try {
+  require.resolve(packageName + "/package.json");
+} catch (err) {
+  if (err.code !== "MODULE_NOT_FOUND") {
+    console.error(err.message);
+  }
+}
 
 if (!modulePath) {
   console.error(
-    "Error: Could not locate ${packageName}.\n" +
+    `Error: Could not locate ${packageName}.\n` +
       "\n" +
-      "Either your current architecture (${process.platform}-${process.arch}) is not supported, or the package is not installed.\n" +
+      `Either your current architecture (${process.platform}-${process.arch}) is not supported, or the package is not installed.\n` +
       "Make sure that your package manager is not ignoring optional dependencies.\n"
   );
   process.exit(1);
