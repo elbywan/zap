@@ -1,3 +1,9 @@
+class ScriptNotFoundError < Exception
+  def initialize(script_name : String, package_name : String)
+    super("Script #{script_name} not found in #{package_name}.")
+  end
+end
+
 module Zap::Commands::Run
   def self.run(
     config : Config,
@@ -29,7 +35,9 @@ module Zap::Commands::Run
         end
         command = json.dig?("scripts", script_name).try &.as_s?
         if !command
-          raise "Script #{script_name} not found in #{package.name}." if !run_config.if_present && targets.size == 1
+          if !run_config.if_present && targets.size == 1
+            raise ScriptNotFoundError.new(script_name, package.name)
+          end
           next nil
         end
 
@@ -38,7 +46,7 @@ module Zap::Commands::Run
         prescript = precommand ? Utils::Scripts::ScriptDataNested.new(package, path, "pre#{script_name}", precommand) : nil
         postscript = precommand ? Utils::Scripts::ScriptDataNested.new(package, path, "post#{script_name}", postcommand) : nil
 
-        next Utils::Scripts::ScriptData.new(
+        Utils::Scripts::ScriptData.new(
           package,
           path,
           script_name,
@@ -67,8 +75,16 @@ module Zap::Commands::Run
         )
       end
     rescue ex : Exception
-      reporter.error(ex)
-      exit 1
+      if ex.is_a?(ScriptNotFoundError) && run_config.fallback_to_exec
+        exec_config = Config::Exec.new(
+          command: ARGV.join(" "),
+          parallel: run_config.parallel,
+        )
+        Zap::Commands::Exec.run(config, exec_config, no_banner: true)
+      else
+        reporter.error(ex)
+        exit 1
+      end
     end
   end
 end

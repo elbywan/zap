@@ -3,7 +3,8 @@ struct Zap::Config
     script : String? = nil,
     args : Array(String) = [] of String,
     if_present : Bool = false,
-    parallel : Bool = false
+    parallel : Bool = false,
+    fallback_to_exec : Bool = false
 end
 
 class Zap::CLI

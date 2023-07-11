@@ -1,5 +1,5 @@
 module Zap::Commands::Exec
-  def self.run(config : Config, exec_config : Config::Exec)
+  def self.run(config : Config, exec_config : Config::Exec, *, no_banner : Bool = false)
     reporter = Reporter::Interactive.new
     begin
       raise "Please provide a command to run. Example: 'zap exec <command>'" if exec_config.command.empty?
@@ -9,7 +9,7 @@ module Zap::Commands::Exec
       workspaces, config = inferred_context.workspaces, inferred_context.config
       targets = inferred_context.scope_packages_and_paths(:command)
 
-      unless config.silent
+      unless config.silent || no_banner
         Zap.print_banner
         if workspaces
           puts <<-TERM
@@ -23,7 +23,7 @@ module Zap::Commands::Exec
         Utils::Scripts::ScriptData.new(
           package,
           path,
-          "exec",
+          "[exec]",
           exec_config.command
         )
       end

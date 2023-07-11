@@ -133,7 +133,7 @@ module Zap
 
         parser.before_each do |arg|
           if @command_config.nil? && !parser.@handlers.keys.includes?(arg)
-            @command_config = Config::Run.new
+            @command_config = Config::Run.new(fallback_to_exec: true)
             parser.stop
           end
         end
