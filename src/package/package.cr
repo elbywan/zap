@@ -277,22 +277,27 @@ class Zap::Package
 
   def_hash @name, @version
 
+  __do_not_serialize__
+  @add_dependency_lock = Mutex.new
+
   def add_dependency(name : String, version : String, type : Symbol)
-    case type
-    when :dependencies
-      (self.dependencies ||= Hash(String, String).new)[name] = version
-      self.dev_dependencies.try &.delete(name)
-      self.optional_dependencies.try &.delete(name)
-    when :optional_dependencies
-      (self.optional_dependencies ||= Hash(String, String).new)[name] = version
-      self.dependencies.try &.delete(name)
-      self.dev_dependencies.try &.delete(name)
-    when :dev_dependencies
-      (self.dev_dependencies ||= Hash(String, String).new)[name] = version
-      self.dependencies.try &.delete(name)
-      self.optional_dependencies.try &.delete(name)
-    else
-      raise "Wrong dependency type: #{type}"
+    @add_dependency_lock.synchronize do
+      case type
+      when :dependencies
+        (self.dependencies ||= Hash(String, String).new)[name] = version
+        self.dev_dependencies.try &.delete(name)
+        self.optional_dependencies.try &.delete(name)
+      when :optional_dependencies
+        (self.optional_dependencies ||= Hash(String, String).new)[name] = version
+        self.dependencies.try &.delete(name)
+        self.dev_dependencies.try &.delete(name)
+      when :dev_dependencies
+        (self.dev_dependencies ||= Hash(String, String).new)[name] = version
+        self.dependencies.try &.delete(name)
+        self.optional_dependencies.try &.delete(name)
+      else
+        raise "Wrong dependency type: #{type}"
+      end
     end
   end
 

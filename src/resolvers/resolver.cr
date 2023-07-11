@@ -411,36 +411,36 @@ module Zap::Resolver
     # Infer new dependency type based on CLI flags
     type = state.install_config.save_dev ? :dev_dependencies : state.install_config.save_optional ? :optional_dependencies : :dependencies
     # For each added dependency…
+    pipeline = Pipeline.new
     state.install_config.added_packages.each do |new_dep|
-      # Infer the package.json version from the CLI argument
-      inferred_version, inferred_name = parse_new_package(new_dep, root_directory: root_directory)
-      # Resolve the package
-      resolver = Resolver.make(state, inferred_name, inferred_version || "*", state.lockfile.get_root(root_package.name))
-      metadata = resolver.resolve.not_nil!
-      name = inferred_name.empty? ? metadata.name : inferred_name
-      metadata.match_os_and_cpu!
-      # Store it in the filesystem, potentially in the global store
-      stored = resolver.store(metadata) { state.reporter.on_downloading_package }
-      state.reporter.on_package_downloaded if stored
-      # If the save flag is set
-      if state.install_config.save
-        saved_version = inferred_version
-        if metadata.kind.registry?
-          if state.install_config.save_exact
-            # If the exact flag is set use the resolved version
-            saved_version = metadata.version
-          elsif inferred_version.nil?
-            # Otherwise add the default range operator (^) to the resolved version
-            saved_version = %(^#{metadata.version})
+      pipeline.process do
+        # Infer the package.json version from the CLI argument
+        inferred_version, inferred_name = parse_new_package(new_dep, root_directory: root_directory)
+        # Resolve the package
+        resolver = Resolver.make(state, inferred_name, inferred_version || "*", state.lockfile.get_root(root_package.name))
+        metadata = resolver.resolve
+        name = inferred_name.empty? ? metadata.name : inferred_name
+        # If the save flag is set
+        if state.install_config.save
+          saved_version = inferred_version
+          if metadata.kind.registry?
+            if state.install_config.save_exact
+              # If the exact flag is set use the resolved version
+              saved_version = metadata.version
+            elsif inferred_version.nil?
+              # Otherwise add the default range operator (^) to the resolved version
+              saved_version = %(^#{metadata.version})
+            end
           end
+          # Save the dependency in the package.json
+          root_package.add_dependency(name, saved_version.not_nil!, type)
         end
-        # Save the dependency in the package.json
-        root_package.add_dependency(name, saved_version.not_nil!, type)
       end
-    rescue e
-      state.reporter.stop
-      raise e
     end
+    pipeline.await
+  rescue e
+    state.reporter.stop
+    raise e
   end
 
   private def self.apply_package_extensions(metadata : Package, *, state : Commands::Install::State) : Nil
