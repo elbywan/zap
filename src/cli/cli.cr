@@ -244,7 +244,7 @@ module Zap
       {% else %}
         {% for a, idx in input %}
           {% if idx == 0 %}
-            parser.on({{a}},{{description}} + %(\n#Aliases: #{{{input[1..]}}.join(", ")})) do
+            parser.on({{a}},{{description}} + %(\n# aliases: #{{{input[1..]}}.join(", ")})) do
               banner(parser, {{a}}, {{description}}{% if args %}, args: {{args}}{% end %})
               {{ yield }}
             end
