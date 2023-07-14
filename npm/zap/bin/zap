@@ -9,7 +9,7 @@ const packageName = `@zap.org/${process.platform}-${process.arch}`;
 let modulePath = "";
 
 try {
-  require.resolve(packageName + "/package.json");
+  modulePath = require.resolve(packageName + "/package.json");
 } catch (err) {
   if (err.code !== "MODULE_NOT_FOUND") {
     console.error(err.message);
