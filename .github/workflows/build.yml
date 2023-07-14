@@ -19,11 +19,15 @@ jobs:
         run: |
           cc=$(env CRYSTAL_LIBRARY_PATH=`pwd`/libs/x86_64-apple-darwin shards build --target="x86_64-apple-darwin" --cross-compile --release -Dpreview_mt | tail -n 1)
           eval $cc
+          # TEMP FIX UNTIL CRYSTAL 1.9.1
+          # See: https://github.com/crystal-lang/crystal/issues/13657
+          mv ./bin/zap.o ./bin/zap
       - name: Upload a Build Artifact
         uses: actions/upload-artifact@v2
         with:
           name: zap_x86_64-apple-darwin
           path: ./bin/zap
+          if-no-files-found: error
   macos_arm64:
     runs-on: macos-latest
     steps:
@@ -36,11 +40,15 @@ jobs:
         run: |
           cc=$(env CRYSTAL_LIBRARY_PATH=`pwd`/libs/arm64-apple-darwin shards build --target="arm64-apple-darwin" --cross-compile --release | tail -n 1 | sed -e "s/-rdynamic/--target=arm64-apple-darwin -rdynamic/g")
           eval $cc
+          # TEMP FIX UNTIL CRYSTAL 1.9.1
+          # See: https://github.com/crystal-lang/crystal/issues/13657
+          mv ./bin/zap.o ./bin/zap
       - name: Upload a Build Artifact
         uses: actions/upload-artifact@v2
         with:
           name: zap_arm64-apple-darwin
           path: ./bin/zap
+          if-no-files-found: error
   linux:
     runs-on: ubuntu-latest
     container:
@@ -55,6 +63,7 @@ jobs:
         with:
           name: zap_x86_64-linux-musl
           path: ./bin/zap
+          if-no-files-found: error
   windows:
     runs-on: windows-latest
     steps:
@@ -72,6 +81,7 @@ jobs:
         with:
           name: zap_x86_64-pc-win32.exe
           path: ${{ github.workspace }}\bin\zap.exe
+          if-no-files-found: error
   trigger_release:
     runs-on: ubuntu-latest
     needs: [macos_x86_64, macos_arm64, linux, windows]
