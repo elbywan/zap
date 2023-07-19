@@ -216,7 +216,9 @@ module Zap::Installer::Isolated
       end
     end
 
+    # Resolve which peer dependencies should be available to a package given its ancestors
     private def resolve_peers(package : Package, ancestors : Ancestors) : Set(Package)?
+      # Aggregate direct and transitive peer dependencies
       peers = Hash(String, String).new
       if direct_peers = package.peer_dependencies
         peers.merge!(direct_peers)
@@ -224,14 +226,24 @@ module Zap::Installer::Isolated
       if transitive_peers = package.transitive_peer_dependencies
         transitive_peers.each { |peer| peers[peer] ||= "*" }
       end
+      # If there are any peers, resolve them
       if peers.size > 0
         Set(Package).new.tap do |resolved_peers|
+          # For each ancestor, check if it has a pinned dependency that matches the peer
           ancestors.each do |ancestor|
             ancestor.pinned_dependencies.each do |name, version_or_alias|
               dependency = state.lockfile.get_package?(name, version_or_alias)
               next unless dependency
-              resolved_peers << dependency if peers.has_key?(version_or_alias.is_a?(String) ? dependency.name : name)
+              if peer_version = peers[dependency.name]?
+                # If the peer has a version range, check if the pinned version matches
+                pinned_version = version_or_alias.is_a?(String) ? version_or_alias : version_or_alias.version
+                if peer_version && Utils::Semver.parse(peer_version).valid?(pinned_version)
+                  # If it does, add it to the resolved peers
+                  resolved_peers << dependency
+                end
+              end
             end
+            # Stop if all peers have been resolved
             break if resolved_peers.size == peers.size
           end
         end
