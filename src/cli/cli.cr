@@ -93,6 +93,10 @@ module Zap
           on_install(parser, remove_packages: true)
         end
 
+        command(["update", "up", "upgrade"], "This command updates the lockfile to use the newest package versions.", "[options] <package(s)>") do
+          on_install(parser, update_packages: true)
+        end
+
         command(
           ["dlx", "x"],
           (

@@ -28,12 +28,13 @@ struct Zap::Config
     omit : Array(Omit) = ENV["NODE_ENV"]? === "production" ? [Omit::Dev] : [] of Omit,
     added_packages : Array(String) = Array(String).new,
     removed_packages : Array(String) = Array(String).new,
+    updated_packages : Array(String) = Array(String).new,
+    update_all : Bool = false,
     save : Bool = true,
     save_exact : Bool = false,
     save_prod : Bool = true,
     save_dev : Bool = false,
     save_optional : Bool = false,
-    lockfile_only : Bool = false,
     print_logs : Bool = !ENV["CI"]?,
   ) do
     getter! install_strategy : InstallStrategy
@@ -59,8 +60,8 @@ struct Zap::Config
 end
 
 class Zap::CLI
-  private def on_install(parser : OptionParser, *, remove_packages : Bool = false)
-    @command_config = Config::Install.new
+  private def on_install(parser : OptionParser, *, remove_packages : Bool = false, update_packages : Bool = false)
+    @command_config = Config::Install.new(update_all: update_packages)
 
     separator("Options")
 
@@ -104,25 +105,30 @@ class Zap::CLI
 
     subSeparator("Save flags")
 
-    parser.on("-D", "--save-dev", "Added packages will appear in your devDependencies.") do
-      @command_config = install_config.copy_with(save_dev: true)
-    end
-    parser.on("-P", "--save-prod", "Added packages will appear in your dependencies.") do
-      @command_config = install_config.copy_with(save_prod: true)
-    end
-    parser.on("-O", "--save-optional", "Added packages will appear in your optionalDependencies.") do
-      @command_config = install_config.copy_with(save_optional: true)
-    end
-    parser.on("-E", "--save-exact", "Saved dependencies will be configured with an exact version rather than using npm's default semver range operator.") do |path|
-      @command_config = install_config.copy_with(save_exact: true)
-    end
-    parser.on("--no-save", "Prevents saving to dependencies.") do
-      @command_config = install_config.copy_with(save: false)
+    unless update_packages
+      parser.on("-D", "--save-dev", "Added packages will appear in your devDependencies.") do
+        @command_config = install_config.copy_with(save_dev: true)
+      end
+      parser.on("-P", "--save-prod", "Added packages will appear in your dependencies.") do
+        @command_config = install_config.copy_with(save_prod: true)
+      end
+      parser.on("-O", "--save-optional", "Added packages will appear in your optionalDependencies.") do
+        @command_config = install_config.copy_with(save_optional: true)
+      end
+      parser.on("-E", "--save-exact", "Saved dependencies will be configured with an exact version rather than using npm's default semver range operator.") do |path|
+        @command_config = install_config.copy_with(save_exact: true)
+      end
+      parser.on("--no-save", "Prevents saving to dependencies.") do
+        @command_config = install_config.copy_with(save: false)
+      end
     end
 
     parser.unknown_args do |pkgs|
       if remove_packages
         install_config.removed_packages.concat(pkgs)
+      elsif update_packages
+        @command_config = install_config.copy_with(update_all: pkgs.size == 0)
+        install_config.updated_packages.concat(pkgs)
       else
         install_config.added_packages.concat(pkgs)
       end

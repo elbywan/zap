@@ -148,7 +148,9 @@ module Zap::Resolver
     *,
     state : Commands::Install::State,
     root_package : Bool = false,
-    ancestors : Deque(Package) = Deque(Package).new
+    ancestors : Deque(Package) = Deque(Package).new,
+    no_cache_packages : Array(String)? = nil,
+    no_cache_all : Bool = false
   )
     # If we are in a root package or if the packages have not been saved in the lockfile
     if root_package || !package.pinned_dependencies? || package.pinned_dependencies.empty?
@@ -169,6 +171,14 @@ module Zap::Resolver
             # From: https://docs.npmjs.com/cli/v9/configuring-npm/package-json#optionaldependencies
             next if package.optional_dependencies.try &.[name]?
           end
+
+          # Check if the package is in the no_cache_packages set and bust the lockfile cache if needed
+          bust_lockfile_cache = root_package && (no_cache_all || begin
+            no_cache_packages.try &.any? do |pattern|
+              ::File.match?(pattern, name)
+            end || false
+          end)
+
           self.resolve(
             package,
             name,
@@ -177,6 +187,7 @@ module Zap::Resolver
             state: state,
             is_direct_dependency: root_package,
             ancestors: Deque(Package).new(ancestors.size + 1).concat(ancestors),
+            bust_lockfile_cache: bust_lockfile_cache
           )
         end
       end
@@ -207,7 +218,8 @@ module Zap::Resolver
     *,
     state : Commands::Install::State,
     is_direct_dependency : Bool = false,
-    ancestors : Deque(Package) = Deque(Package).new
+    ancestors : Deque(Package) = Deque(Package).new,
+    bust_lockfile_cache : Bool = false
   )
     resolve(
       package,
@@ -217,6 +229,7 @@ module Zap::Resolver
       state: state,
       is_direct_dependency: is_direct_dependency,
       ancestors: ancestors,
+      bust_lockfile_cache: bust_lockfile_cache
     ) { }
   end
 
@@ -230,6 +243,7 @@ module Zap::Resolver
     is_direct_dependency : Bool = false,
     single_resolution : Bool = false,
     ancestors : Deque(Package) = Deque(Package).new,
+    bust_lockfile_cache : Bool = false,
     &on_resolve : Package -> _
   )
     state.reporter.on_resolving_package
@@ -243,7 +257,7 @@ module Zap::Resolver
       # Create the appropriate resolver depending on the version (git, tarball, registry, local folder…)
       resolver = Resolver.make(state, name, version, parent)
       # Attempt to use the package data from the lockfile
-      metadata = resolver.get_lockfile_cache(name)
+      metadata = resolver.get_lockfile_cache(name) unless bust_lockfile_cache
       # Check if the data from the lockfile is still valid (direct deps can be modified in the package.json file or through the cli)
       if metadata && is_direct_dependency
         metadata = nil unless resolver.is_lockfile_cache_valid?(metadata)

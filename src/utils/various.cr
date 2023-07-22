@@ -1,5 +1,5 @@
 module Zap::Utils::Various
-  def self.parse_key(raw_key : String)
+  def self.parse_key(raw_key : String) : {String, String?}
     split_key = raw_key.split('@')
     if raw_key.starts_with?("@")
       name = split_key[0..1].join('@')

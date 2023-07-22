@@ -157,12 +157,19 @@ module Zap::Commands::Install
     state.reporter.report_resolver_updates
     # Resolve overrides
     resolve_overrides(state)
+    # Extract name / version from the updated packages strings
     # Resolve and store dependencies
     state.context.scope_packages_and_paths(:command).each do |(package, path)|
       Resolver.resolve_added_packages(package, state: state, root_directory: path.to_s)
     end
     state.context.scope_packages(:install).each do |package|
-      Resolver.resolve_dependencies_of(package, state: state, root_package: true)
+      Resolver.resolve_dependencies_of(
+        package,
+        state: state,
+        root_package: true,
+        no_cache_packages: state.install_config.updated_packages,
+        no_cache_all: state.install_config.update_all
+      )
     end
     state.pipeline.await
     state.reporter.stop
