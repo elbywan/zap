@@ -13,7 +13,7 @@ module Zap::Resolver
 
     def resolve(*, dependent : Package? = nil) : Package
       fetch_metadata.tap do |pkg|
-        on_resolve(pkg, pkg.dist.as(Package::GitDist).commit_hash, dependent: dependent)
+        on_resolve(pkg, pkg.dist.as(Package::GitDist).commit_hash)
       end
     end
 
@@ -129,7 +129,7 @@ module Zap::Resolver
 
     def resolve(*, dependent : Package? = nil) : Package
       fetch_metadata.tap do |pkg|
-        on_resolve(pkg, pkg.dist.as(Package::GitDist).commit_hash, dependent: dependent)
+        on_resolve(pkg, pkg.dist.as(Package::GitDist).commit_hash)
       end
     end
 

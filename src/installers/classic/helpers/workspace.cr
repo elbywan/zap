@@ -1,5 +1,5 @@
 module Zap::Installer::Classic::Helpers::Workspace
-  def self.install(dependency : Package, *, installer : Zap::Installer::Base, location : LocationNode, state : Commands::Install::State, aliased_name : String?) : LocationNode?
+  def self.install(dependency : Package, *, installer : Zap::Installer::Base, location : LocationNode, state : Commands::Install::State, ancestors : Array(Package), aliased_name : String?) : LocationNode?
     dist = dependency.dist.as(Package::WorkspaceDist)
     workspace = state.context.workspaces.not_nil!.find! { |w| w.package.name == dist.workspace }
     link_source = workspace.path
@@ -12,7 +12,7 @@ module Zap::Installer::Classic::Helpers::Workspace
         Utils::Directories.mkdir_p(target_path.dirname)
         FileUtils.rm_rf(target_path) if ::File.directory?(target_path)
         ::File.symlink(link_source, target_path)
-        installer.on_install(dependency, target_path, state: state, location: location)
+        installer.on_install(dependency, target_path, state: state, location: location, ancestors: ancestors)
       end
     }
   end

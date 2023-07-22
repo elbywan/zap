@@ -14,7 +14,7 @@ module Zap::Resolver
       if Dir.exists? absolute_path
         Package.init(absolute_path).tap { |pkg|
           pkg.dist = Package::LinkDist.new(path.to_s)
-          on_resolve(pkg, version.to_s, dependent: dependent)
+          on_resolve(pkg, version.to_s)
         }
       elsif ::File.exists? absolute_path
         tarball_path = path
@@ -23,7 +23,7 @@ module Zap::Resolver
         extract_tarball_to_temp(absolute_path, temp_path)
         Package.init(temp_path).tap { |pkg|
           pkg.dist = Package::TarballDist.new(tarball_path.to_s, temp_path.to_s)
-          on_resolve(pkg, version.to_s, dependent: dependent)
+          on_resolve(pkg, version.to_s)
         }
       else
         raise "Invalid file path #{version}"

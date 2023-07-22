@@ -162,7 +162,7 @@ module Zap::Commands::Install
       Resolver.resolve_added_packages(package, state: state, root_directory: path.to_s)
     end
     state.context.scope_packages(:install).each do |package|
-      Resolver.resolve_dependencies_of(package, state: state)
+      Resolver.resolve_dependencies_of(package, state: state, root_package: true)
     end
     state.pipeline.await
     state.reporter.stop

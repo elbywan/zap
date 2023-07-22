@@ -8,7 +8,7 @@ module Zap::Installer::Classic::Helpers::Registry
     while !hoist_location.nil?
       parent_location = hoist_location.parent.as(LocationNode?)
       return hoist_location if parent_location.nil?
-      case action = hoisting_action?(dependency, parent_location, state)
+      case action = hoisting_action?(dependency, parent_location, state, ancestors)
       in .no_install?
         return nil
       in .stop?
@@ -42,11 +42,11 @@ module Zap::Installer::Classic::Helpers::Registry
     NoInstall
   end
 
-  def self.hoisting_action?(dependency : Package, location : LocationNode, state : Commands::Install::State) : HoistAction
+  def self.hoisting_action?(dependency : Package, location : LocationNode, state : Commands::Install::State, ancestors : Array(Package)) : HoistAction
     shallow_strategy = state.install_config.install_strategy.classic_shallow?
 
-    # if shallow strategy is used, stop hoisting if the location is a root location
-    return HoistAction::Stop if shallow_strategy && !dependency.is_direct_dependency? && location.value.root
+    # if shallow strategy is used, stop hoisting if the location is not a root location
+    return HoistAction::Stop if shallow_strategy && ancestors.size > 1 && location.value.root
 
     package = location.value.package
 
@@ -84,7 +84,7 @@ module Zap::Installer::Classic::Helpers::Registry
     HoistAction::Continue
   end
 
-  def self.install(dependency : Package, installer : Zap::Installer::Base, location : LocationNode, state : Commands::Install::State, aliased_name : String? = nil) : LocationNode?
+  def self.install(dependency : Package, installer : Zap::Installer::Base, location : LocationNode, state : Commands::Install::State, ancestors : Array(Package), aliased_name : String? = nil) : LocationNode?
     installed = begin
       Backend.install(dependency: dependency, target: location.value.node_modules, store: state.store, backend: state.install_config.file_backend, aliased_name: aliased_name) {
         state.reporter.on_installing_package
@@ -96,7 +96,7 @@ module Zap::Installer::Classic::Helpers::Registry
     end
 
     installation_path = location.value.node_modules / (aliased_name || dependency.name)
-    installer.on_install(dependency, installation_path, state: state, location: location) if installed
+    installer.on_install(dependency, installation_path, state: state, location: location, ancestors: ancestors) if installed
     Helpers.init_location(dependency, installation_path, location, aliased_name)
   end
 end

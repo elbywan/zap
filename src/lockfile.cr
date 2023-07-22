@@ -73,7 +73,6 @@ class Zap::Lockfile
 
   def prune : Set({String, String | Package::Alias, String})
     pruned_direct_dependencies = Set({String, String | Package::Alias, String}).new
-    pinned_deps = Set(String).new
 
     roots.each do |root_name, root|
       # All dependencies from the root
@@ -86,8 +85,6 @@ class Zap::Lockfile
         key = version.is_a?(String) ? "#{name}@#{version}" : version.key
         unless keep = all_dependencies.includes?(name)
           pruned_direct_dependencies << {name, version, root_name}
-        else
-          pinned_deps << key
         end
         keep
       end
@@ -96,7 +93,7 @@ class Zap::Lockfile
     # Do not prune overrides
     overrides.try &.each do |name, override_list|
       override_list.each do |override|
-        pinned_deps << "#{name}@#{override.specifier}"
+        packages["#{name}@#{override.specifier}"]?.try(&.marked = true)
       end
     end
 
@@ -109,16 +106,9 @@ class Zap::Lockfile
       if pkg.scripts.try &.no_scripts?
         pkg.scripts = nil
       end
-      if dependents = pkg.dependents
-        # Remove pruned dependencies and unused transitive dependencies
-        pkg.dependents = dependents & pinned_deps
-        unless keep = pkg.dependents.size > 0
-          Log.debug { "Pruned #{pkg.key} from lockfile" }
-        end
-        keep
-      else
-        false
-      end
+
+      Log.debug { "Pruned #{pkg.key} from lockfile" } unless pkg.marked
+      pkg.marked
     end
 
     if pruned_direct_dependencies.size > 0

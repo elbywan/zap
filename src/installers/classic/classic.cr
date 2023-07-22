@@ -91,12 +91,6 @@ module Zap::Installer::Classic
           )
           # no install location = do not process the sub dependencies
           next unless install_location
-          # shallow strategy means we only install direct deps at top-level
-          # if state.install_config.install_strategy.classic_shallow?
-          #   while (subcache[0].root)
-          #     subcache.shift
-          #   end
-          # end
           # Append self to the dependency ancestors
           ancestors = dependency_item.ancestors.dup.push(dependency)
           # Process each child dependency
@@ -136,20 +130,20 @@ module Zap::Installer::Classic
       when .tarball_file?, .link?
         Helpers::File.install(dependency, installer: self, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
       when .tarball_url?
-        Helpers::Tarball.install(dependency, installer: self, location: location, state: state, aliased_name: aliased_name)
+        Helpers::Tarball.install(dependency, installer: self, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
       when .git?
-        Helpers::Git.install(dependency, installer: self, location: location, state: state, aliased_name: aliased_name)
+        Helpers::Git.install(dependency, installer: self, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
       when .registry?
         hoisted_location = Helpers::Registry.hoist(dependency, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
         return unless hoisted_location
-        Helpers::Registry.install(dependency, installer: self, location: hoisted_location, state: state, aliased_name: aliased_name)
+        Helpers::Registry.install(dependency, installer: self, location: hoisted_location, state: state, ancestors: ancestors, aliased_name: aliased_name)
       when .workspace?
-        Helpers::Workspace.install(dependency, installer: self, location: location, state: state, aliased_name: aliased_name)
+        Helpers::Workspace.install(dependency, installer: self, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
       end
     end
 
     # Actions to perform after the dependency has been freshly installed.
-    def on_install(dependency : Package, install_folder : Path, *, state : Commands::Install::State, location : LocationNode)
+    def on_install(dependency : Package, install_folder : Path, *, state : Commands::Install::State, location : LocationNode, ancestors : Array(Package))
       # Store package metadata
       unless File.symlink?(install_folder)
         File.open(install_folder / METADATA_FILE_NAME, "w") do |f|
@@ -159,7 +153,7 @@ module Zap::Installer::Classic
       # Link binary files if they are declared in the package.json
       if bin = dependency.bin
         bin_folder_path = state.config.bin_path
-        is_direct_dependency = dependency.is_direct_dependency?
+        is_direct_dependency = ancestors.size <= 1
         if !is_direct_dependency && state.install_config.install_strategy.classic_shallow?
           bin_folder_path = location.value.node_modules / ".bin"
         end

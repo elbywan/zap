@@ -4,7 +4,7 @@ module Zap::Installer::Classic::Helpers::File
     when Package::LinkDist
       install_link(dependency, dist, installer: installer, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
     when Package::TarballDist
-      install_tarball(dependency, dist, installer: installer, location: location, state: state, aliased_name: aliased_name)
+      install_tarball(dependency, dist, installer: installer, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
     else
       raise "Unknown dist type: #{dist}"
     end
@@ -23,12 +23,12 @@ module Zap::Installer::Classic::Helpers::File
       Utils::Directories.mkdir_p(target_path.dirname)
       FileUtils.rm_rf(target_path) if ::File.directory?(target_path)
       ::File.symlink(link_source, target_path)
-      installer.on_install(dependency, target_path, state: state, location: location)
+      installer.on_install(dependency, target_path, state: state, location: location, ancestors: ancestors)
     end
     nil
   end
 
-  def self.install_tarball(dependency : Package, dist : Package::TarballDist, *, installer : Zap::Installer::Base, location : LocationNode, state : Commands::Install::State, aliased_name : String?) : LocationNode?
+  def self.install_tarball(dependency : Package, dist : Package::TarballDist, *, installer : Zap::Installer::Base, location : LocationNode, ancestors : Array(Package), state : Commands::Install::State, aliased_name : String?) : LocationNode?
     install_folder = aliased_name || dependency.name
     target_path = location.value.node_modules / install_folder
     exists = Zap::Installer.package_already_installed?(dependency, target_path)
@@ -59,7 +59,7 @@ module Zap::Installer::Classic::Helpers::File
       # end
 
       FileUtils.cp_r(extracted_folder, target_path)
-      installer.on_install(dependency, target_path, state: state, location: location)
+      installer.on_install(dependency, target_path, state: state, location: location, ancestors: ancestors)
     end
     Helpers.init_location(dependency, target_path, location, aliased_name)
   end

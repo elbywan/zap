@@ -109,11 +109,6 @@ class Zap::Package
   end
 
   @[JSON::Field(ignore: true)]
-  getter dependents : Set(String) { Set(String).new }
-  getter? dependents
-  setter dependents : Set(String)?
-
-  @[JSON::Field(ignore: true)]
   property optional : Bool? = nil
 
   @[JSON::Field(ignore: true)]
@@ -143,6 +138,11 @@ class Zap::Package
   # Utility fields #
   ##################
 
+  # Used to mark a package as visited during the dependency resolution.
+  __do_not_serialize__
+  property marked : Bool = false
+
+  # Where the package comes from.
   __do_not_serialize__
   getter kind : Kind do
     case dist = self.dist
@@ -163,6 +163,7 @@ class Zap::Package
     end
   end
 
+  # A unique key depending on the package's kind.
   __do_not_serialize__
   getter key : String do
     case dist = self.dist
@@ -363,10 +364,6 @@ class Zap::Package
   # Will raise if the package is not meant to be run on the current architecture and operating system.
   def match_os_and_cpu! : Nil
     raise "Incompatible os or architecture: #{os} / #{cpu}" unless match_os_and_cpu?
-  end
-
-  def is_direct_dependency? : Bool
-    dependents.size == 1 && dependents.first == key
   end
 
   def self.get_pkg_version_from_json(json_path : Path | String) : String?

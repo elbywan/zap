@@ -28,7 +28,7 @@ module Zap::Resolver
 
     def resolve(*, dependent : Package? = nil) : Package
       pkg = self.fetch_metadata
-      on_resolve(pkg, pkg.version, dependent: dependent)
+      on_resolve(pkg, pkg.version)
       pkg
     rescue e
       Zap::Log.debug { e.message.colorize.red.to_s + "\n" + e.backtrace.map { |line| "\t#{line}" }.join("\n").colorize.red.to_s }

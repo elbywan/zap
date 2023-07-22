@@ -15,8 +15,7 @@ abstract struct Zap::Resolver::Base
   def initialize(@state, @package_name, @version = "latest", @aliased_name = nil, @parent = nil)
   end
 
-  def on_resolve(pkg : Package, locked_version : String, *, dependent : Package?)
-    pkg.dependents << (dependent || pkg).key
+  def on_resolve(pkg : Package, locked_version : String)
     aliased_name = @aliased_name
     parent_package = parent
     if parent_package.is_a?(Lockfile::Root)
@@ -51,7 +50,7 @@ abstract struct Zap::Resolver::Base
     end
   end
 
-  def get_lockfile_cache(name : String, *, dependent : Package? = nil)
+  def get_lockfile_cache(name : String)
     parent_package = parent
     pinned_dependency =
       parent_package.is_a?(Package) ? parent_package.atomic_get_pinned_dependency?(name) : parent_package.try &.pinned_dependencies[name]?
@@ -61,16 +60,11 @@ abstract struct Zap::Resolver::Base
       else
         packages_ref = "#{name}@#{pinned_dependency}"
       end
-      state.lockfile.packages_lock.synchronize do
-        state.lockfile.packages[packages_ref]?.try do |cached_pkg|
-          cached_pkg.dependents << (dependent || cached_pkg).key
-          cached_pkg
-        end
-      end
+      state.lockfile.packages[packages_ref]?
     end
   end
 
-  abstract def resolve(*, dependent : Package? = nil) : Package
+  abstract def resolve : Package
   abstract def store(metadata : Package, &on_downloading) : Bool
   abstract def is_lockfile_cache_valid?(cached_package : Package) : Bool
 end
@@ -153,11 +147,11 @@ module Zap::Resolver
     package : Package,
     *,
     state : Commands::Install::State,
-    dependent : Package? = nil,
+    root_package : Bool = false,
     ancestors : Deque(Package) = Deque(Package).new
   )
     # If we are in a root package or if the packages have not been saved in the lockfile
-    if dependent.nil? || !package.pinned_dependencies? || package.pinned_dependencies.empty?
+    if root_package || !package.pinned_dependencies? || package.pinned_dependencies.empty?
       # We crawl the regular dependencies fields to lock the versions
       NamedTuple.new(
         dependencies: package.dependencies,
@@ -165,7 +159,7 @@ module Zap::Resolver
         dev_dependencies: package.dev_dependencies,
       ).each do |type, deps|
         if type == :dev_dependencies
-          next if !dependent.nil? || state.install_config.omit_dev?
+          next if !root_package || state.install_config.omit_dev?
         elsif type == :optional_dependencies
           next if state.install_config.omit_optional?
         end
@@ -181,7 +175,7 @@ module Zap::Resolver
             version,
             type,
             state: state,
-            dependent: dependent,
+            is_direct_dependency: root_package,
             ancestors: Deque(Package).new(ancestors.size + 1).concat(ancestors),
           )
         end
@@ -199,7 +193,6 @@ module Zap::Resolver
           name,
           version,
           state: state,
-          dependent: dependent,
           ancestors: Deque(Package).new(ancestors.size + 1).concat(ancestors),
         )
       end
@@ -213,7 +206,7 @@ module Zap::Resolver
     type : Symbol? = nil,
     *,
     state : Commands::Install::State,
-    dependent : Package? = nil,
+    is_direct_dependency : Bool = false,
     ancestors : Deque(Package) = Deque(Package).new
   )
     resolve(
@@ -222,7 +215,7 @@ module Zap::Resolver
       version,
       type,
       state: state,
-      dependent: dependent,
+      is_direct_dependency: is_direct_dependency,
       ancestors: ancestors,
     ) { }
   end
@@ -234,12 +227,11 @@ module Zap::Resolver
     type : Symbol? = nil,
     *,
     state : Commands::Install::State,
-    dependent : Package? = nil,
+    is_direct_dependency : Bool = false,
     single_resolution : Bool = false,
     ancestors : Deque(Package) = Deque(Package).new,
     &on_resolve : Package -> _
   )
-    is_direct_dependency = dependent.nil?
     state.reporter.on_resolving_package
     # Add direct dependencies to the lockfile
     if package && is_direct_dependency && type
@@ -251,19 +243,21 @@ module Zap::Resolver
       # Create the appropriate resolver depending on the version (git, tarball, registry, local folder…)
       resolver = Resolver.make(state, name, version, parent)
       # Attempt to use the package data from the lockfile
-      metadata = resolver.get_lockfile_cache(name, dependent: dependent)
+      metadata = resolver.get_lockfile_cache(name)
       # Check if the data from the lockfile is still valid (direct deps can be modified in the package.json file or through the cli)
       if metadata && is_direct_dependency
         metadata = nil unless resolver.is_lockfile_cache_valid?(metadata)
       end
       lockfile_cached = !!metadata
       # If the package is not in the lockfile or if it is a direct dependency, resolve it
-      metadata ||= resolver.resolve(dependent: dependent)
+      metadata ||= resolver.resolve
       metadata.optional = (type == :optional_dependencies || nil)
       metadata.match_os_and_cpu!
       # Flag transitive dependencies and overrides
       flag_transitive_dependencies(metadata, ancestors)
       flag_transitive_overrides(metadata, ancestors, state)
+      # Mark the package
+      metadata.marked = true
       # Mutate only if the package is not already in the lockfile
       lockfile_metadata = nil
       state.lockfile.packages_lock.synchronize do
@@ -283,7 +277,6 @@ module Zap::Resolver
         self.resolve_dependencies_of(
           metadata,
           state: state,
-          dependent: dependent || metadata,
           ancestors: ancestors,
         )
         # Print deprecation warnings unless the package is already in the lockfile
@@ -384,6 +377,7 @@ module Zap::Resolver
       {% end %}
       overrides.each do |override|
         if parents = override.parents
+          next if parents.size <= 0
           parents_index = parents.size - 1
           parent = parents[parents_index]
           ancestors.reverse_each do |ancestor|
