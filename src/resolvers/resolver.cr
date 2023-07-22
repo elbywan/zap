@@ -186,7 +186,7 @@ module Zap::Resolver
             type,
             state: state,
             is_direct_dependency: root_package,
-            ancestors: Deque(Package).new(ancestors.size + 1).concat(ancestors),
+            ancestors: Deque(Package).new(ancestors.size + 1).concat(ancestors) << package,
             bust_lockfile_cache: bust_lockfile_cache
           )
         end
@@ -204,7 +204,7 @@ module Zap::Resolver
           name,
           version,
           state: state,
-          ancestors: Deque(Package).new(ancestors.size + 1).concat(ancestors),
+          ancestors: Deque(Package).new(ancestors.size + 1).concat(ancestors) << package,
         )
       end
     end
@@ -246,6 +246,7 @@ module Zap::Resolver
     bust_lockfile_cache : Bool = false,
     &on_resolve : Package -> _
   )
+    Log.debug { "Resolving package #{name}@#{version}" + (type ? " (#{type})" : "") + " (from: #{package ? package.key : ""})" }
     state.reporter.on_resolving_package
     # Add direct dependencies to the lockfile
     if package && is_direct_dependency && type
@@ -270,8 +271,6 @@ module Zap::Resolver
       # Flag transitive dependencies and overrides
       flag_transitive_dependencies(metadata, ancestors)
       flag_transitive_overrides(metadata, ancestors, state)
-      # Mark the package
-      metadata.marked = true
       # Mutate only if the package is not already in the lockfile
       lockfile_metadata = nil
       state.lockfile.packages_lock.synchronize do
@@ -282,6 +281,8 @@ module Zap::Resolver
           state.lockfile.packages[metadata.key] = metadata
         end
       end
+      # Mark the package to prevent pruning
+      state.lockfile.packages[metadata.key].marked = true
       # If the package has already been resolved, skip it to prevent infinite loops
       next if !single_resolution && (lockfile_metadata || metadata).already_resolved?(state)
       # Determine whether the dependencies should be resolved, most of the time they should
