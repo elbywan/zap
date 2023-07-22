@@ -1,6 +1,6 @@
 {
   "name": "@zap.org/darwin-arm64",
-  "version": "0.0.30",
+  "version": "0.0.31",
   "description": "Apple silicon binaries for the zap package manager",
   "main": "index.js",
   "scripts": {
