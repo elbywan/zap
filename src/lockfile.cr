@@ -107,7 +107,7 @@ class Zap::Lockfile
         pkg.scripts = nil
       end
 
-      Log.debug { "Pruned #{pkg.key} from lockfile" } unless pkg.marked
+      Log.debug { "(#{pkg.key}) Pruned from lockfile" } unless pkg.marked
       pkg.marked
     end
 

@@ -93,7 +93,7 @@ module Zap::Resolver
         begin
           workspaces.get!(name, version_field)
         rescue e
-          raise "Workspace #{name} not found but required from package #{parent.try &.name} using #{version_field}. Did you forget to add it to the workspace list?"
+          raise "Workspace '#{name}' not found but required from package '#{parent.try &.name}' using specifier '#{version_field}'. Did you forget to add it to the workspace list?"
         end
       elsif parent_is_workspace
         workspaces.try(&.get(name, version_field))
@@ -104,7 +104,10 @@ module Zap::Resolver
     version_field = version_field[10..] if workspace_protocol
 
     # Will link the workspace in the parent node_modules folder
-    return Workspace.new(state, name, version_field, workspace, parent) if workspace
+    if workspace
+      Log.debug { "(#{name}@#{version_field}) Resolved as a workspace dependency" }
+      return Workspace.new(state, name, version_field, workspace, parent)
+    end
 
     # Special case for aliases
     # Extract the aliased name and the version field
@@ -125,20 +128,27 @@ module Zap::Resolver
 
     case version_field
     when .starts_with?("git://"), .starts_with?("git+ssh://"), .starts_with?("git+http://"), .starts_with?("git+https://"), .starts_with?("git+file://")
+      Log.debug { "(#{name}@#{version_field}) Resolved as a git dependency" }
       Git.new(state, name, version_field, aliased_name, parent)
     when .starts_with?("file:")
+      Log.debug { "(#{name}@#{version_field}) Resolved as a file dependency" }
       File.new(state, name, version_field, aliased_name, parent)
     when .starts_with?("github:")
+      Log.debug { "(#{name}@#{version_field}) Resolved as a github dependency" }
       Github.new(state, name, version_field[7..], aliased_name, parent)
     when .matches?(GH_URL_REGEX)
+      Log.debug { "(#{name}@#{version_field}) Resolved as a github dependency" }
       Github.new(state, name, version_field[19..], aliased_name, parent)
     when .starts_with?("http://"), .starts_with?("https://")
+      Log.debug { "(#{name}@#{version_field}) Resolved as a tarball url dependency" }
       TarballUrl.new(state, name, version_field, aliased_name, parent)
     when .matches?(GH_SHORT_REGEX)
+      Log.debug { "(#{name}@#{version_field}) Resolved as a github dependency" }
       Github.new(state, name, version_field, aliased_name, parent)
     else
       version = Utils::Semver.parse?(version_field)
-      Log.debug { "Failed to parse semver #{version_field} for #{name}. Treating as a dist-tag." } unless version
+      Log.debug { "(#{name}@#{version_field}) Failed to parse semver '#{version_field}', treating as a dist-tag." } unless version
+      Log.debug { "(#{name}@#{version_field}) Resolved as a registry dependency" }
       Registry.new(state, name, version || version_field, aliased_name, parent)
     end
   end
@@ -246,7 +256,7 @@ module Zap::Resolver
     bust_lockfile_cache : Bool = false,
     &on_resolve : Package -> _
   )
-    Log.debug { "Resolving package #{name}@#{version}" + (type ? " (#{type})" : "") + " (from: #{package ? package.key : ""})" }
+    Log.debug { "(#{name}@#{version}) Resolving package…" + (type ? " [type: #{type}]" : "") + (package ? " [parent: #{package.key}]" : "") }
     state.reporter.on_resolving_package
     # Add direct dependencies to the lockfile
     if package && is_direct_dependency && type
@@ -264,9 +274,10 @@ module Zap::Resolver
         metadata = nil unless resolver.is_lockfile_cache_valid?(metadata)
       end
       lockfile_cached = !!metadata
+      Log.debug { "(#{metadata.key}) Metatadata found in the lockfile cache" if lockfile_cached && metadata }
       # If the package is not in the lockfile or if it is a direct dependency, resolve it
       metadata ||= resolver.resolve
-      metadata.optional = (type == :optional_dependencies || nil)
+      metadata.optional ||= type == :optional_dependencies || nil
       metadata.match_os_and_cpu!
       # Flag transitive dependencies and overrides
       flag_transitive_dependencies(metadata, ancestors)
@@ -283,6 +294,7 @@ module Zap::Resolver
       end
       # Mark the package to prevent pruning
       state.lockfile.packages[metadata.key].marked = true
+      Log.debug { "(#{name}@#{version}) Resolved version: #{metadata.version}" }
       # If the package has already been resolved, skip it to prevent infinite loops
       next if !single_resolution && (lockfile_metadata || metadata).already_resolved?(state)
       # Determine whether the dependencies should be resolved, most of the time they should
@@ -304,6 +316,7 @@ module Zap::Resolver
       stored = dedupe_store(metadata.key) do
         resolver.store(metadata) { state.reporter.on_downloading_package }
       end
+      Log.debug { "(#{metadata.key}) Saved package metadata in the store" if stored }
       # Call the on_resolve callback
       on_resolve.call(metadata)
       # Report the package as downloaded if it was stored
