@@ -10,7 +10,9 @@ module Zap::Installer::Classic
     # the list of ancestors of this dependency
     ancestors : Array(Package),
     # eventually the name alias
-    alias : String?
+    alias : String?,
+    # for optional dependencies
+    optional : Bool = false
 
   class Node(T)
     getter value : T
@@ -74,6 +76,7 @@ module Zap::Installer::Classic
             location_node: location,
             ancestors: workspace ? [workspace.package] : [main_package] of Package,
             alias: version_or_alias.is_a?(Package::Alias) ? name : nil,
+            optional: false
           )
         }
       end
@@ -82,6 +85,15 @@ module Zap::Installer::Classic
       while dependency_item = dependency_queue.shift?
         begin
           dependency = dependency_item.dependency
+          # Raise if the architecture is not supported
+          begin
+            dependency.match_os_and_cpu!
+          rescue e
+            # If the package is optional, skip it
+            next if dependency_item.optional
+            # Else, raise the error
+            raise e
+          end
           # install a dependency and get the new cache to pass to the subdeps
           install_location = install_dependency(
             dependency,
@@ -94,7 +106,7 @@ module Zap::Installer::Classic
           # Append self to the dependency ancestors
           ancestors = dependency_item.ancestors.dup.push(dependency)
           # Process each child dependency
-          dependency.each_dependency(include_dev: false) do |name, version_or_alias|
+          dependency.each_dependency(include_dev: false) do |name, version_or_alias, type|
             # Apply overrides
             pkg = state.lockfile.get_package?(name, version_or_alias)
             next unless pkg
@@ -112,6 +124,7 @@ module Zap::Installer::Classic
               location_node: install_location.not_nil!,
               ancestors: ancestors,
               alias: version_or_alias.is_a?(Package::Alias) ? name : nil,
+              optional: type.optional_dependency?
             )
           end
         rescue e

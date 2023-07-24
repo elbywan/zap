@@ -49,7 +49,8 @@ module Zap::Installer::Isolated
         install_package(
           root,
           root_path: root_path,
-          ancestors: Ancestors.new
+          ancestors: Ancestors.new,
+          optional: false
         )
       end
     end
@@ -58,11 +59,19 @@ module Zap::Installer::Isolated
       package : Package | Lockfile::Root,
       *,
       ancestors : Ancestors,
-      root_path : Path? = nil
+      root_path : Path? = nil,
+      optional : Bool = false
     ) : Path
       resolved_peers = nil
       overrides = nil
       if package.is_a?(Package)
+        # Raise if the architecture is not supported
+        begin
+          package.match_os_and_cpu!
+        rescue e
+          # Raise the error unless the package is an optional dependency
+          raise e unless optional
+        end
         # Links/Workspaces are easy, we just need to return the target path
         if package.kind.link?
           root = ancestors.last
@@ -110,16 +119,17 @@ module Zap::Installer::Isolated
         install_path = root_path.not_nil!
       end
 
-      pinned_packages = package.map_dependencies do |name, version_or_alias|
+      pinned_packages = package.map_dependencies do |name, version_or_alias, type|
         _key = version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key
         _pkg = state.lockfile.packages[_key]
         {
           version_or_alias.is_a?(String) ? _pkg.name : name,
           state.lockfile.packages[_key],
+          type,
         }
       end
 
-      (resolved_peers.try(&.map { |p| {p.name, p} }.+ pinned_packages) || pinned_packages).each do |(name, dependency)|
+      (resolved_peers.try(&.map { |p| {p.name, p, Package::DependencyType::Dependency} }.+ pinned_packages) || pinned_packages).each do |(name, dependency, type)|
         # Install the dependency in the .zap folder if it's not already installed
         ancestors.unshift package
 
@@ -136,7 +146,8 @@ module Zap::Installer::Isolated
 
         source = install_package(
           dependency,
-          ancestors: ancestors
+          ancestors: ancestors,
+          optional: type.optional_dependency?
         )
         ancestors.shift
 

@@ -176,7 +176,7 @@ module Zap::Resolver
         # "Entries in optionalDependencies will override entries of the same name in dependencies"
         # From: https://docs.npmjs.com/cli/v9/configuring-npm/package-json#optionaldependencies
         if optional_value = package.optional_dependencies.try &.[name]?
-          package.dependencies.try &.[name] = optional_value
+          package.dependencies.try &.delete(name)
         end
       end
 
@@ -263,9 +263,6 @@ module Zap::Resolver
       Log.debug { "(#{metadata.key}) Metatadata found in the lockfile cache" if lockfile_cached && metadata }
       # If the package is not in the lockfile or if it is a direct dependency, resolve it
       metadata ||= resolver.resolve
-      # TODO: fix this
-      metadata.optional = type == :optional_dependencies || nil
-      metadata.match_os_and_cpu!
       # Apply package extensions unless the package is already in the lockfile
       apply_package_extensions(metadata, state: state) unless lockfile_cached
       # Flag transitive dependencies and overrides

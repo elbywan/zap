@@ -5,8 +5,8 @@ module Zap::Package::Helpers
                              include_optional : Bool = true,
                              &block : (Hash(String, String | Alias)?, DependencyType) -> T) forall T
       block.call(dependencies, DependencyType::Dependency)
-      block.call(dev_dependencies, DependencyType::Dependency) if include_dev
-      block.call(optional_dependencies, DependencyType::Dependency) if include_optional
+      block.call(dev_dependencies, DependencyType::DevDependency) if include_dev
+      block.call(optional_dependencies, DependencyType::OptionalDependency) if include_optional
     end
 
     def each_dependency(*,
