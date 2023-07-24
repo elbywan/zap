@@ -2,9 +2,9 @@ class Zap::Package
   struct PackageExtension
     include JSON::Serializable
 
-    getter dependencies : Hash(String, String?)? = nil
+    getter dependencies : Hash(String, String | Zap::Package::Alias?)? = nil
     @[JSON::Field(key: "optionalDependencies")]
-    getter optional_dependencies : Hash(String, String?)? = nil
+    getter optional_dependencies : Hash(String, String | Zap::Package::Alias?)? = nil
     @[JSON::Field(key: "peerDependencies")]
     getter peer_dependencies : Hash(String, String?)? = nil
     @[JSON::Field(key: "peerDependenciesMeta")]
@@ -15,7 +15,7 @@ class Zap::Package
         if version.nil?
           pkg.dependencies.try &.delete(name)
         else
-          hash = (pkg.dependencies ||= Hash(String, String).new)
+          hash = (pkg.dependencies ||= Hash(String, String | Zap::Package::Alias).new)
           hash[name] = version
         end
       end
@@ -23,7 +23,7 @@ class Zap::Package
         if version.nil?
           pkg.optional_dependencies.try &.delete(name)
         else
-          hash = (pkg.optional_dependencies ||= Hash(String, String).new)
+          hash = (pkg.optional_dependencies ||= Hash(String, String | Zap::Package::Alias).new)
           hash[name] = version
         end
       end

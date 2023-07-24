@@ -6,7 +6,7 @@ module Zap::Resolver
 
     getter git_url : Utils::GitUrl
 
-    def initialize(@state, @package_name, @version = "latest", @aliased_name = nil, @parent = nil)
+    def initialize(@state, @package_name, @version = "latest", @aliased_name = nil, @parent = nil, @dependency_type = nil)
       super
       @git_url = Utils::GitUrl.new(@version.to_s, @state.reporter)
     end
@@ -122,8 +122,8 @@ module Zap::Resolver
   struct Github < GitBase
     getter raw_version : String
 
-    def initialize(@state, @package_name, version = "latest", @aliased_name = nil, @parent = nil)
-      super(@state, @package_name, "git+https://github.com/#{version}", @aliased_name, @parent)
+    def initialize(@state, @package_name, version = "latest", @aliased_name = nil, @parent = nil, @dependency_type = nil)
+      super(@state, @package_name, "git+https://github.com/#{version}", @aliased_name, @parent, @dependency_type)
       @raw_version = version
     end
 

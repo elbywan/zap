@@ -17,6 +17,7 @@ class Zap::Package
   include JSON::Serializable
   include YAML::Serializable
   include Utils::Macros
+  include Helpers::Dependencies
 
   macro __do_not_serialize__
     @[JSON::Field(ignore: true)]
@@ -32,14 +33,11 @@ class Zap::Package
   protected setter name
   getter version : String = "0.0.0"
   getter bin : (String | Hash(String, String))? = nil
-  @[YAML::Field(ignore: true)]
-  property dependencies : Hash(String, String)? = nil
+  property dependencies : Hash(String, String | Zap::Package::Alias)? = nil
   @[JSON::Field(key: "devDependencies")]
-  @[YAML::Field(ignore: true)]
-  property dev_dependencies : Hash(String, String)? = nil
+  property dev_dependencies : Hash(String, String | Zap::Package::Alias)? = nil
   @[JSON::Field(key: "optionalDependencies")]
-  @[YAML::Field(ignore: true)]
-  property optional_dependencies : Hash(String, String)? = nil
+  property optional_dependencies : Hash(String, String | Zap::Package::Alias)? = nil
   @[JSON::Field(key: "bundleDependencies")]
   @[YAML::Field(ignore: true)]
   getter bundle_dependencies : (Hash(String, String) | Bool)? = nil
@@ -89,32 +87,13 @@ class Zap::Package
   end
 
   @[JSON::Field(ignore: true)]
-  getter pinned_dependencies : Hash(String, String | Alias) { Hash(String, String | Alias).new }
-  getter? pinned_dependencies
-  setter pinned_dependencies : Hash(String, String | Alias)?
-
-  __do_not_serialize__
-  @pinned_dependencies_lock = Mutex.new
-
-  def atomic_get_pinned_dependency(name : String) : String | Alias
-    @pinned_dependencies_lock.synchronize { pinned_dependencies[name] }
-  end
-
-  def atomic_get_pinned_dependency?(name : String) : String | Alias | Nil
-    @pinned_dependencies_lock.synchronize { pinned_dependencies[name]? }
-  end
-
-  def atomic_set_pinned_dependency(name : String, value : String | Alias) : Nil
-    @pinned_dependencies_lock.synchronize { pinned_dependencies[name] = value }
-  end
-
-  @[JSON::Field(ignore: true)]
   property optional : Bool? = nil
 
   @[JSON::Field(ignore: true)]
   property has_prepare_script : Bool? = nil
 
   @[JSON::Field(ignore: true)]
+  @[YAML::Field(ignore: true)]
   property transitive_peer_dependencies : Set(String)? = nil
 
   ##############
@@ -137,6 +116,13 @@ class Zap::Package
   ##################
   # Utility fields #
   ##################
+
+  enum DependencyType
+    Dependency
+    DevDependency
+    OptionalDependency
+    Unknown
+  end
 
   # Used to mark a package as visited during the dependency resolution.
   __do_not_serialize__
@@ -225,6 +211,10 @@ class Zap::Package
   end
 
   def after_initialize
+    propagate_meta_peer_dependencies
+  end
+
+  def propagate_meta_peer_dependencies
     if meta = peer_dependencies_meta
       @peer_dependencies ||= Hash(String, String).new
       meta.each do |name, meta|
@@ -240,8 +230,11 @@ class Zap::Package
           if override.specifier.starts_with?("$")
             dep_name = override.specifier[1..]
             dependencies_specifier = self.dependencies.try &.[dep_name]?
-            raise "There is no matching for #{override.specifier} in dependencies" unless dependencies_specifier
-            overrides[index] = override.copy_with(specifier: dependencies_specifier)
+            if dependencies_specifier && dependencies_specifier.is_a?(String)
+              overrides[index] = override.copy_with(specifier: dependencies_specifier)
+            else
+              raise "There is no matching for #{override.specifier} in dependencies"
+            end
           end
         end
       end
@@ -281,19 +274,19 @@ class Zap::Package
   __do_not_serialize__
   @add_dependency_lock = Mutex.new
 
-  def add_dependency(name : String, version : String, type : Symbol)
+  def add_dependency(name : String, version : String, type : DependencyType)
     @add_dependency_lock.synchronize do
       case type
-      when :dependencies
-        (self.dependencies ||= Hash(String, String).new)[name] = version
+      when .dependency?
+        (self.dependencies ||= Hash(String, String | Zap::Package::Alias).new)[name] = version
         self.dev_dependencies.try &.delete(name)
         self.optional_dependencies.try &.delete(name)
-      when :optional_dependencies
-        (self.optional_dependencies ||= Hash(String, String).new)[name] = version
+      when .optional_dependency?
+        (self.optional_dependencies ||= Hash(String, String | Zap::Package::Alias).new)[name] = version
         self.dependencies.try &.delete(name)
         self.dev_dependencies.try &.delete(name)
-      when :dev_dependencies
-        (self.dev_dependencies ||= Hash(String, String).new)[name] = version
+      when .dev_dependency?
+        (self.dev_dependencies ||= Hash(String, String | Zap::Package::Alias).new)[name] = version
         self.dependencies.try &.delete(name)
         self.optional_dependencies.try &.delete(name)
       else

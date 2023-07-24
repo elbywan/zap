@@ -10,9 +10,17 @@ abstract struct Zap::Resolver::Base
   getter version : String | Utils::Semver::SemverSets
   getter state : Commands::Install::State
   getter parent : (Package | Lockfile::Root)? = nil
-  getter aliased_name : String?
+  getter aliased_name : String? = nil
+  getter dependency_type : Package::DependencyType? = nil
 
-  def initialize(@state, @package_name, @version = "latest", @aliased_name = nil, @parent = nil)
+  def initialize(
+    @state,
+    @package_name,
+    @version = "latest",
+    @aliased_name = nil,
+    @parent = nil,
+    @dependency_type = nil
+  )
   end
 
   def on_resolve(pkg : Package, locked_version : String)
@@ -20,7 +28,7 @@ abstract struct Zap::Resolver::Base
     parent_package = parent
     if parent_package.is_a?(Lockfile::Root)
       # For direct dependencies: check if the package is freshly added since the last install and report accordingly
-      if version = parent_package.pinned_dependencies[aliased_name || pkg.name]?
+      if version = parent_package.dependency_specifier?(aliased_name || pkg.name)
         if locked_version != version
           state.reporter.on_package_added("#{aliased_name.try(&.+("@npm:"))}#{pkg.key}")
           state.reporter.on_package_removed("#{aliased_name || pkg.name}@#{version}")
@@ -36,24 +44,16 @@ abstract struct Zap::Resolver::Base
     pkg.has_prepare_script ||= pkg.scripts.try(&.has_prepare_script?)
     # Pin the dependency to the locked version
     if aliased_name
-      if parent_package.is_a?(Package)
-        parent_package.atomic_set_pinned_dependency(aliased_name, Package::Alias.new(name: pkg.name, version: locked_version))
-      else
-        parent_package.try &.pinned_dependencies[aliased_name] = Package::Alias.new(name: pkg.name, version: locked_version)
-      end
+      parent_package.try &.set_dependency_specifier(aliased_name, Package::Alias.new(name: pkg.name, version: locked_version), @dependency_type)
     else
-      if parent_package.is_a?(Package)
-        parent_package.atomic_set_pinned_dependency(pkg.name, locked_version)
-      else
-        parent_package.try &.pinned_dependencies[pkg.name] = locked_version
-      end
+      Log.debug { "Setting dependency specifier for #{pkg.name} to #{locked_version} in #{parent_package.key}" } if parent_package.is_a?(Package)
+      parent_package.try &.set_dependency_specifier(pkg.name, locked_version, @dependency_type)
     end
   end
 
   def get_lockfile_cache(name : String)
     parent_package = parent
-    pinned_dependency =
-      parent_package.is_a?(Package) ? parent_package.atomic_get_pinned_dependency?(name) : parent_package.try &.pinned_dependencies[name]?
+    pinned_dependency = parent_package.try &.dependency_specifier?(name)
     if pinned_dependency
       if pinned_dependency.is_a?(Package::Alias)
         packages_ref = pinned_dependency.key
@@ -75,7 +75,13 @@ module Zap::Resolver
   GH_URL_REGEX   = /^https:\/\/github.com\/(?P<owner>[a-zA-Z0-9\-_]+)\/(?P<package>[^#^\/]+)(?:#(?P<hash>[.*]))?/
   GH_SHORT_REGEX = /^[^@].*\/.*$/
 
-  def self.make(state : Commands::Install::State, name : String, version_field : String = "latest", parent : Package | Lockfile::Root | Nil = nil) : Base
+  def self.make(
+    state : Commands::Install::State,
+    name : String,
+    version_field : String = "latest",
+    parent : Package | Lockfile::Root | Nil = nil,
+    type : Package::DependencyType? = nil
+  ) : Base
     # Check if the package depending on the current one is a workspace
     parent_is_workspace = !parent || parent.is_a?(Lockfile::Root)
 
@@ -162,61 +168,41 @@ module Zap::Resolver
     no_cache_packages : Array(String)? = nil,
     no_cache_all : Bool = false
   )
-    # If we are in a root package or if the packages have not been saved in the lockfile
-    if root_package || !package.pinned_dependencies? || package.pinned_dependencies.empty?
-      # We crawl the regular dependencies fields to lock the versions
-      NamedTuple.new(
-        dependencies: package.dependencies,
-        optional_dependencies: package.optional_dependencies,
-        dev_dependencies: package.dev_dependencies,
-      ).each do |type, deps|
-        if type == :dev_dependencies
-          next if !root_package || state.install_config.omit_dev?
-        elsif type == :optional_dependencies
-          next if state.install_config.omit_optional?
-        end
-        deps.try &.each do |name, version|
-          if type == :dependencies
-            # "Entries in optionalDependencies will override entries of the same name in dependencies"
-            # From: https://docs.npmjs.com/cli/v9/configuring-npm/package-json#optionaldependencies
-            next if package.optional_dependencies.try &.[name]?
-          end
-
-          # Check if the package is in the no_cache_packages set and bust the lockfile cache if needed
-          bust_lockfile_cache = root_package && (no_cache_all || begin
-            no_cache_packages.try &.any? do |pattern|
-              ::File.match?(pattern, name)
-            end || false
-          end)
-
-          self.resolve(
-            package,
-            name,
-            version,
-            type,
-            state: state,
-            is_direct_dependency: root_package,
-            ancestors: Deque(Package).new(ancestors.size + 1).concat(ancestors) << package,
-            bust_lockfile_cache: bust_lockfile_cache
-          )
+    package.each_dependency(
+      include_dev: root_package && !state.install_config.omit_dev?,
+      include_optional: !state.install_config.omit_optional?
+    ) do |name, version_or_alias, type|
+      if type.dependency?
+        # "Entries in optionalDependencies will override entries of the same name in dependencies"
+        # From: https://docs.npmjs.com/cli/v9/configuring-npm/package-json#optionaldependencies
+        if optional_value = package.optional_dependencies.try &.[name]?
+          package.dependencies.try &.[name] = optional_value
         end
       end
-    else
-      # Otherwise we use the pinned dependencies
-      package.pinned_dependencies?.try &.each do |name, version_or_alias|
-        if version_or_alias.is_a?(Package::Alias)
-          version = version_or_alias.to_s
-        else
-          version = version_or_alias
-        end
-        self.resolve(
-          package,
-          name,
-          version,
-          state: state,
-          ancestors: Deque(Package).new(ancestors.size + 1).concat(ancestors) << package,
-        )
+
+      # Check if the package is in the no_cache_packages set and bust the lockfile cache if needed
+      bust_lockfile_cache = root_package && (no_cache_all || begin
+        no_cache_packages.try &.any? do |pattern|
+          ::File.match?(pattern, name)
+        end || false
+      end)
+
+      if version_or_alias.is_a?(Package::Alias)
+        version = version_or_alias.to_s
+      else
+        version = version_or_alias
       end
+
+      self.resolve(
+        package,
+        name,
+        version,
+        type,
+        state: state,
+        is_direct_dependency: root_package,
+        ancestors: Deque(Package).new(ancestors.size + 1).concat(ancestors).push(package),
+        bust_lockfile_cache: bust_lockfile_cache
+      )
     end
   end
 
@@ -224,7 +210,7 @@ module Zap::Resolver
     package : Package?,
     name : String,
     version : String,
-    type : Symbol? = nil,
+    type : Package::DependencyType? = nil,
     *,
     state : Commands::Install::State,
     is_direct_dependency : Bool = false,
@@ -247,7 +233,7 @@ module Zap::Resolver
     package : Package?,
     name : String,
     version : String,
-    type : Symbol? = nil,
+    type : Package::DependencyType? = nil,
     *,
     state : Commands::Install::State,
     is_direct_dependency : Bool = false,
@@ -266,7 +252,7 @@ module Zap::Resolver
     state.pipeline.process do
       parent = package.try { |package| is_direct_dependency ? state.lockfile.get_root(package.name) : package }
       # Create the appropriate resolver depending on the version (git, tarball, registry, local folder…)
-      resolver = Resolver.make(state, name, version, parent)
+      resolver = Resolver.make(state, name, version, parent, type)
       # Attempt to use the package data from the lockfile
       metadata = resolver.get_lockfile_cache(name) unless bust_lockfile_cache
       # Check if the data from the lockfile is still valid (direct deps can be modified in the package.json file or through the cli)
@@ -277,8 +263,11 @@ module Zap::Resolver
       Log.debug { "(#{metadata.key}) Metatadata found in the lockfile cache" if lockfile_cached && metadata }
       # If the package is not in the lockfile or if it is a direct dependency, resolve it
       metadata ||= resolver.resolve
-      metadata.optional ||= type == :optional_dependencies || nil
+      # TODO: fix this
+      metadata.optional = type == :optional_dependencies || nil
       metadata.match_os_and_cpu!
+      # Apply package extensions unless the package is already in the lockfile
+      apply_package_extensions(metadata, state: state) unless lockfile_cached
       # Flag transitive dependencies and overrides
       flag_transitive_dependencies(metadata, ancestors)
       flag_transitive_overrides(metadata, ancestors, state)
@@ -286,15 +275,17 @@ module Zap::Resolver
       lockfile_metadata = nil
       state.lockfile.packages_lock.synchronize do
         unless lockfile_metadata = state.lockfile.packages[metadata.key]?
-          # Apply package extensions before saving the package in the lockfile
-          apply_package_extensions(metadata, state: state)
+          Log.debug { "(#{metadata.key}) Saving package metadata in the lockfile" }
+          # Remove dev dependencies
+          metadata.dev_dependencies = nil
           # Store the package data in the lockfile
           state.lockfile.packages[metadata.key] = metadata
         end
       end
+      metadata = lockfile_metadata || metadata
       # Mark the package to prevent pruning
-      state.lockfile.packages[metadata.key].marked = true
-      Log.debug { "(#{name}@#{version}) Resolved version: #{metadata.version}" }
+      metadata.marked = true
+      Log.debug { "(#{name}@#{version}) Resolved version: #{metadata.version} #{(package ? " [parent: #{package.key}]" : "")}" }
       # If the package has already been resolved, skip it to prevent infinite loops
       next if !single_resolution && (lockfile_metadata || metadata).already_resolved?(state)
       # Determine whether the dependencies should be resolved, most of the time they should
@@ -328,9 +319,6 @@ module Zap::Resolver
         package_in_error = "#{name}@#{version}"
         state.reporter.error(e, package_in_error.colorize.bold.to_s)
         exit ErrorCodes::RESOLVER_ERROR.to_i32
-      else
-        # Silently ignore optional dependencies
-        metadata.try { |pkg| package.try &.pinned_dependencies?.try &.delete(pkg.name) }
       end
     ensure
       # Report the package as resolved
@@ -344,27 +332,27 @@ module Zap::Resolver
     peers_hash = nil
     transitive_peers = package.transitive_peer_dependencies.try &.dup
 
+    # If the package has peer dependencies…
     if (peers = package.peer_dependencies) && peers.try(&.size.> 0)
       peers_hash = peers.dup
 
+      # Remove the package itself and its dependencies from the peer dependencies
       peers_hash.reject! do |peer_name, peer_range|
-        peer_name == package.name ||
-          package.pinned_dependencies.try(&.has_key?(peer_name)) ||
-          package.dependencies.try(&.has_key?(peer_name)) ||
-          package.optional_dependencies.try(&.has_key?(peer_name))
+        peer_name == package.name || package.has_dependency?(peer_name, include_dev: false)
       end
     end
 
+    # If the package has regular or transitive peer dependencies…
     if peers_hash || transitive_peers
+      # For each ancestor…
       ancestors.reverse_each do |ancestor|
         peers_hash.try &.select! do |peer_name, peer_range|
-          if ancestor.name == peer_name ||
-             ancestor.pinned_dependencies.try(&.has_key?(peer_name)) ||
-             ancestor.dependencies.try(&.has_key?(peer_name)) ||
-             ancestor.optional_dependencies.try(&.has_key?(peer_name))
+          # If the ancestor is the package itself or if it has the peer dependency, remove it
+          if ancestor.name == peer_name || ancestor.has_dependency?(peer_name, include_dev: false)
             next false
           end
 
+          # Otherwise add it to the transitive peer dependencies
           if ancestor.is_a?(Package)
             ancestor.transitive_peer_dependencies ||= Set(String).new
             ancestor.transitive_peer_dependencies.not_nil! << peer_name
@@ -374,19 +362,19 @@ module Zap::Resolver
         end
 
         transitive_peers.try &.each do |peer_name|
-          if ancestor.name == peer_name ||
-             ancestor.pinned_dependencies.try(&.has_key?(peer_name)) ||
-             ancestor.dependencies.try(&.has_key?(peer_name)) ||
-             ancestor.optional_dependencies.try(&.has_key?(peer_name))
+          # If the ancestor is the package itself or if it has the peer dependency, remove it
+          if ancestor.name == peer_name || ancestor.has_dependency?(peer_name, include_dev: false)
             next transitive_peers.not_nil!.delete(peer_name)
           end
 
+          # Otherwise add it to the transitive peer dependencies
           if ancestor.is_a?(Package)
             ancestor.transitive_peer_dependencies ||= Set(String).new
             ancestor.transitive_peer_dependencies.not_nil! << peer_name
           end
         end
 
+        # Stop if there are no more peer dependencies
         break if (peers_hash.nil? || peers_hash.empty?) && (transitive_peers.nil? || transitive_peers.empty?)
       end
     end
@@ -431,7 +419,7 @@ module Zap::Resolver
 
   def self.resolve_added_packages(root_package : Package, *, state : Commands::Install::State, root_directory : String)
     # Infer new dependency type based on CLI flags
-    type = state.install_config.save_dev ? :dev_dependencies : state.install_config.save_optional ? :optional_dependencies : :dependencies
+    type = state.install_config.save_dev ? Package::DependencyType::DevDependency : state.install_config.save_optional ? Package::DependencyType::OptionalDependency : Package::DependencyType::Dependency
     # For each added dependency…
     pipeline = Pipeline.new
     state.install_config.added_packages.each do |new_dep|
@@ -473,6 +461,7 @@ module Zap::Resolver
           name, version = Utils::Various.parse_key(selector)
           name == metadata.name && (!version || Utils::Semver.parse(version).valid?(metadata.version))
         }.each { |_, ext| ext.merge_into(metadata) }
+      metadata.propagate_meta_peer_dependencies
     end
   end
 

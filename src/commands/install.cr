@@ -139,6 +139,7 @@ module Zap::Commands::Install
 
   private def self.remove_packages(state : State)
     return unless state.install_config.removed_packages.size > 0
+    Log.debug { "• Removing packages" }
 
     [*state.context.scope_packages(:command)].each do |package|
       state.install_config.removed_packages.each do |name|
@@ -154,6 +155,7 @@ module Zap::Commands::Install
   end
 
   private def self.resolve_dependencies(state : State)
+    Log.debug { "• Resolving dependencies" }
     state.reporter.report_resolver_updates
     # Resolve overrides
     resolve_overrides(state)
@@ -176,6 +178,7 @@ module Zap::Commands::Install
   end
 
   private def self.resolve_overrides(state : State)
+    Log.debug { "• Resolving overrides" }
     state.lockfile.overrides = Package::Overrides.merge(state.main_package.overrides, state.lockfile.overrides)
     state.lockfile.overrides.try &.each do |name, override_list|
       override_list.each_with_index do |override, index|
@@ -194,6 +197,7 @@ module Zap::Commands::Install
   end
 
   private def self.clean_lockfile(state : State)
+    Log.debug { "• Cleaning lockfile" }
     workspaces, main_package = state.context.workspaces, state.main_package
     state.lockfile.set_roots(main_package, workspaces)
     pruned_dependencies = state.lockfile.prune
@@ -211,21 +215,22 @@ module Zap::Commands::Install
   end
 
   private def self.write_package_json_files(state : State)
+    Log.debug { "• Writing package.json file(s)" }
     if state.install_config.added_packages.size > 0 || state.install_config.removed_packages.size > 0
       [*state.context.scope_packages_and_paths(:command)].each do |package, location|
         package_json = JSON.parse(File.read(Path.new(location).join("package.json"))).as_h
         if (deps = package.dependencies) && deps.size > 0
-          package_json["dependencies"] = JSON::Any.new(deps.transform_values { |v| JSON::Any.new(v) })
+          package_json["dependencies"] = JSON::Any.new(deps.transform_values { |v| JSON::Any.new(v.as(String)) })
         else
           package_json.delete("dependencies")
         end
         if (dev_deps = package.dev_dependencies) && dev_deps.size > 0
-          package_json["devDependencies"] = JSON::Any.new(dev_deps.transform_values { |v| JSON::Any.new(v) })
+          package_json["devDependencies"] = JSON::Any.new(dev_deps.transform_values { |v| JSON::Any.new(v.as(String)) })
         else
           package_json.delete("devDependencies")
         end
         if (opt_deps = package.optional_dependencies) && opt_deps.size > 0
-          package_json["optionalDependencies"] = JSON::Any.new(opt_deps.transform_values { |v| JSON::Any.new(v) })
+          package_json["optionalDependencies"] = JSON::Any.new(opt_deps.transform_values { |v| JSON::Any.new(v.as(String)) })
         else
           package_json.delete("optionalDependencies")
         end
@@ -235,6 +240,7 @@ module Zap::Commands::Install
   end
 
   private def self.install_packages(state : State, pruned_direct_dependencies)
+    Log.debug { "• Installing packages" }
     state.reporter.report_installer_updates
     installer = case state.install_config.install_strategy
                 when .isolated?
@@ -251,6 +257,7 @@ module Zap::Commands::Install
   end
 
   private def self.run_install_hooks(state : State, installer : Installer::Base)
+    Log.debug { "• Running install hooks" }
     if !state.install_config.ignore_scripts && installer.installed_packages_with_hooks.size > 0
       error_messages = [] of {Exception, String}
       state.pipeline.reset
@@ -281,6 +288,7 @@ module Zap::Commands::Install
   end
 
   private def self.run_own_install_hooks(state : State)
+    Log.debug { "• Running self install hooks" }
     unless state.install_config.ignore_scripts
       targets = state.context.scope_packages_and_paths(:install)
 

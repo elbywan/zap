@@ -86,9 +86,9 @@ class Zap::Workspaces
     end
   end
 
-  def get(name : String, version : String) : Workspace?
+  def get(name : String, version : String | Zap::Package::Alias) : Workspace?
     find do |w|
-      w.package.name == name &&
+      w.package.name == name && version.is_a?(String) &&
         (version.starts_with?("workspace:") || Utils::Semver.parse(version).valid?(w.package.version))
     rescue
       false

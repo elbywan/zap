@@ -22,6 +22,22 @@ class Zap::Lockfile
 
     def initialize(@name)
     end
+
+    def dependency_specifier?(name : String)
+      pinned_dependencies[name]?
+    end
+
+    def set_dependency_specifier(name : String, specifier : String | Package::Alias, _type : _)
+      pinned_dependencies[name] = specifier
+    end
+
+    def map_dependencies(&block : (String, String | Package::Alias, Package::DependencyType) -> T) : Array(T) forall T
+      pinned_dependencies.map { |key, val| block.call(key, val, Package::DependencyType::Unknown) }
+    end
+
+    def each_dependency(&block : (String, String | Package::Alias, Package::DependencyType) -> T) : Nil forall T
+      pinned_dependencies.each { |key, val| block.call(key, val, Package::DependencyType::Unknown) }
+    end
   end
 
   @[YAML::Field(ignore: true)]
@@ -100,9 +116,7 @@ class Zap::Lockfile
     # Trim packages that are not pinned to any root
     self.packages.select! do |name, pkg|
       # Remove empty objects
-      if pkg.pinned_dependencies?.try &.size == 0
-        pkg.pinned_dependencies = nil
-      end
+      pkg.trim_dependencies_fields
       if pkg.scripts.try &.no_scripts?
         pkg.scripts = nil
       end
@@ -132,9 +146,9 @@ class Zap::Lockfile
 
   def set_root(package : Package)
     root = roots[package.name] ||= Root.new(package.name)
-    root.dependencies = package.dependencies
-    root.dev_dependencies = package.dev_dependencies
-    root.optional_dependencies = package.optional_dependencies
+    root.dependencies = package.dependencies.try &.transform_values(&.to_s)
+    root.dev_dependencies = package.dev_dependencies.try &.transform_values(&.to_s)
+    root.optional_dependencies = package.optional_dependencies.try &.transform_values(&.to_s)
     root.peer_dependencies = package.peer_dependencies
   end
 
@@ -150,19 +164,19 @@ class Zap::Lockfile
     end
   end
 
-  def add_dependency(name : String, version : String, type : Symbol, scope : String)
+  def add_dependency(name : String, version : String, type : Package::DependencyType, scope : String)
     @roots_lock.synchronize do
       scoped_root = roots[scope] ||= Root.new(scope)
       case type
-      when :dependencies
+      when .dependency?
         (scoped_root.dependencies ||= Hash(String, String).new)[name] = version
         scoped_root.dev_dependencies.try &.delete(name)
         scoped_root.optional_dependencies.try &.delete(name)
-      when :optional_dependencies
+      when .optional_dependency?
         (scoped_root.optional_dependencies ||= Hash(String, String).new)[name] = version
         scoped_root.dependencies.try &.delete(name)
         scoped_root.dev_dependencies.try &.delete(name)
-      when :dev_dependencies
+      when .dev_dependency?
         (scoped_root.dev_dependencies ||= Hash(String, String).new)[name] = version
         scoped_root.dependencies.try &.delete(name)
         scoped_root.optional_dependencies.try &.delete(name)

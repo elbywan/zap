@@ -66,7 +66,7 @@ module Zap::Installer::Classic
           pkg_name = workspace_or_main_package.name
         end
         root = state.lockfile.roots[pkg_name]
-        root.pinned_dependencies?.try &.map { |name, version_or_alias|
+        root.each_dependency { |name, version_or_alias|
           pkg = state.lockfile.get_package?(name, version_or_alias)
           next unless pkg
           dependency_queue << DependencyItem.new(
@@ -94,7 +94,7 @@ module Zap::Installer::Classic
           # Append self to the dependency ancestors
           ancestors = dependency_item.ancestors.dup.push(dependency)
           # Process each child dependency
-          dependency.pinned_dependencies?.try &.each do |name, version_or_alias|
+          dependency.each_dependency(include_dev: false) do |name, version_or_alias|
             # Apply overrides
             pkg = state.lockfile.get_package?(name, version_or_alias)
             next unless pkg
@@ -109,7 +109,7 @@ module Zap::Installer::Classic
             # Queue child dependency
             dependency_queue << DependencyItem.new(
               dependency: pkg,
-              location_node: install_location,
+              location_node: install_location.not_nil!,
               ancestors: ancestors,
               alias: version_or_alias.is_a?(Package::Alias) ? name : nil,
             )
@@ -117,9 +117,9 @@ module Zap::Installer::Classic
         rescue e
           state.reporter.stop
           parent_path = dependency_item.location_node.value.node_modules
-          ancestors = dependency_item.ancestors ? dependency_item.ancestors.map { |a| "#{a.name}@#{a.version}" }.join("~>") : ""
+          ancestors_str = dependency_item.ancestors ? dependency_item.ancestors.map { |a| "#{a.name}@#{a.version}" }.join("~>") : ""
           package_in_error = dependency ? "#{dependency_item.alias.try &.+(":")}#{dependency.name}@#{dependency.version}" : ""
-          state.reporter.error(e, "#{package_in_error.colorize.bold} (#{ancestors}) at #{parent_path.colorize.dim}")
+          state.reporter.error(e, "#{package_in_error.colorize.bold} (#{ancestors_str}) at #{parent_path.colorize.dim}")
           exit ErrorCodes::INSTALLER_ERROR.to_i32
         end
       end

@@ -53,13 +53,15 @@ module Zap::Installer::Classic::Helpers::Registry
     # the package depends on dependency but the version of dependency is not compatible
     package_dep = package.dependencies.try(&.[dependency.name]?) || package.optional_dependencies.try(&.[dependency.name]?)
     if package_dep
-      return HoistAction::Stop unless Utils::Semver.parse(package_dep).valid?(dependency.version)
+      version = package_dep.is_a?(String) ? package_dep : package_dep.version
+      return HoistAction::Stop unless Utils::Semver.parse(version).valid?(dependency.version)
     end
 
     # the package has a peer dependency but the version of dependency is not compatible
     package_peer = package.peer_dependencies.try(&.[dependency.name]?)
     if package_peer
-      return HoistAction::Stop unless Utils::Semver.parse(package_peer).valid?(dependency.version)
+      version = package_peer.is_a?(String) ? package_peer : package_peer.version
+      return HoistAction::Stop unless Utils::Semver.parse(version).valid?(dependency.version)
     end
 
     # dependency has a peer dependency on package, no matter the version

@@ -110,7 +110,7 @@ module Zap::Installer::Isolated
         install_path = root_path.not_nil!
       end
 
-      pinned_packages = package.pinned_dependencies.map do |name, version_or_alias|
+      pinned_packages = package.map_dependencies do |name, version_or_alias|
         _key = version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key
         _pkg = state.lockfile.packages[_key]
         {
@@ -231,7 +231,7 @@ module Zap::Installer::Isolated
         Set(Package).new.tap do |resolved_peers|
           # For each ancestor, check if it has a pinned dependency that matches the peer
           ancestors.each do |ancestor|
-            ancestor.pinned_dependencies.each do |name, version_or_alias|
+            ancestor.each_dependency do |name, version_or_alias|
               dependency = state.lockfile.get_package?(name, version_or_alias)
               next unless dependency
               if peer_version = peers[dependency.name]?
