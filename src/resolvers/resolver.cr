@@ -331,10 +331,8 @@ module Zap::Resolver
 
     # If the package has peer dependencies…
     if (peers = package.peer_dependencies) && peers.try(&.size.> 0)
-      peers_hash = peers.dup
-
       # Remove the package itself and its dependencies from the peer dependencies
-      peers_hash.reject! do |peer_name, peer_range|
+      peers_hash = peers.reject do |peer_name, peer_range|
         peer_name == package.name || package.has_dependency?(peer_name, include_dev: false)
       end
     end
@@ -342,10 +340,10 @@ module Zap::Resolver
     # If the package has regular or transitive peer dependencies…
     if peers_hash || transitive_peers
       # For each ancestor…
-      ancestors.reverse_each do |ancestor|
+      ancestors.reverse_each.each_with_index do |ancestor, index|
         peers_hash.try &.select! do |peer_name, peer_range|
           # If the ancestor is the package itself or if it has the peer dependency, remove it
-          if ancestor.name == peer_name || ancestor.has_dependency?(peer_name, include_dev: false)
+          if ancestor.name == peer_name || ancestor.has_dependency?(peer_name, include_dev: index == 0)
             next false
           end
 
@@ -358,10 +356,10 @@ module Zap::Resolver
           true
         end
 
-        transitive_peers.try &.each do |peer_name|
+        transitive_peers = transitive_peers.try &.select do |peer_name|
           # If the ancestor is the package itself or if it has the peer dependency, remove it
-          if ancestor.name == peer_name || ancestor.has_dependency?(peer_name, include_dev: false)
-            next transitive_peers.not_nil!.delete(peer_name)
+          if ancestor.name == peer_name || ancestor.has_dependency?(peer_name, include_dev: index == 0)
+            next false
           end
 
           # Otherwise add it to the transitive peer dependencies
@@ -369,6 +367,8 @@ module Zap::Resolver
             ancestor.transitive_peer_dependencies ||= Set(String).new
             ancestor.transitive_peer_dependencies.not_nil! << peer_name
           end
+
+          true
         end
 
         # Stop if there are no more peer dependencies
