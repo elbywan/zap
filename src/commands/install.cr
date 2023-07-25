@@ -160,15 +160,14 @@ module Zap::Commands::Install
     # Resolve overrides
     resolve_overrides(state)
     # Extract name / version from the updated packages strings
-    # Resolve and store dependencies
     state.context.scope_packages_and_paths(:command).each do |(package, path)|
       Resolver.resolve_added_packages(package, state: state, root_directory: path.to_s)
     end
+    # Resolve and store dependencies
     state.context.scope_packages(:install).each do |package|
       Resolver.resolve_dependencies_of(
         package,
         state: state,
-        root_package: true,
         no_cache_packages: state.install_config.updated_packages,
         no_cache_all: state.install_config.update_all
       )
@@ -200,7 +199,8 @@ module Zap::Commands::Install
     Log.debug { "• Cleaning lockfile" }
     workspaces, main_package = state.context.workspaces, state.main_package
     state.lockfile.set_roots(main_package, workspaces)
-    pruned_dependencies = state.lockfile.prune
+    prune_scope = Set.new(state.context.scope_names(:install))
+    pruned_dependencies = state.lockfile.prune(prune_scope)
     if state.config.global
       state.install_config.removed_packages.each do |name|
         version = Package.get_pkg_version_from_json(Utils::File.join(state.config.node_modules, name, "package.json"))

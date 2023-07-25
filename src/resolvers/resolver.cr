@@ -163,13 +163,13 @@ module Zap::Resolver
     package : Package,
     *,
     state : Commands::Install::State,
-    root_package : Bool = false,
     ancestors : Deque(Package) = Deque(Package).new,
     no_cache_packages : Array(String)? = nil,
     no_cache_all : Bool = false
   )
+    is_root = ancestors.size == 0
     package.each_dependency(
-      include_dev: root_package && !state.install_config.omit_dev?,
+      include_dev: is_root && !state.install_config.omit_dev?,
       include_optional: !state.install_config.omit_optional?
     ) do |name, version_or_alias, type|
       if type.dependency?
@@ -181,7 +181,7 @@ module Zap::Resolver
       end
 
       # Check if the package is in the no_cache_packages set and bust the lockfile cache if needed
-      bust_lockfile_cache = root_package && (no_cache_all || begin
+      bust_lockfile_cache = is_root && (no_cache_all || begin
         no_cache_packages.try &.any? do |pattern|
           ::File.match?(pattern, name)
         end || false
@@ -199,7 +199,7 @@ module Zap::Resolver
         version,
         type,
         state: state,
-        is_direct_dependency: root_package,
+        is_direct_dependency: is_root,
         ancestors: Deque(Package).new(ancestors.size + 1).concat(ancestors).push(package),
         bust_lockfile_cache: bust_lockfile_cache
       )
@@ -214,6 +214,7 @@ module Zap::Resolver
     *,
     state : Commands::Install::State,
     is_direct_dependency : Bool = false,
+    single_resolution : Bool = false,
     ancestors : Deque(Package) = Deque(Package).new,
     bust_lockfile_cache : Bool = false
   )
@@ -224,6 +225,7 @@ module Zap::Resolver
       type,
       state: state,
       is_direct_dependency: is_direct_dependency,
+      single_resolution: single_resolution,
       ancestors: ancestors,
       bust_lockfile_cache: bust_lockfile_cache
     ) { }
@@ -280,8 +282,8 @@ module Zap::Resolver
         end
       end
       metadata = lockfile_metadata || metadata
-      # Mark the package to prevent pruning
-      metadata.marked = true
+      # Mark the package and add the leftmost ancestor as a root to prevent being pruned in the lockfile
+      metadata.marked_roots << ancestors.first.name
       Log.debug { "(#{name}@#{version}) Resolved version: #{metadata.version} #{(package ? " [parent: #{package.key}]" : "")}" }
       # If the package has already been resolved, skip it to prevent infinite loops
       next if !single_resolution && (lockfile_metadata || metadata).already_resolved?(state)

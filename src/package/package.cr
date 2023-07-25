@@ -96,6 +96,9 @@ class Zap::Package
   @[YAML::Field(ignore: true)]
   property transitive_peer_dependencies : Set(String)? = nil
 
+  @[JSON::Field(ignore: true)]
+  property roots : Set(String) = Set(String).new
+
   ##############
   # Zap config #
   ##############
@@ -126,7 +129,7 @@ class Zap::Package
 
   # Used to mark a package as visited during the dependency resolution.
   __do_not_serialize__
-  property marked : Bool = false
+  property marked_roots : SafeSet(String) = SafeSet(String).new
 
   # Where the package comes from.
   __do_not_serialize__

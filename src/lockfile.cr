@@ -87,7 +87,7 @@ class Zap::Lockfile
     packages[version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key]?
   end
 
-  def prune : Set({String, String | Package::Alias, String})
+  def prune(scope : Set(String)) : Set({String, String | Package::Alias, String})
     pruned_direct_dependencies = Set({String, String | Package::Alias, String}).new
 
     roots.each do |root_name, root|
@@ -98,18 +98,18 @@ class Zap::Lockfile
           (root.optional_dependencies.try(&.keys) || [] of String)
       # Trim pinned dependencies that are not referenced in the package json file
       root.pinned_dependencies?.try &.select! do |name, version|
-        key = version.is_a?(String) ? "#{name}@#{version}" : version.key
-        unless keep = all_dependencies.includes?(name)
-          pruned_direct_dependencies << {name, version, root_name}
+        all_dependencies.includes?(name).tap do |keep|
+          unless keep
+            pruned_direct_dependencies << {name, version, root_name}
+          end
         end
-        keep
       end
     end
 
     # Do not prune overrides
     overrides.try &.each do |name, override_list|
       override_list.each do |override|
-        packages["#{name}@#{override.specifier}"]?.try(&.marked = true)
+        packages["#{name}@#{override.specifier}"]?.try(&.marked_roots.<< "@overrides")
       end
     end
 
@@ -120,9 +120,16 @@ class Zap::Lockfile
       if pkg.scripts.try &.no_scripts?
         pkg.scripts = nil
       end
+      # Do not prune if the package is not in the scope
+      is_in_scope = scope && (scope & pkg.roots).size > 0
+      # Recompute the roots: take the previous roots, remove the scoped roots and add back the marked roots
+      marked_roots = {% if flag?(:preview_mt) %}pkg.marked_roots.inner{% else %}pkg.marked_roots{% end %}
+      pkg.roots = (pkg.roots - scope + marked_roots)
 
-      Log.debug { "(#{pkg.key}) Pruned from lockfile" } unless pkg.marked
-      pkg.marked
+      # Do not prune packages that were marked during the resolution phase
+      (!is_in_scope || pkg.roots.size > 0).tap do |pruned|
+        Log.debug { "(#{pkg.key}) Pruned from lockfile" } if pruned
+      end
     end
 
     if pruned_direct_dependencies.size > 0
