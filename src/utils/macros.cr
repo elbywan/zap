@@ -54,6 +54,9 @@ module Zap::Utils::Macros
     end
     {% else %}
     property {{name.var.id}} : {{name.type}} {{block}}
+    def {{name.var.id}}_init(&block : Proc({{name.type}}))
+      @{{name.var.id}} ||= yield
+    end
     {% end %}
   end
 
