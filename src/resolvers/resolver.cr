@@ -351,8 +351,7 @@ module Zap::Resolver
 
           # Otherwise add it to the transitive peer dependencies
           if ancestor.is_a?(Package)
-            ancestor.transitive_peer_dependencies ||= Set(String).new
-            ancestor.transitive_peer_dependencies.not_nil! << peer_name
+            ancestor.transitive_peer_dependencies_init { SafeSet(String).new } << peer_name
           end
 
           true
@@ -366,8 +365,7 @@ module Zap::Resolver
 
           # Otherwise add it to the transitive peer dependencies
           if ancestor.is_a?(Package)
-            ancestor.transitive_peer_dependencies ||= Set(String).new
-            ancestor.transitive_peer_dependencies.not_nil! << peer_name
+            ancestor.transitive_peer_dependencies_init { SafeSet(String).new } << peer_name
           end
 
           true
@@ -455,11 +453,12 @@ module Zap::Resolver
   private def self.apply_package_extensions(metadata : Package, *, state : Commands::Install::State) : Nil
     # Take into account package extensions
     if package_extensions = state.context.main_package.zap_config.try(&.package_extensions)
-      package_extensions
-        .select { |selector|
-          name, version = Utils::Various.parse_key(selector)
-          name == metadata.name && (!version || Utils::Semver.parse(version).valid?(metadata.version))
-        }.each { |_, ext| ext.merge_into(metadata) }
+      package_extensions.select { |selector|
+        name, version = Utils::Various.parse_key(selector)
+        name == metadata.name && (!version || Utils::Semver.parse(version).valid?(metadata.version))
+      }.each { |_, ext|
+        metadata.lock.synchronize { ext.merge_into(metadata) }
+      }
       metadata.propagate_meta_peer_dependencies
     end
   end

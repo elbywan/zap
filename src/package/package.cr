@@ -94,7 +94,7 @@ class Zap::Package
 
   @[JSON::Field(ignore: true)]
   @[YAML::Field(ignore: true)]
-  property transitive_peer_dependencies : Set(String)? = nil
+  safe_property transitive_peer_dependencies : SafeSet(String)? = nil
 
   @[JSON::Field(ignore: true)]
   property roots : Set(String) = Set(String).new
@@ -275,10 +275,10 @@ class Zap::Package
   def_hash @name, @version
 
   __do_not_serialize__
-  @add_dependency_lock = Mutex.new
+  getter lock = Mutex.new
 
   def add_dependency(name : String, version : String, type : DependencyType)
-    @add_dependency_lock.synchronize do
+    @lock.synchronize do
       case type
       when .dependency?
         (self.dependencies ||= Hash(String, String | Zap::Package::Alias).new)[name] = version
