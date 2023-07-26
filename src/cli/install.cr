@@ -83,6 +83,12 @@ class Zap::CLI
     ) do |strategy|
       @command_config = install_config.copy_with(install_strategy: Config::InstallStrategy.parse(strategy))
     end
+    parser.on("--isolated", "Shorthand for: --install-strategy isolated") do
+      @command_config = install_config.copy_with(install_strategy: Config::InstallStrategy::Isolated)
+    end
+    parser.on("--classic", "Shorthand for: --install-strategy classic") do
+      @command_config = install_config.copy_with(install_strategy: Config::InstallStrategy::Classic)
+    end
     parser.on("--no-logs", "If true, will not print logs like deprecation warnings.") do
       @command_config = install_config.copy_with(print_logs: false)
     end
