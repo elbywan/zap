@@ -164,8 +164,8 @@ module Zap::Resolver
     *,
     state : Commands::Install::State,
     ancestors : Deque(Package) = Deque(Package).new,
-    no_cache_packages : Array(String)? = nil,
-    no_cache_all : Bool = false
+    disable_cache_for_packages : Array(String)? = nil,
+    disable_cache : Bool = false
   )
     is_root = ancestors.size == 0
     package.each_dependency(
@@ -181,8 +181,8 @@ module Zap::Resolver
       end
 
       # Check if the package is in the no_cache_packages set and bust the lockfile cache if needed
-      bust_lockfile_cache = is_root && (no_cache_all || begin
-        no_cache_packages.try &.any? do |pattern|
+      bust_lockfile_cache = is_root && (disable_cache || begin
+        disable_cache_for_packages.try &.any? do |pattern|
           ::File.match?(pattern, name)
         end || false
       end)
@@ -378,33 +378,45 @@ module Zap::Resolver
   end
 
   private def self.flag_transitive_overrides(package : Package, ancestors : Iterable(Package), state : Commands::Install::State)
+    # Check if the package has overrides
     if (overrides = state.lockfile.overrides) && overrides.size > 0
+      # A transitive overrides is an 'unsatisfied' override - waiting for an ancestor to match the pattern
       transitive_overrides = package.transitive_overrides
+      # Take only the overrides matching the package name and version
       overrides = overrides[package.name]?.try &.select do |override|
         override.matches_package?(package)
-      end || Array(Package::Overrides::Override).new
+      end
+      # Concatenate to the transitive overrides
       {% if flag?(:preview_mt) %}
-        transitive_overrides.try { |to| overrides.concat(to.inner) }
+        transitive_overrides.try { |to|
+          (overrides ||= [] of Package::Overrides::Override).concat(to.inner)
+        }
       {% else %}
-        transitive_overrides.try { |to| overrides.concat(to) }
+        transitive_overrides.try { |to|
+          (overrides ||= [] of Package::Overrides::Override).concat(to)
+        }
       {% end %}
-      overrides.each do |override|
+      overrides.try &.each do |override|
         if parents = override.parents
           next if parents.size <= 0
           parents_index = parents.size - 1
           parent = parents[parents_index]
+          # Check each ancestor recursively and check if it matches the override pattern
           ancestors.reverse_each do |ancestor|
             matches = ancestor.name == parent.name && (
               parent.version == "*" || Utils::Semver.parse(parent.version).valid?(ancestor.version)
             )
             if matches
               if parents_index > 0
+                # Shift the parent
                 parents_index -= 1
                 parent = parents[parents_index]
               else
+                # No more parents left in the pattern, break
                 break
               end
             end
+            # Add the override to the ancestor
             ancestor.transitive_overrides_init {
               SafeSet(Package::Overrides::Override).new
             } << override
@@ -414,7 +426,7 @@ module Zap::Resolver
     end
   end
 
-  def self.resolve_added_packages(root_package : Package, *, state : Commands::Install::State, root_directory : String)
+  def self.resolve_added_packages(package : Package, *, state : Commands::Install::State, directory : String)
     # Infer new dependency type based on CLI flags
     type = state.install_config.save_dev ? Package::DependencyType::DevDependency : state.install_config.save_optional ? Package::DependencyType::OptionalDependency : Package::DependencyType::Dependency
     # For each added dependency…
@@ -422,9 +434,9 @@ module Zap::Resolver
     state.install_config.added_packages.each do |new_dep|
       pipeline.process do
         # Infer the package.json version from the CLI argument
-        inferred_version, inferred_name = parse_new_package(new_dep, root_directory: root_directory)
+        inferred_version, inferred_name = parse_new_package(new_dep, directory: directory)
         # Resolve the package
-        resolver = Resolver.make(state, inferred_name, inferred_version || "*", state.lockfile.get_root(root_package.name))
+        resolver = Resolver.make(state, inferred_name, inferred_version || "*", state.lockfile.get_root(package.name))
         metadata = resolver.resolve
         name = inferred_name.empty? ? metadata.name : inferred_name
         # If the save flag is set
@@ -440,7 +452,7 @@ module Zap::Resolver
             end
           end
           # Save the dependency in the package.json
-          root_package.add_dependency(name, saved_version.not_nil!, type)
+          package.add_dependency(name, saved_version.not_nil!, type)
         end
       end
     end
@@ -451,14 +463,17 @@ module Zap::Resolver
   end
 
   private def self.apply_package_extensions(metadata : Package, *, state : Commands::Install::State) : Nil
-    # Take into account package extensions
+    # Check the package_extensions field in the zap config
     if package_extensions = state.context.main_package.zap_config.try(&.package_extensions)
+      # Find matching extensions
       package_extensions.select { |selector|
         name, version = Utils::Various.parse_key(selector)
         name == metadata.name && (!version || Utils::Semver.parse(version).valid?(metadata.version))
       }.each { |_, ext|
+        # Apply the extension by merging the fields
         metadata.lock.synchronize { ext.merge_into(metadata) }
       }
+      # If the extension added one or more "meta" peer dependencies then declare the matching peer dependencies
       metadata.propagate_meta_peer_dependencies
     end
   end
@@ -466,14 +481,14 @@ module Zap::Resolver
   # Try to detect what kind of target it is
   # See: https://docs.npmjs.com/cli/v9/commands/npm-install?v=true#description
   # Returns a {version, name} tuple
-  private def self.parse_new_package(cli_input : String, *, root_directory : String) : {String?, String}
+  private def self.parse_new_package(cli_input : String, *, directory : String) : {String?, String}
     fs_path = Path.new(cli_input).expand
     if ::File.directory?(fs_path)
       # 1. npm install <folder>
-      return "file:#{fs_path.relative_to(root_directory)}", ""
+      return "file:#{fs_path.relative_to(directory)}", ""
       # 2. npm install <tarball file>
     elsif ::File.file?(fs_path) && (fs_path.to_s.ends_with?(".tgz") || fs_path.to_s.ends_with?(".tar.gz") || fs_path.to_s.ends_with?(".tar"))
-      return "file:#{fs_path.relative_to(root_directory)}", ""
+      return "file:#{fs_path.relative_to(directory)}", ""
       # 3. npm install <tarball url>
     elsif cli_input.starts_with?("https://") || cli_input.starts_with?("http://")
       return cli_input, ""
