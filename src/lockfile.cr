@@ -124,7 +124,7 @@ class Zap::Lockfile
       is_in_scope = scope && (scope & pkg.roots).size > 0
       # Recompute the roots: take the previous roots, remove the scoped roots and add back the marked roots
       marked_roots = {% if flag?(:preview_mt) %}pkg.marked_roots.inner{% else %}pkg.marked_roots{% end %}
-      pkg.roots = (pkg.roots - scope + marked_roots)
+      pkg.roots = (pkg.roots - scope + marked_roots) & Set.new(roots.map(&.[0])) # Remove non-existing roots
 
       # Do not prune packages that were marked during the resolution phase
       (!is_in_scope || pkg.roots.size > 0).tap do |pruned|
