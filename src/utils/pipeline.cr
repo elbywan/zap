@@ -3,7 +3,6 @@ class Zap::Pipeline
   getter progress = 0
   getter max = 0
   @mutex = Mutex.new
-  @awaited = false
   @errors : Array(Exception)? = nil
   @end_channel : Channel(Array(Exception)?) = Channel(Array(Exception)?).new
   @sync_channel : Channel(Nil)? = nil
@@ -21,7 +20,6 @@ class Zap::Pipeline
       @end_channel = Channel(Array(Exception)?).new
       @sync_channel.try { |c| c.close unless c.closed? }
       @sync_channel = nil
-      @awaited = false
     rescue
       # ignore
     end
@@ -71,8 +69,12 @@ class Zap::Pipeline
       ensure
         @mutex.synchronize do
           @counter -= 1
-          if @awaited && @counter == 0 && !@end_channel.closed?
-            @end_channel.send(@errors) if @errors
+          if @counter == 0 && !@end_channel.closed?
+            if @errors
+              select
+              when @end_channel.send(@errors)
+              end
+            end
             @end_channel.close
           end
         end
@@ -87,7 +89,6 @@ class Zap::Pipeline
   end
 
   def await(*, force_wait = false)
-    @awaited = true
     Fiber.yield
     maybe_exceptions = @end_channel.receive? if force_wait || @counter > 0
     raise PipelineException.new(maybe_exceptions) if maybe_exceptions
