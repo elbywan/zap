@@ -6,7 +6,7 @@ module Zap::Commands::Install
   record State,
     config : Config,
     install_config : Config::Install,
-    store : Store,
+    store : Zap::Store,
     main_package : Package,
     lockfile : Lockfile,
     context : Config::InferredContext,
@@ -18,15 +18,17 @@ module Zap::Commands::Install
     install_config : Config::Install,
     *,
     reporter : Reporter? = nil,
-    store : Store? = Store.new(config.global_store_path)
+    store : Zap::Store? = nil
   )
     state = uninitialized State
     null_io = File.open(File::NULL, "w")
+    config = config.check_if_store_is_linkeable
+    store = Zap::Store.new(config.store_path)
 
     Zap.print_banner unless config.silent
 
     realtime, memory = self.measure do
-      Resolver::Registry.init(config.global_store_path)
+      Resolver::Registry.init(config.store_path)
 
       # Infer context like the nearest package.json file and workspaces
       inferred_context = config.infer_context
@@ -111,7 +113,7 @@ module Zap::Commands::Install
         {% end %}
       end
       puts <<-TERM
-         #{"project:".colorize.blue} #{config.prefix} • #{"store:".colorize.blue} #{config.global_store_path}#{workers_info}
+         #{"project:".colorize.blue} #{config.prefix} • #{"store:".colorize.blue} #{config.store_path}#{workers_info}
          #{"lockfile:".colorize.blue} #{lockfile.read_status.from_disk? ? "ok".colorize.green : lockfile.read_status.error? ? "read error".colorize.red : "not found".colorize.red} • #{"install strategy:".colorize.blue} #{install_config.install_strategy.to_s.downcase}
       TERM
 

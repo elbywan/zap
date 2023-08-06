@@ -142,4 +142,55 @@ module Zap::Utils::File
       end
     end
   end
+
+  def self.tempname(prefix : String? = nil, suffix : String? = nil) : String
+    String.build do |io|
+      if prefix
+        io << prefix
+        io << '-'
+      end
+
+      io << Time.local.to_s("%Y%m%d")
+      io << '-'
+
+      io << Process.pid
+      io << '-'
+
+      io << Random.rand(0x100000000).to_s(36)
+
+      io << suffix
+    end
+  end
+
+  def self.linkeable_ancestor?(path : Path) : String?
+    linkeable_parent = nil
+    tempfile_name = self.tempname
+    path.each_parent do |parent|
+      link_source = parent / tempfile_name
+      link_dest = path / tempfile_name
+      ::File.touch(link_source)
+      ::File.link(link_source, link_dest)
+      linkeable_parent = parent
+      break
+    rescue
+      # ignore
+    ensure
+      ::File.delete?(link_dest) if link_dest
+    end
+    linkeable_parent.try &.to_s
+  end
+
+  def self.can_hardlink?(source : Path | String, dest : Path | String, *, tempfile_name : String? = nil) : Bool
+    tempfile_name ||= self.tempname
+    link_source = Path.new(source) / tempfile_name
+    link_dest = Path.new(dest) / tempfile_name
+    ::File.touch(link_source)
+    ::File.link(link_source, link_dest)
+    true
+  rescue
+    false
+  ensure
+    ::File.delete?(link_dest) if link_dest
+    ::File.delete?(link_source) if link_source
+  end
 end

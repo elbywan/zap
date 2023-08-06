@@ -5,9 +5,9 @@ struct Zap::Store
   @global_package_store_path : String
   @global_locks_store_path : String
 
-  def initialize(global_store_path : String)
-    @global_package_store_path = ::File.join(global_store_path, PACKAGES_STORE_PREFIX)
-    @global_locks_store_path = ::File.join(global_store_path, LOCKS_STORE_PREFIX)
+  def initialize(store_path : String)
+    @global_package_store_path = ::File.join(store_path, PACKAGES_STORE_PREFIX)
+    @global_locks_store_path = ::File.join(store_path, LOCKS_STORE_PREFIX)
     Dir.mkdir_p(@global_package_store_path)
     Dir.mkdir_p(@global_locks_store_path)
   end

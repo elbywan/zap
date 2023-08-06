@@ -15,13 +15,6 @@ struct Zap::Config
 
   # Configuration specific for the install command
   record(Install < CommandConfig,
-    file_backend : Backend::Backends = (
-      {% if flag?(:darwin) %}
-        Backend::Backends::CloneFile
-      {% else %}
-        Backend::Backends::Hardlink
-      {% end %}
-    ),
     frozen_lockfile : Bool = !!ENV["CI"]?,
     ignore_scripts : Bool = false,
     install_strategy : InstallStrategy? = nil,
@@ -30,6 +23,7 @@ struct Zap::Config
     removed_packages : Array(String) = Array(String).new,
     updated_packages : Array(String) = Array(String).new,
     update_all : Bool = false,
+    update_to_latest : Bool = false,
     save : Bool = true,
     save_exact : Bool = false,
     save_prod : Bool = true,
@@ -73,12 +67,9 @@ class Zap::CLI
       <<-DESCRIPTION
       The strategy used to install packages.
       Possible values:
-        - classic (default)
-        Mimics the behavior of npm and yarn: install non-duplicated in top-level, and duplicated as necessary within directory structure.
-        - isolated
-        Mimics the behavior of pnpm: dependencies are symlinked from a virtual store at node_modules/.zap.
-        - classic_shallow
-        Like classic but will only install direct dependencies at top-level.
+        - classic (default) : mimics the behavior of npm and yarn: install non-duplicated in top-level, and duplicated as necessary within directory structure.
+        - isolated : mimics the behavior of pnpm: dependencies are symlinked from a virtual store at node_modules/.zap.
+        - classic_shallow : like classic but will only install direct dependencies at top-level.
       DESCRIPTION
     ) do |strategy|
       @command_config = install_config.copy_with(install_strategy: Config::InstallStrategy.parse(strategy))
@@ -91,19 +82,6 @@ class Zap::CLI
     end
     parser.on("--no-logs", "If true, will not print logs like deprecation warnings.") do
       @command_config = install_config.copy_with(print_logs: false)
-    end
-    parser.on(
-      "--file-backend BACKEND",
-      <<-DESCRIPTION
-      The system call used when linking packages.
-      Possible values:
-        - clonefile (default on macOS - macOS only)
-        - hardlink  (default on linux)
-        - copyfile  (macOS only)
-        - copy      (default fallback)
-      DESCRIPTION
-    ) do |backend|
-      @command_config = install_config.copy_with(file_backend: Backend::Backends.parse(backend))
     end
     parser.on("--production", "If true, will not install devDependencies.") do
       @command_config = install_config.copy_with(omit: [Config::Omit::Dev])

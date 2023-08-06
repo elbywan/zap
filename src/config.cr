@@ -2,7 +2,7 @@ module Zap
   # Global configuration for Zap
   record(Config,
     global : Bool = false,
-    global_store_path : String = File.expand_path(
+    store_path : String = File.expand_path(
       ENV["ZAP_STORE_PATH"]? || (
         {% if flag?(:windows) %}
           "%LocalAppData%/.zap/store"
@@ -19,6 +19,13 @@ module Zap
     root_workspace : Bool = false,
     deferred_output : Bool = !!ENV["CI"]?,
     flock_scope : FLockScope = FLockScope::Global,
+    file_backend : Backend::Backends = (
+      {% if flag?(:darwin) %}
+        Backend::Backends::CloneFile
+      {% else %}
+        Backend::Backends::Hardlink
+      {% end %}
+    ),
   ) do
     enum FLockScope
       Global
@@ -81,6 +88,24 @@ module Zap
       copy_with(
         global: false, silent: true, no_workspaces: true, filters: nil, recursive: false, root_workspace: false,
       )
+    end
+
+    def check_if_store_is_linkeable : Config
+      if self.file_backend.hardlink?
+        # Check if the store can be used (not on another mount point for instance)
+        can_link_store = Utils::File.can_hardlink?(self.store_path, self.prefix)
+        unless can_link_store
+          linkeable_ancestor = Utils::File.linkeable_ancestor?(Path.new(self.prefix))
+          if linkeable_ancestor
+            return self.copy_with(store_path: "#{linkeable_ancestor}/.zap/store")
+          else
+            Log.warn { "The store cannot be linked to the project because it is not on the same mount point." }
+            Log.warn { "The store will be copied instead of linked." }
+            return self.copy_with(file_backend: Backend::Backends::Copy)
+          end
+        end
+      end
+      return self
     end
 
     alias WorkspaceScope = Array(WorkspaceOrPackage)

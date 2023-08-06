@@ -51,8 +51,8 @@ module Zap::Fetch
       META_FILE_NAME_TEMP = "meta.json.temp"
       @path : Path
 
-      def initialize(global_store_path)
-        @path = Path.new(global_store_path, CACHE_DIR)
+      def initialize(store_path)
+        @path = Path.new(store_path, CACHE_DIR)
         Utils::Directories.mkdir_p(@path)
       end
 

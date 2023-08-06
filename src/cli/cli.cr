@@ -69,6 +69,8 @@ module Zap
     when Config::Exec
       command_config = command_config.copy_with(command: ARGV.join(" "))
       Commands::Exec.run(config, command_config)
+    when Config::Store
+      Commands::Store.run(config, command_config)
     end
   end
 
@@ -166,6 +168,10 @@ module Zap
         puts parser
         exit
       end
+      parser.on("--version", "Show version.") do
+        puts "v#{VERSION}"
+        exit
+      end
       parser.on("-g", "--global", "Operates in \"global\" mode, so that packages are installed into the global folder instead of the current working directory.") do |path|
         @config = @config.copy_with(prefix: @config.deduce_global_prefix, global: true)
       end
@@ -193,9 +199,18 @@ module Zap
       ) do |scope|
         @config = @config.copy_with(flock_scope: Config::FLockScope.parse(scope))
       end
-      parser.on("--version", "Show version.") do
-        puts "v#{VERSION}"
-        exit
+      parser.on(
+        "--file-backend BACKEND",
+        <<-DESCRIPTION
+        The backend to use when linking packages on disk.
+        Possible values:
+          - clonefile (default on macOS - macOS only)
+          - hardlink  (default on linux)
+          - copyfile  (macOS only)
+          - copy      (default fallback)
+        DESCRIPTION
+      ) do |backend|
+        @config = @config.copy_with(file_backend: Backend::Backends.parse(backend))
       end
     end
 
