@@ -254,6 +254,7 @@ module Zap::Commands::Install
                 end
     installer.install
     installer.remove(pruned_direct_dependencies)
+    installer.prune_orphan_modules
     state.reporter.stop
     installer
   end

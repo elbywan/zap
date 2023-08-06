@@ -1,4 +1,6 @@
 module Zap::Installer
+  Log = Zap::Log.for(self)
+
   abstract class Base
     getter state : Commands::Install::State
     getter main_package : Package
@@ -18,13 +20,64 @@ module Zap::Installer
         package_path = node_modules / name
         if File.directory?(package_path)
           package = Package.init?(package_path)
-          unlink_binaries(package) if package
+          unlink_binaries(package, package_path) if package
           FileUtils.rm_rf(package_path)
         end
       end
     end
 
-    private def unlink_binaries(package : Package)
+    def prune_orphan_modules
+      prune_workspace_orphans(Path.new(state.config.node_modules))
+      state.context.workspaces.try &.each do |workspace|
+        prune_workspace_orphans(workspace.path / "node_modules")
+      end
+    end
+
+    private def prune_workspace_orphans(modules_directory : Path, *, unlink_binaries? : Bool = true)
+      if Dir.exists?(modules_directory)
+        # For each hoisted or direct dependency
+        Dir.each_child(modules_directory) do |package_dir|
+          package_path = modules_directory / package_dir
+
+          if package_dir.starts_with?('@')
+            # Scoped package - recurse on children
+            prune_workspace_orphans(package_path, unlink_binaries?: unlink_binaries?)
+          else
+            if should_prune_orphan?(package_path)
+              if unlink_binaries?
+                package = Package.init?(package_path)
+                if package
+                  unlink_binaries(package, package_path)
+                end
+              end
+              FileUtils.rm_rf(package_path)
+            end
+          end
+        end
+
+        # Remove modules directory if empty
+        if (size = Dir.children(modules_directory).size) < 1
+          FileUtils.rm_rf(modules_directory)
+        end
+      end
+    end
+
+    private def should_prune_orphan?(package_path : Path) : Bool
+      remove_child = false
+      metadata_path = package_path / METADATA_FILE_NAME
+      if File.readable?(metadata_path)
+        # Check the metadata file to retrieve the package key
+        key = File.read(metadata_path)
+        # Check if the lockfile still contains the package
+        pkg = state.lockfile.packages[key]?
+        # If the package is not in the lockfile, delete it
+        remove_child = !pkg
+      end
+
+      remove_child
+    end
+
+    protected def unlink_binaries(package : Package, package_path : Path)
       if bin = package.bin
         if bin.is_a?(Hash)
           bin.each do |name, path|

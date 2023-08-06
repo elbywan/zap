@@ -127,8 +127,8 @@ class Zap::Lockfile
       pkg.roots = (pkg.roots - scope + marked_roots) & Set.new(roots.map(&.[0])) # Remove non-existing roots
 
       # Do not prune packages that were marked during the resolution phase
-      (!is_in_scope || pkg.roots.size > 0).tap do |pruned|
-        Log.debug { "(#{pkg.key}) Pruned from lockfile" } if pruned
+      (!is_in_scope || pkg.roots.size > 0).tap do |kept|
+        Log.debug { "(#{pkg.key}) Pruned from lockfile" } unless kept
       end
     end
 

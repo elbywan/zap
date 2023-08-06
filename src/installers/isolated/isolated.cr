@@ -9,6 +9,7 @@ module Zap::Installer::Isolated
     @hoisted_store : Path
     @hoist_patterns : Array(Regex)
     @public_hoist_patterns : Array(Regex)
+    @installed_packages : Set(String) = Set(String).new
 
     DEFAULT_HOIST_PATTERNS        = ["*"]
     DEFAULT_PUBLIC_HOIST_PATTERNS = [
@@ -23,7 +24,7 @@ module Zap::Installer::Isolated
     )
       super(state)
       @node_modules = Path.new(state.config.node_modules)
-      @modules_store = @node_modules / ".zap"
+      @modules_store = @node_modules / ".store"
       Utils::Directories.mkdir_p(@modules_store)
 
       @hoisted_store = @modules_store / "node_modules"
@@ -64,7 +65,9 @@ module Zap::Installer::Isolated
     ) : Path
       resolved_peers = nil
       overrides = nil
+
       if package.is_a?(Package)
+        Log.debug { "(#{package.key}) Installing package…" }
         # Raise if the architecture is not supported
         begin
           package.match_os_and_cpu!
@@ -72,6 +75,7 @@ module Zap::Installer::Isolated
           # Raise the error unless the package is an optional dependency
           raise e unless optional
         end
+
         # Links/Workspaces are easy, we just need to return the target path
         if package.kind.link?
           root = ancestors.last
@@ -99,26 +103,37 @@ module Zap::Installer::Isolated
 
         install_path = @modules_store / package_folder / "node_modules"
 
-        # Already installed
         if File.directory?(install_path)
-          return install_path / package.name
-        end
-
-        Utils::Directories.mkdir_p(install_path)
-        case package.kind
-        when .tarball_file?
-          Helpers::File.install(package, install_path, installer: self, state: state)
-        when .tarball_url?
-          Helpers::Tarball.install(package, install_path, installer: self, state: state)
-        when .git?
-          Helpers::Git.install(package, install_path, installer: self, state: state)
-        when .registry?
-          Helpers::Registry.install(package, install_path, installer: self, state: state)
+          package_path = install_path / package.name
+          # No need to check dependencies more than once if the package has already been installed once during this run
+          if @installed_packages.includes?(install_path.to_s)
+            Log.debug { "(#{package.name}) Already installed to folder '#{install_path}' during this run, skipping…" }
+            return package_path
+          end
+          hoist_package(package, package_path)
+        else
+          # Install package
+          Utils::Directories.mkdir_p(install_path)
+          case package.kind
+          when .tarball_file?
+            Helpers::File.install(package, install_path, installer: self, state: state)
+          when .tarball_url?
+            Helpers::Tarball.install(package, install_path, installer: self, state: state)
+          when .git?
+            Helpers::Git.install(package, install_path, installer: self, state: state)
+          when .registry?
+            Helpers::Registry.install(package, install_path, installer: self, state: state)
+          end
         end
       else
+        Log.debug { "(#{package.name}) Installing root…" }
         install_path = root_path.not_nil!
       end
 
+      # Prevents infinite loops and duplicate checks
+      @installed_packages << install_path.to_s
+
+      # Extract data from the lockfile
       pinned_packages = package.map_dependencies do |name, version_or_alias, type|
         _key = version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key
         _pkg = state.lockfile.packages[_key]
@@ -129,9 +144,11 @@ module Zap::Installer::Isolated
         }
       end
 
+      # For each resolved peer and pinned dependency, install the dependency in the .store folder if it's not already installed
       (resolved_peers.try(&.map { |p| {p.name, p, Package::DependencyType::Dependency} }.+ pinned_packages) || pinned_packages).each do |(name, dependency, type)|
-        # Install the dependency in the .zap folder if it's not already installed
-        ancestors.unshift package
+        Log.debug { "(#{package.is_a?(Package) ? package.key : package.name}) Processing dependency: #{dependency.key}" }
+        # Add to the ancestors
+        ancestors.unshift(package)
 
         # Apply overrides
         if overrides = state.lockfile.overrides
@@ -141,9 +158,14 @@ module Zap::Installer::Isolated
             # ancestors_str = reversed_ancestors.select(&.is_a?(Package)).map { |a| "#{a.as(Package).name}@#{a.as(Package).version}" }.join(" > ")
             # state.reporter.log("#{"Overriden:".colorize.bold.yellow} #{"#{override.name}@"}#{override.specifier.colorize.blue} (was: #{dependency.version}) #{"(#{ancestors_str})".colorize.dim}")
             dependency = state.lockfile.packages["#{override.name}@#{override.specifier}"]
+            Log.debug {
+              ancestors_str = reversed_ancestors.select(&.is_a?(Package)).map { |a| "#{a.as(Package).name}@#{a.as(Package).version}" }.join(" > ")
+              "(#{dependency.key}) Overriden dependency: #{"#{override.name}@"}#{override.specifier} (was: #{dependency.version}) (#{ancestors_str})"
+            }
           end
         end
 
+        # Install the dependency to its own folder
         source = install_package(
           dependency,
           ancestors: ancestors,
@@ -153,10 +175,11 @@ module Zap::Installer::Isolated
 
         # Link it to the parent package
         target = install_path / name
-        self.class.symlink(source, target)
+        Log.debug { "(#{package.is_a?(Package) ? package.key : package.name}) Linking #{dependency.key}: #{source} -> #{target}" }
+        symlink(source, target)
 
         # Link binaries
-        self.class.link_binaries(dependency, package_path: target, target_node_modules: install_path)
+        link_binaries(dependency, package_path: target, target_node_modules: install_path)
       end
 
       if package.is_a?(Package)
@@ -190,22 +213,20 @@ module Zap::Installer::Isolated
         @installed_packages_with_hooks << {dependency, install_folder}
       end
 
-      if @public_hoist_patterns.any?(&.=~ dependency.name)
-        # Hoist to the root node_modules folder
-        hoisted_target = @node_modules / dependency.name
-        hoisted_source = install_folder
-        self.class.symlink(hoisted_source, hoisted_target)
-      elsif @hoist_patterns.any?(&.=~ dependency.name)
-        # Hoist to the .zap/node_modules folder
-        hoisted_target = @hoisted_store / dependency.name
-        hoisted_source = install_folder
-        self.class.symlink(hoisted_source, hoisted_target)
-      end
+      hoist_package(dependency, install_folder)
 
       state.reporter.on_package_installed
     end
 
-    protected def self.link_binaries(package : Package, *, package_path : Path, target_node_modules : Path)
+    def prune_orphan_modules
+      # Publicly hoisted packages.
+      # Note: no need to unlink binaries since they are not created for hoisted modules in isolated mode.
+      prune_workspace_orphans(@node_modules, unlink_binaries?: false)
+      # Hoisted packages.
+      prune_workspace_orphans(@hoisted_store, unlink_binaries?: false)
+    end
+
+    protected def link_binaries(package : Package, *, package_path : Path, target_node_modules : Path)
       if bin = package.bin
         base_bin_path = target_node_modules / ".bin"
         Utils::Directories.mkdir_p(base_bin_path)
@@ -275,7 +296,7 @@ module Zap::Installer::Isolated
       result
     end
 
-    protected def self.symlink(source, target)
+    protected def symlink(source, target)
       info = File.info?(target, follow_symlinks: false)
       if info
         case info.type
@@ -295,6 +316,34 @@ module Zap::Installer::Isolated
       else
         Utils::Directories.mkdir_p(target.dirname)
         File.symlink(source, target)
+      end
+    end
+
+    private def hoist_package(package : Package, install_folder : Path)
+      if @public_hoist_patterns.any?(&.=~ package.name)
+        Log.debug { "(#{package.key}) Publicly hoisting module: #{package.name}: #{install_folder} <- #{@node_modules / package.name}" }
+        # Hoist to the root node_modules folder
+        symlink(install_folder, @node_modules / package.name)
+        # Remove regular hoisted link if it exists
+        deleted = File.delete?(@hoisted_store / package.name)
+        Log.debug { "(#{package.key}) Removed hoisted link at: #{@hoisted_store / package.name}" if deleted }
+        Log.debug { "(#{package.key}) No hoisted link found at: #{@hoisted_store / package.name}" unless deleted }
+      elsif @hoist_patterns.any?(&.=~ package.name)
+        # Hoist to the .store/node_modules folder
+        Log.debug { "(#{package.key}) Hoisting module: #{package.name}: #{install_folder} <- #{@hoisted_store / package.name}" }
+        symlink(install_folder, @hoisted_store / package.name)
+        # Remove public hoisted link if it exists
+        deleted = File.delete?(@node_modules / package.name)
+        Log.debug { "(#{package.key}) Removed publicly hoisted link at: #{@node_modules / package.name}" if deleted }
+        Log.debug { "(#{package.key}) No publicly hoisted link found at: #{@node_modules / package.name}" unless deleted }
+      else
+        # Remove any existing hoisted link
+        deleted = File.delete?(@node_modules / package.name)
+        Log.debug { "(#{package.key}) Removing publicly hoisted link at: #{@node_modules / package.name}" if deleted }
+        Log.debug { "(#{package.key}) No publicly hoisted link found at: #{@node_modules / package.name}" unless deleted }
+        deleted = File.delete?(@hoisted_store / package.name)
+        Log.debug { "(#{package.key}) Removing hoisted link at: #{@hoisted_store / package.name}" if deleted }
+        Log.debug { "(#{package.key}) No hoisted link found at: #{@hoisted_store / package.name}" unless deleted }
       end
     end
   end

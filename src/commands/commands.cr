@@ -1,3 +1,3 @@
 module Zap::Commands
-  Log = ::Log.for(self)
+  Log = Zap::Log.for(self)
 end
