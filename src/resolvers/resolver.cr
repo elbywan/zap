@@ -19,7 +19,8 @@ abstract struct Zap::Resolver::Base
     @version = "latest",
     @aliased_name = nil,
     @parent = nil,
-    @dependency_type = nil
+    @dependency_type = nil,
+    @skip_cache = false
   )
   end
 
@@ -80,7 +81,8 @@ module Zap::Resolver
     name : String,
     version_field : String = "latest",
     parent : Package | Lockfile::Root | Nil = nil,
-    type : Package::DependencyType? = nil
+    type : Package::DependencyType? = nil,
+    skip_cache : Bool = false
   ) : Base
     # Check if the package depending on the current one is a workspace
     parent_is_workspace = !parent || parent.is_a?(Lockfile::Root)
@@ -135,27 +137,27 @@ module Zap::Resolver
     case version_field
     when .starts_with?("git://"), .starts_with?("git+ssh://"), .starts_with?("git+http://"), .starts_with?("git+https://"), .starts_with?("git+file://")
       Log.debug { "(#{name}@#{version_field}) Resolved as a git dependency" }
-      Git.new(state, name, version_field, aliased_name, parent)
+      Git.new(state, name, version_field, aliased_name, parent, type)
     when .starts_with?("file:")
       Log.debug { "(#{name}@#{version_field}) Resolved as a file dependency" }
-      File.new(state, name, version_field, aliased_name, parent)
+      File.new(state, name, version_field, aliased_name, parent, type)
     when .starts_with?("github:")
       Log.debug { "(#{name}@#{version_field}) Resolved as a github dependency" }
-      Github.new(state, name, version_field[7..], aliased_name, parent)
+      Github.new(state, name, version_field[7..], aliased_name, parent, type)
     when .matches?(GH_URL_REGEX)
       Log.debug { "(#{name}@#{version_field}) Resolved as a github dependency" }
-      Github.new(state, name, version_field[19..], aliased_name, parent)
+      Github.new(state, name, version_field[19..], aliased_name, parent, type)
     when .starts_with?("http://"), .starts_with?("https://")
       Log.debug { "(#{name}@#{version_field}) Resolved as a tarball url dependency" }
-      TarballUrl.new(state, name, version_field, aliased_name, parent)
+      TarballUrl.new(state, name, version_field, aliased_name, parent, type)
     when .matches?(GH_SHORT_REGEX)
       Log.debug { "(#{name}@#{version_field}) Resolved as a github dependency" }
-      Github.new(state, name, version_field, aliased_name, parent)
+      Github.new(state, name, version_field, aliased_name, parent, type)
     else
       version = Utils::Semver.parse?(version_field)
       Log.debug { "(#{name}@#{version_field}) Failed to parse semver '#{version_field}', treating as a dist-tag." } unless version
       Log.debug { "(#{name}@#{version_field}) Resolved as a registry dependency" }
-      Registry.new(state, name, version || version_field, aliased_name, parent)
+      Registry.new(state, name, version || version_field, aliased_name, parent, type, skip_cache)
     end
   end
 
@@ -436,7 +438,7 @@ module Zap::Resolver
         # Infer the package.json version from the CLI argument
         inferred_version, inferred_name = parse_new_package(new_dep, directory: directory)
         # Resolve the package
-        resolver = Resolver.make(state, inferred_name, inferred_version || "*", state.lockfile.get_root(package.name))
+        resolver = Resolver.make(state, inferred_name, inferred_version || "*", state.lockfile.get_root(package.name), skip_cache: true)
         metadata = resolver.resolve
         name = inferred_name.empty? ? metadata.name : inferred_name
         # If the save flag is set
