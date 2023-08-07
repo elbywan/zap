@@ -1,4 +1,6 @@
 module Zap::Utils::Scripts
+  Log = Zap::Log.for(self)
+
   COLORS = {
     # IndianRed1
     Colorize::Color256.new(203),
@@ -252,6 +254,9 @@ module Zap::Utils::Scripts
 
   def self.run_script(command : String, chdir : Path | String, config : Config, raise_on_error_code = true, output_io = nil, stdin = Process::Redirect::Close, **args, &block : String, Symbol ->)
     return if command.empty?
+    Log.debug {
+      "Running script: #{command} #{Utils::Macros.args_str}"
+    }
     output = output_io || IO::Memory.new
     # See: https://docs.npmjs.com/cli/v9/commands/npm-run-script
     paths = [] of Path | String

@@ -33,6 +33,9 @@ module Zap::Commands::Install
       # Infer context like the nearest package.json file and workspaces
       inferred_context = config.infer_context
       workspaces, config = inferred_context.workspaces, inferred_context.config
+
+      Log.debug { "Configuration: #{config.pretty_inspect}" }
+
       lockfile = Lockfile.new(config.prefix)
       reporter ||= config.silent ? Reporter::Interactive.new(null_io) : Reporter::Interactive.new
       # Merge zap config from package.json
@@ -53,6 +56,8 @@ module Zap::Commands::Install
         reporter: reporter,
         context: inferred_context
       )
+
+      Log.debug { "Install configuration: #{state.install_config.pretty_inspect}" }
 
       # Remove packages if specified from the CLI
       remove_packages(state)

@@ -85,6 +85,9 @@ module Zap::Installer::Classic
       while dependency_item = dependency_queue.shift?
         begin
           dependency = dependency_item.dependency
+
+          Log.debug { "(#{dependency.key}) Installing package…" }
+
           # Raise if the architecture is not supported
           begin
             dependency.match_os_and_cpu!
@@ -94,13 +97,17 @@ module Zap::Installer::Classic
             # Else, raise the error
             raise e
           end
-          # install a dependency and get the new cache to pass to the subdeps
+
+          # Install a dependency and get the new cache to pass to the subdeps
           install_location = install_dependency(
             dependency,
             location: dependency_item.location_node,
             ancestors: dependency_item.ancestors,
             aliased_name: dependency_item.alias
           )
+
+          Log.debug { "(#{dependency.key}) Installed to: #{install_location}" }
+
           # no install location = do not process the sub dependencies
           next unless install_location
           # Append self to the dependency ancestors
@@ -116,6 +123,10 @@ module Zap::Installer::Classic
                 # ancestors_str = ancestors.map { |a| "#{a.name}@#{a.version}" }.join(" > ")
                 # state.reporter.log("#{"Overriden:".colorize.bold.yellow} #{"#{override.name}@"}#{override.specifier.colorize.blue} (was: #{pkg.version}) #{"(#{ancestors_str})".colorize.dim}")
                 pkg = state.lockfile.packages["#{override.name}@#{override.specifier}"]
+                Log.debug {
+                  ancestors_str = ancestors.map { |a| "#{a.name}@#{a.version}" }.join(" > ")
+                  "(#{pkg.key}) Overriden dependency: #{"#{override.name}@"}#{override.specifier} (was: #{pkg.version}) (#{ancestors_str})"
+                }
               end
             end
             # Queue child dependency
@@ -163,6 +174,7 @@ module Zap::Installer::Classic
           f.print dependency.key
         end
       end
+
       # Link binary files if they are declared in the package.json
       if bin = dependency.bin
         bin_folder_path = state.config.bin_path
@@ -192,12 +204,13 @@ module Zap::Installer::Classic
         end
       end
 
-      # Register hooks here if needed
+      # Copy the scripts from the package.json
       if dependency.has_install_script
         Package.init?(install_folder).try { |pkg|
           dependency.scripts = pkg.scripts
         }
       end
+
       # "If there is a binding.gyp file in the root of your package and you haven't defined your own install or preinstall scripts…
       # …npm will default the install command to compile using node-gyp via node-gyp rebuild"
       # See: https://docs.npmjs.com/cli/v9/using-npm/scripts#npm-install
@@ -205,7 +218,9 @@ module Zap::Installer::Classic
         (dependency.scripts ||= Zap::Package::LifecycleScripts.new).install = "node-gyp rebuild"
       end
 
+      # Register install hook to be executed after the package is installed
       if dependency.scripts.try &.has_install_script?
+        Log.debug { "(#{dependency.key}) Registering install hook" }
         @installed_packages_with_hooks << {dependency, install_folder}
       end
 

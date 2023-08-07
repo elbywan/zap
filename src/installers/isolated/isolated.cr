@@ -190,18 +190,20 @@ module Zap::Installer::Isolated
     end
 
     def on_install(dependency : Package, install_folder : Path, *, state : Commands::Install::State)
+      # Store package metadata
       unless File.symlink?(install_folder)
         File.open(install_folder / METADATA_FILE_NAME, "w") do |f|
           f.print dependency.key
         end
       end
 
-      # Register hooks here if needed
+      # Copy the scripts from the package.json
       if dependency.has_install_script
         Package.init?(install_folder).try { |pkg|
           dependency.scripts = pkg.scripts
         }
       end
+
       # "If there is a binding.gyp file in the root of your package and you haven't defined your own install or preinstall scripts…
       # …npm will default the install command to compile using node-gyp via node-gyp rebuild"
       # See: https://docs.npmjs.com/cli/v9/using-npm/scripts#npm-install
@@ -209,12 +211,16 @@ module Zap::Installer::Isolated
         (dependency.scripts ||= Zap::Package::LifecycleScripts.new).install = "node-gyp rebuild"
       end
 
+      # Register install hook to be executed after the package is installed
       if dependency.scripts.try &.has_install_script?
+        Log.debug { "(#{dependency.key}) Registering install hook" }
         @installed_packages_with_hooks << {dependency, install_folder}
       end
 
+      # Check if the package is a hoisted package
       hoist_package(dependency, install_folder)
 
+      # Report the package as installed
       state.reporter.on_package_installed
     end
 
@@ -321,29 +327,29 @@ module Zap::Installer::Isolated
 
     private def hoist_package(package : Package, install_folder : Path)
       if @public_hoist_patterns.any?(&.=~ package.name)
-        Log.debug { "(#{package.key}) Publicly hoisting module: #{package.name}: #{install_folder} <- #{@node_modules / package.name}" }
+        Log.debug { "(#{package.key}) Publicly hoisting module: #{install_folder} <- #{@node_modules / package.name}" }
         # Hoist to the root node_modules folder
         symlink(install_folder, @node_modules / package.name)
         # Remove regular hoisted link if it exists
         deleted = File.delete?(@hoisted_store / package.name)
         Log.debug { "(#{package.key}) Removed hoisted link at: #{@hoisted_store / package.name}" if deleted }
-        Log.debug { "(#{package.key}) No hoisted link found at: #{@hoisted_store / package.name}" unless deleted }
+        # Log.debug { "(#{package.key}) No hoisted link found at: #{@hoisted_store / package.name}" unless deleted }
       elsif @hoist_patterns.any?(&.=~ package.name)
         # Hoist to the .store/node_modules folder
-        Log.debug { "(#{package.key}) Hoisting module: #{package.name}: #{install_folder} <- #{@hoisted_store / package.name}" }
+        Log.debug { "(#{package.key}) Hoisting module: #{install_folder} <- #{@hoisted_store / package.name}" }
         symlink(install_folder, @hoisted_store / package.name)
         # Remove public hoisted link if it exists
         deleted = File.delete?(@node_modules / package.name)
         Log.debug { "(#{package.key}) Removed publicly hoisted link at: #{@node_modules / package.name}" if deleted }
-        Log.debug { "(#{package.key}) No publicly hoisted link found at: #{@node_modules / package.name}" unless deleted }
+        # Log.debug { "(#{package.key}) No publicly hoisted link found at: #{@node_modules / package.name}" unless deleted }
       else
         # Remove any existing hoisted link
         deleted = File.delete?(@node_modules / package.name)
         Log.debug { "(#{package.key}) Removing publicly hoisted link at: #{@node_modules / package.name}" if deleted }
-        Log.debug { "(#{package.key}) No publicly hoisted link found at: #{@node_modules / package.name}" unless deleted }
+        # Log.debug { "(#{package.key}) No publicly hoisted link found at: #{@node_modules / package.name}" unless deleted }
         deleted = File.delete?(@hoisted_store / package.name)
         Log.debug { "(#{package.key}) Removing hoisted link at: #{@hoisted_store / package.name}" if deleted }
-        Log.debug { "(#{package.key}) No hoisted link found at: #{@hoisted_store / package.name}" unless deleted }
+        # Log.debug { "(#{package.key}) No hoisted link found at: #{@hoisted_store / package.name}" unless deleted }
       end
     end
   end

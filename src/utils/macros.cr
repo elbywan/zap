@@ -74,4 +74,16 @@ module Zap::Utils::Macros
       \{% end %}
     end
   end
+
+  macro args_str
+    {% begin %}
+      %result = [] of String
+      {% for arg in @def.args %}
+        {% if !arg.name.empty? %}
+          %result << "{{ arg.name }}: #{({{ arg.name.id }})}"
+        {% end %}
+      {% end %}
+      "(#{%result.join(", ")})"
+    {% end %}
+  end
 end
