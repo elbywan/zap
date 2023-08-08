@@ -40,6 +40,11 @@ module Zap::Commands::Install
       reporter ||= config.silent ? Reporter::Interactive.new(null_io) : Reporter::Interactive.new
       # Merge zap config from package.json
       install_config = install_config.merge_pkg(inferred_context.main_package)
+      hoisting_hash_diff = lockfile.update_hoisting_hash(inferred_context.main_package)
+      if hoisting_hash_diff
+        Log.debug { "Detected a change in hoisting options in the package.json file." }
+        install_config = install_config.copy_with(force_hoisting: true)
+      end
 
       # Print info about the install
       self.print_info(config, inferred_context, install_config, lockfile, workspaces)

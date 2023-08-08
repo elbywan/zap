@@ -199,7 +199,10 @@ module Zap::Utils::File
     if info
       case info.type
       when .directory?
-        FileUtils.rm_rf(path)
+        Dir.each_child(path) do |entry|
+          FileUtils.rm_r(join(path, entry))
+        end
+        Dir.delete(path)
       else
         ::File.delete(path)
       end

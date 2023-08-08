@@ -10,61 +10,6 @@ class Zap::Lockfile
   NAME = ".zap-lock.yml"
   Log  = Zap::Log.for(self)
 
-  class Root
-    include YAML::Serializable
-
-    getter name : String
-    getter version : String
-
-    property dependencies : Hash(String, String)? = nil
-    property dev_dependencies : Hash(String, String)? = nil
-    property optional_dependencies : Hash(String, String)? = nil
-    property peer_dependencies : Hash(String, String)? = nil
-    getter pinned_dependencies : SafeHash(String, String | Package::Alias) { SafeHash(String, String | Package::Alias).new }
-    getter? pinned_dependencies
-
-    def initialize(@name, @version)
-    end
-
-    def dependency_specifier?(name : String)
-      pinned_dependencies[name]?
-    end
-
-    def set_dependency_specifier(name : String, specifier : String | Package::Alias, _type : _)
-      pinned_dependencies[name] = specifier
-    end
-
-    def map_dependencies(
-      *,
-      include_dev : Bool = true,
-      include_optional : Bool = true,
-      &block : (String, String | Package::Alias, DependencyType) -> T
-    ) : Array(T) forall T
-      pinned_dependencies.map { |key, val| block.call(key, val, find_dependency_type(key)) }
-    end
-
-    def each_dependency(
-      *,
-      include_dev : Bool = true,
-      include_optional : Bool = true,
-      &block : (String, String | Package::Alias, DependencyType) -> T
-    ) : Nil forall T
-      pinned_dependencies.each { |key, val| block.call(key, val, find_dependency_type(key)) }
-    end
-
-    private def find_dependency_type(name : String)
-      if dependencies.try &.has_key?(name)
-        DependencyType::Dependency
-      elsif dev_dependencies.try &.has_key?(name)
-        DependencyType::DevDependency
-      elsif optional_dependencies.try &.has_key?(name)
-        DependencyType::OptionalDependency
-      else
-        DependencyType::Unknown
-      end
-    end
-  end
-
   @[YAML::Field(ignore: true)]
   @roots_lock = Mutex.new
   getter roots : Hash(String, Root) = Hash(String, Root).new
@@ -73,6 +18,8 @@ class Zap::Lockfile
 
   @[YAML::Field(ignore: true)]
   getter packages_lock = Mutex.new
+
+  @hoisting_hash : String? = nil
 
   enum ReadStatus
     FromDisk
@@ -230,6 +177,16 @@ class Zap::Lockfile
     end
   end
 
+  def update_hoisting_hash(main_package : Package) : Bool
+    hexstr = Digest::SHA1.digest do |ctx|
+      (main_package.zap_config.try(&.public_hoist_patterns) || DEFAULT_PUBLIC_HOIST_PATTERNS).map(&.to_s).sort.each { |elt| ctx << elt }
+      (main_package.zap_config.try(&.hoist_patterns) || DEFAULT_HOIST_PATTERNS).map(&.to_s).sort.each { |elt| ctx << elt }
+    end.hexstring
+    diff = @hoisting_hash != hexstr
+    @hoisting_hash = hexstr
+    diff
+  end
+
   private def crawl_dependency(
     package : Package,
     type : DependencyType,
@@ -250,5 +207,60 @@ class Zap::Lockfile
       end
     end
     ancestors.pop
+  end
+
+  class Root
+    include YAML::Serializable
+
+    getter name : String
+    getter version : String
+
+    property dependencies : Hash(String, String)? = nil
+    property dev_dependencies : Hash(String, String)? = nil
+    property optional_dependencies : Hash(String, String)? = nil
+    property peer_dependencies : Hash(String, String)? = nil
+    getter pinned_dependencies : SafeHash(String, String | Package::Alias) { SafeHash(String, String | Package::Alias).new }
+    getter? pinned_dependencies
+
+    def initialize(@name, @version)
+    end
+
+    def dependency_specifier?(name : String)
+      pinned_dependencies[name]?
+    end
+
+    def set_dependency_specifier(name : String, specifier : String | Package::Alias, _type : _)
+      pinned_dependencies[name] = specifier
+    end
+
+    def map_dependencies(
+      *,
+      include_dev : Bool = true,
+      include_optional : Bool = true,
+      &block : (String, String | Package::Alias, DependencyType) -> T
+    ) : Array(T) forall T
+      pinned_dependencies.map { |key, val| block.call(key, val, find_dependency_type(key)) }
+    end
+
+    def each_dependency(
+      *,
+      include_dev : Bool = true,
+      include_optional : Bool = true,
+      &block : (String, String | Package::Alias, DependencyType) -> T
+    ) : Nil forall T
+      pinned_dependencies.each { |key, val| block.call(key, val, find_dependency_type(key)) }
+    end
+
+    private def find_dependency_type(name : String)
+      if dependencies.try &.has_key?(name)
+        DependencyType::Dependency
+      elsif dev_dependencies.try &.has_key?(name)
+        DependencyType::DevDependency
+      elsif optional_dependencies.try &.has_key?(name)
+        DependencyType::OptionalDependency
+      else
+        DependencyType::Unknown
+      end
+    end
   end
 end

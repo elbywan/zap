@@ -1,4 +1,9 @@
 module Zap
+  DEFAULT_HOIST_PATTERNS        = ["*"]
+  DEFAULT_PUBLIC_HOIST_PATTERNS = [
+    "*eslint*", "*prettier*",
+  ]
+
   # Global configuration for Zap
   record(Config,
     global : Bool = false,

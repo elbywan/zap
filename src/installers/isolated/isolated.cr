@@ -11,11 +11,6 @@ module Zap::Installer::Isolated
     @public_hoist_patterns : Array(Regex)
     @installed_packages : Set(String) = Set(String).new
 
-    DEFAULT_HOIST_PATTERNS        = ["*"]
-    DEFAULT_PUBLIC_HOIST_PATTERNS = [
-      "*eslint*", "*prettier*",
-    ]
-
     def initialize(
       state,
       *,
@@ -102,16 +97,31 @@ module Zap::Installer::Isolated
         end
 
         install_path = @modules_store / package_folder / "node_modules"
+        package_path = install_path / package.name
 
+        # If the package folder exists, we assume that the package dependencies were already installed too
         if File.directory?(install_path)
           package_path = install_path / package.name
+          # If there is no need to perform hoisting, we can just return the package path and skip the dependencies
+          unless state.install_config.force_hoisting
+            Log.debug { "(#{package.name}) Already installed to folder '#{install_path}', skipping…" }
+            return package_path
+          end
+
           # No need to check dependencies more than once if the package has already been installed once during this run
           if @installed_packages.includes?(install_path.to_s)
             Log.debug { "(#{package.name}) Already installed to folder '#{install_path}' during this run, skipping…" }
             return package_path
           end
+
           hoist_package(package, package_path)
         else
+          # No need to install and check dependencies more than once if the package has already been installed during this run
+          if @installed_packages.includes?(install_path.to_s)
+            Log.debug { "(#{package.name}) Already installed to folder '#{install_path}' during this run, skipping…" }
+            return package_path
+          end
+
           # Install package
           Utils::Directories.mkdir_p(install_path)
           case package.kind
@@ -308,10 +318,13 @@ module Zap::Installer::Isolated
         case info.type
         when .symlink?
           # Note: is checking the path and delete accordingly faster than always deleting?
-          if File.realpath(target) != source
-            File.delete(target)
-            File.symlink(source, target)
-          end
+          # if File.realpath(target) != source
+          #   File.delete(target)
+          #   File.symlink(source, target)
+          # end
+          # Node: it seems like it is not - at least on macos
+          File.delete(target)
+          File.symlink(source, target)
         when .directory?
           FileUtils.rm_rf(target)
           File.symlink(source, target)
