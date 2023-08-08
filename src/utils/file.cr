@@ -193,4 +193,19 @@ module Zap::Utils::File
     ::File.delete?(link_dest) if link_dest
     ::File.delete?(link_source) if link_source
   end
+
+  def self.delete_file_or_dir?(path : Path) : Bool
+    info = ::File.info?(path, follow_symlinks: false)
+    if info
+      case info.type
+      when .directory?
+        FileUtils.rm_rf(path)
+      else
+        ::File.delete(path)
+      end
+      true
+    else
+      false
+    end
+  end
 end

@@ -331,7 +331,7 @@ module Zap::Installer::Isolated
         # Hoist to the root node_modules folder
         symlink(install_folder, @node_modules / package.name)
         # Remove regular hoisted link if it exists
-        deleted = File.delete?(@hoisted_store / package.name)
+        deleted = Utils::File.delete_file_or_dir?(@hoisted_store / package.name)
         Log.debug { "(#{package.key}) Removed hoisted link at: #{@hoisted_store / package.name}" if deleted }
         # Log.debug { "(#{package.key}) No hoisted link found at: #{@hoisted_store / package.name}" unless deleted }
       elsif @hoist_patterns.any?(&.=~ package.name)
@@ -339,15 +339,15 @@ module Zap::Installer::Isolated
         Log.debug { "(#{package.key}) Hoisting module: #{install_folder} <- #{@hoisted_store / package.name}" }
         symlink(install_folder, @hoisted_store / package.name)
         # Remove public hoisted link if it exists
-        deleted = File.delete?(@node_modules / package.name)
+        deleted = Utils::File.delete_file_or_dir?(@node_modules / package.name)
         Log.debug { "(#{package.key}) Removed publicly hoisted link at: #{@node_modules / package.name}" if deleted }
         # Log.debug { "(#{package.key}) No publicly hoisted link found at: #{@node_modules / package.name}" unless deleted }
       else
         # Remove any existing hoisted link
-        deleted = File.delete?(@node_modules / package.name)
+        deleted = Utils::File.delete_file_or_dir?(@node_modules / package.name)
         Log.debug { "(#{package.key}) Removing publicly hoisted link at: #{@node_modules / package.name}" if deleted }
         # Log.debug { "(#{package.key}) No publicly hoisted link found at: #{@node_modules / package.name}" unless deleted }
-        deleted = File.delete?(@hoisted_store / package.name)
+        deleted = Utils::File.delete_file_or_dir?(@hoisted_store / package.name)
         Log.debug { "(#{package.key}) Removing hoisted link at: #{@hoisted_store / package.name}" if deleted }
         # Log.debug { "(#{package.key}) No hoisted link found at: #{@hoisted_store / package.name}" unless deleted }
       end
