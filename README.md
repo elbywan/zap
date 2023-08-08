@@ -155,7 +155,7 @@ I also experimented with a lot of package managers over the years, and I have a 
 
 - [npm](https://www.npmjs.com/) is the de facto standard for JavaScript package management. It is reliable and has a huge community. But it is also slow and lack features introduced by other package managers over time.
 
-- [yarn](https://yarnpkg.com/) is a great alternative to npm and v1 was a pioneer and introduced many positive things. I never used yarn berry, and the PnP approach seems interesting enough - unfortunately it does not seem to be compatible out of the box with a lot of packages from the ecosystem.
+- [yarn](https://yarnpkg.com/) is a great alternative to npm, it was a pioneer initially in terms of speed and it introduced many improvements and innovations along the years. Yarn is also impressively reliable and innovative. I never used yarn berry in a significant project but the PnP approach is very interesting - unfortunately the downside is that does not seem to be compatible out of the box with a lot of packages from the ecosystem.
 
 - [pnpm](https://pnpm.io/) is an incredible package manager, and I have been using it for many years. It introduced me to the concept of _isolated installs_ and I have been a big fan ever since. I also really like the way it handles workspaces. The downside is the sheer speed when perform a lot of operations in a big workspace. It felt perfectly fine until I tried bun - which puts things into perspective.
 
