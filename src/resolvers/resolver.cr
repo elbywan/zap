@@ -167,13 +167,19 @@ module Zap::Resolver
     state : Commands::Install::State,
     ancestors : Deque(Package) = Deque(Package).new,
     disable_cache_for_packages : Array(String)? = nil,
-    disable_cache : Bool = false
+    disable_cache : Bool = false,
+    pinned_dependencies : SafeHash(String, String | Package::Alias)? = nil
   )
     is_root = ancestors.size == 0
     package.each_dependency(
       include_dev: is_root && !state.install_config.omit_dev?,
       include_optional: !state.install_config.omit_optional?
     ) do |name, version_or_alias, type|
+      # If the dependency is pinned, use the pinned version instead of the one in the package.json
+      if pinned_version = (pinned_dependencies.try &.[name]?)
+        version_or_alias = pinned_version
+      end
+
       if type.dependency?
         # "Entries in optionalDependencies will override entries of the same name in dependencies"
         # From: https://docs.npmjs.com/cli/v9/configuring-npm/package-json#optionaldependencies

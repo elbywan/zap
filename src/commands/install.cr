@@ -176,7 +176,8 @@ module Zap::Commands::Install
         package,
         state: state,
         disable_cache_for_packages: state.install_config.updated_packages,
-        disable_cache: state.install_config.update_all
+        disable_cache: state.install_config.update_all,
+        pinned_dependencies: state.lockfile.roots[package.name]?.try(&.pinned_dependencies)
       )
     end
     state.pipeline.await

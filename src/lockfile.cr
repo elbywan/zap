@@ -31,12 +31,36 @@ class Zap::Lockfile
       pinned_dependencies[name] = specifier
     end
 
-    def map_dependencies(&block : (String, String | Package::Alias, Package::DependencyType) -> T) : Array(T) forall T
-      pinned_dependencies.map { |key, val| block.call(key, val, Package::DependencyType::Unknown) }
+    alias DependencyType = Package::DependencyType
+
+    def map_dependencies(
+      *,
+      include_dev : Bool = true,
+      include_optional : Bool = true,
+      &block : (String, String | Package::Alias, DependencyType) -> T
+    ) : Array(T) forall T
+      pinned_dependencies.map { |key, val| block.call(key, val, find_dependency_type(key)) }
     end
 
-    def each_dependency(&block : (String, String | Package::Alias, Package::DependencyType) -> T) : Nil forall T
-      pinned_dependencies.each { |key, val| block.call(key, val, Package::DependencyType::Unknown) }
+    def each_dependency(
+      *,
+      include_dev : Bool = true,
+      include_optional : Bool = true,
+      &block : (String, String | Package::Alias, Package::DependencyType) -> T
+    ) : Nil forall T
+      pinned_dependencies.each { |key, val| block.call(key, val, find_dependency_type(key)) }
+    end
+
+    private def find_dependency_type(name : String)
+      if dependencies.try &.has_key?(name)
+        DependencyType::Dependency
+      elsif dev_dependencies.try &.has_key?(name)
+        DependencyType::DevDependency
+      elsif optional_dependencies.try &.has_key?(name)
+        DependencyType::OptionalDependency
+      else
+        DependencyType::Unknown
+      end
     end
   end
 
