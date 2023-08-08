@@ -256,11 +256,11 @@ module Zap::Resolver
     state.reporter.on_resolving_package
     # Add direct dependencies to the lockfile
     if package && is_direct_dependency && type
-      state.lockfile.add_dependency(name, version, type, package.name)
+      state.lockfile.add_dependency(name, version, type, package.name, package.version)
     end
     # Multithreaded dependency resolution (if enabled)
     state.pipeline.process do
-      parent = package.try { |package| is_direct_dependency ? state.lockfile.get_root(package.name) : package }
+      parent = package.try { |package| is_direct_dependency ? state.lockfile.get_root(package.name, package.version) : package }
       # Create the appropriate resolver depending on the version (git, tarball, registry, local folder…)
       resolver = Resolver.make(state, name, version, parent, type)
       # Attempt to use the package data from the lockfile
@@ -412,7 +412,7 @@ module Zap::Resolver
           # Check each ancestor recursively and check if it matches the override pattern
           ancestors.reverse_each do |ancestor|
             matches = ancestor.name == parent.name && (
-              parent.version == "*" || Utils::Semver.parse(parent.version).valid?(ancestor.version)
+              parent.version == "*" || Utils::Semver.parse(parent.version).satisfies?(ancestor.version)
             )
             if matches
               if parents_index > 0
@@ -444,7 +444,7 @@ module Zap::Resolver
         # Infer the package.json version from the CLI argument
         inferred_version, inferred_name = parse_new_package(new_dep, directory: directory)
         # Resolve the package
-        resolver = Resolver.make(state, inferred_name, inferred_version || "*", state.lockfile.get_root(package.name), skip_cache: true)
+        resolver = Resolver.make(state, inferred_name, inferred_version || "*", state.lockfile.get_root(package.name, package.version), skip_cache: true)
         metadata = resolver.resolve
         name = inferred_name.empty? ? metadata.name : inferred_name
         # If the save flag is set
@@ -476,7 +476,7 @@ module Zap::Resolver
       # Find matching extensions
       package_extensions.select { |selector|
         name, version = Utils::Various.parse_key(selector)
-        name == metadata.name && (!version || Utils::Semver.parse(version).valid?(metadata.version))
+        name == metadata.name && (!version || Utils::Semver.parse(version).satisfies?(metadata.version))
       }.each { |_, ext|
         # Apply the extension by merging the fields
         metadata.lock.synchronize { ext.merge_into(metadata) }

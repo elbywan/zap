@@ -37,7 +37,7 @@ module Zap::Commands::Rebuild
         if filters && filters.size > 0
           matches = filters.any? do |filter|
             name, semver = Utils::Various.parse_key(filter)
-            pkg.name == name && (!semver || Utils::Semver.parse(semver).valid?(pkg.version))
+            pkg.name == name && (!semver || Utils::Semver.parse(semver).satisfies?(pkg.version))
           end
           next unless matches
         end

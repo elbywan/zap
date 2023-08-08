@@ -39,6 +39,7 @@ zap --help
 | `zap rebuild` | `rb`                  | Rebuild installed native node addons                   | ✅       |
 | `zap exec`    | `e`                   | Execute a shell command in the scope of the project    | ✅       |
 | `zap update`  | `up` `upgrade`        | Update the lockfile with the newest package versions   | ⏳ _WIP_ |
+| `zap why`     | `y`                   | Show information about why a package is installed      | ✅       |
 
 #### Check the [project board](https://github.com/users/elbywan/projects/1/views/1) for the current status of the project.
 

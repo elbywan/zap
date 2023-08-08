@@ -135,7 +135,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
     end
   end
 
-  def errors(errors : Array(Tuple(Exception, String)))
+  def errors(errors : Array({Exception, String}))
     @lock.synchronize do
       @out << "\n"
       @out << header("❌", "Error(s):", :red) << "\n" << "\n"

@@ -22,6 +22,7 @@ require "./store"
 require "./run"
 require "./rebuild"
 require "./exec"
+require "./why"
 require "../commands/**"
 require "../constants"
 
@@ -71,6 +72,10 @@ module Zap
       Commands::Exec.run(config, command_config)
     when Config::Store
       Commands::Store.run(config, command_config)
+    when Config::Why
+      Commands::Why.run(config, command_config)
+    else
+      raise "Unknown command config: #{command_config}"
     end
   end
 
@@ -135,6 +140,10 @@ module Zap
 
         command(["store", "s"], "Manage the global store used to save packages and cache registry responses.") do
           on_store(parser)
+        end
+
+        command(["why", "y"], "Show information about why a package is installed.", "<package(s)>") do
+          on_why(parser)
         end
 
         parser.before_each do |arg|

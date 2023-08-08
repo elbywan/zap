@@ -30,8 +30,8 @@ module Zap::Installer::Isolated
       @hoisted_store = @modules_store / "node_modules"
       Utils::Directories.mkdir_p(@hoisted_store)
 
-      @hoist_patterns = hoist_patterns.map { |pattern| Regex.new("^#{Regex.escape(pattern).gsub("\\*", ".*")}$") }
-      @public_hoist_patterns = public_hoist_patterns.map { |pattern| Regex.new("^#{Regex.escape(pattern).gsub("\\*", ".*")}$") }
+      @hoist_patterns = hoist_patterns.map &->Utils::Various.parse_pattern(String)
+      @public_hoist_patterns = public_hoist_patterns.map &->Utils::Various.parse_pattern(String)
     end
 
     alias Ancestors = Deque(Package | Lockfile::Root)
@@ -275,7 +275,7 @@ module Zap::Installer::Isolated
               if peer_version = peers[dependency.name]?
                 # If the peer has a version range, check if the pinned version matches
                 pinned_version = version_or_alias.is_a?(String) ? version_or_alias : version_or_alias.version
-                if peer_version && Utils::Semver.parse(peer_version).valid?(pinned_version)
+                if peer_version && Utils::Semver.parse(peer_version).satisfies?(pinned_version)
                   # If it does, add it to the resolved peers
                   resolved_peers << dependency
                 end

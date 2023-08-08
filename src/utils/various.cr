@@ -39,6 +39,10 @@ module Zap::Utils::Various
     end
   end
 
+  def self.parse_pattern(pattern : String) : Regex
+    Regex.new("^#{Regex.escape(pattern).gsub("\\*", ".*")}$")
+  end
+
   class STDOUTSync < IO
     def initialize
       @mutex = Mutex.new

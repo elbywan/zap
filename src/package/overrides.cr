@@ -19,9 +19,9 @@ class Zap::Package
         (
           version == "*" ||
             specifier == "*" ||
-            Utils::Semver.parse(version).valid?(metadata.version)
+            Utils::Semver.parse(version).satisfies?(metadata.version)
         ) &&
-          !Utils::Semver.parse(specifier).valid?(metadata.version)
+          !Utils::Semver.parse(specifier).satisfies?(metadata.version)
       end
 
       def matches_ancestors?(ancestors : Iterable(Package | Lockfile::Root)) : Bool
@@ -60,7 +60,7 @@ class Zap::Package
             next if ancestor.is_a?(Lockfile::Root)
             break if ancestor.is_a?(Iterator::Stop)
             matches = ancestor.name == parent.name && (
-              parent.version == "*" || Utils::Semver.parse(parent.version).valid?(ancestor.version)
+              parent.version == "*" || Utils::Semver.parse(parent.version).satisfies?(ancestor.version)
             )
             if matches
               yield({ancestor, parent})
@@ -105,7 +105,7 @@ class Zap::Package
             b_override = b_overrides.find do |b_override|
               a_override.name == b_override.name &&
                 a_override.version == b_override.version &&
-                Utils::Semver.parse(a_override.specifier).valid?(b_override.specifier) &&
+                Utils::Semver.parse(a_override.specifier).satisfies?(b_override.specifier) &&
                 b_override.parents == a_override.parents
             end
             b_override || a_override
@@ -125,9 +125,9 @@ class Zap::Package
     def self.override_matches?(metadata : Package, override : Override) : Bool
       override.version == "*" ||
         override.specifier == "*" ||
-        Utils::Semver.parse(override.version).valid?(metadata.version) ||
+        Utils::Semver.parse(override.version).satisfies?(metadata.version) ||
         # See: https://github.com/npm/rfcs/blob/main/accepted/0036-overrides.md#overridden-value-matching
-        Utils::Semver.parse(override.specifier).valid?(metadata.version)
+        Utils::Semver.parse(override.specifier).satisfies?(metadata.version)
     end
 
     protected def read_object(pull : JSON::PullParser, *, parents : Array(Parent)? = nil, current_raw : Hash(String, JSON::Any) = @inner_raw)

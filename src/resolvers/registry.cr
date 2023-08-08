@@ -98,7 +98,7 @@ module Zap::Resolver
       range_set = self.version
       cached_package.kind.registry? && (
         (range_set.is_a?(String) && range_set == cached_package.version) ||
-          (range_set.is_a?(Utils::Semver::SemverSets) && range_set.valid?(cached_package.version))
+          (range_set.is_a?(Utils::Semver::SemverSets) && range_set.satisfies?(cached_package.version))
       )
     end
 
@@ -176,7 +176,7 @@ module Zap::Resolver
       semantic_version
     end
 
-    private def parse_versions_field(parser : JSON::PullParser, semantic_version : Utils::Semver::SemverSets | String) : Tuple(Utils::Semver::Comparator, String)?
+    private def parse_versions_field(parser : JSON::PullParser, semantic_version : Utils::Semver::SemverSets | String) : {Utils::Semver::Comparator, String}?
       parser.read_begin_object
       matching = nil
       loop do
@@ -189,7 +189,7 @@ module Zap::Resolver
           break
         elsif semantic_version.is_a?(Utils::Semver::SemverSets) && (matching.nil? || matching[0] < semver)
           # For range comparisons - take the highest version that matches the range
-          if semantic_version.valid?(version_str)
+          if semantic_version.satisfies?(version_str)
             matching = {semver, parser.read_raw}
           else
             parser.skip

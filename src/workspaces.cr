@@ -89,7 +89,7 @@ class Zap::Workspaces
   def get(name : String, version : String | Zap::Package::Alias) : Workspace?
     find do |w|
       w.package.name == name && version.is_a?(String) &&
-        (version.starts_with?("workspace:") || Utils::Semver.parse(version).valid?(w.package.version))
+        (version.starts_with?("workspace:") || Utils::Semver.parse(version).satisfies?(w.package.version))
     rescue
       false
     end
@@ -98,7 +98,7 @@ class Zap::Workspaces
   def get!(name : String, version : String) : Workspace
     if workspace = find { |w| w.package.name == name }
       begin
-        return workspace if version.starts_with?("workspace:") || Utils::Semver.parse(version).valid?(workspace.package.version)
+        return workspace if version.starts_with?("workspace:") || Utils::Semver.parse(version).satisfies?(workspace.package.version)
         raise "Workspace #{name} does not match version #{version}"
       rescue
         raise "Workspace #{name} does not match version #{version}"

@@ -54,14 +54,14 @@ module Zap::Installer::Classic::Helpers::Registry
     package_dep = package.dependencies.try(&.[dependency.name]?) || package.optional_dependencies.try(&.[dependency.name]?)
     if package_dep
       version = package_dep.is_a?(String) ? package_dep : package_dep.version
-      return HoistAction::Stop unless Utils::Semver.parse(version).valid?(dependency.version)
+      return HoistAction::Stop unless Utils::Semver.parse(version).satisfies?(dependency.version)
     end
 
     # the package has a peer dependency but the version of dependency is not compatible
     package_peer = package.peer_dependencies.try(&.[dependency.name]?)
     if package_peer
       version = package_peer.is_a?(String) ? package_peer : package_peer.version
-      return HoistAction::Stop unless Utils::Semver.parse(version).valid?(dependency.version)
+      return HoistAction::Stop unless Utils::Semver.parse(version).satisfies?(dependency.version)
     end
 
     # dependency has a peer dependency on package, no matter the version
@@ -72,7 +72,7 @@ module Zap::Installer::Classic::Helpers::Registry
     # dependency has a peer dependency on a previous hoisted dependency, but the version is not compatible
     dependency.peer_dependencies.try &.each do |peer_name, peer_version|
       hoisted = location.value.hoisted_packages[peer_name]?
-      compatible = !hoisted || Utils::Semver.parse(peer_version).valid?(hoisted.version)
+      compatible = !hoisted || Utils::Semver.parse(peer_version).satisfies?(hoisted.version)
       return HoistAction::Stop unless compatible
     end
 

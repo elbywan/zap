@@ -171,7 +171,7 @@ module Zap::Utils::Glob
     private def self.run(sequence, match_hidden, follow_symlinks, exclude, &block : String -> _)
       return if sequence.empty?
 
-      path_stack = [] of Tuple(Int32, String?, Crystal::System::Dir::Entry?)
+      path_stack = [] of {Int32, String?, Crystal::System::Dir::Entry?}
       path_stack << {sequence.size - 1, nil, nil}
 
       while !path_stack.empty?

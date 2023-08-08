@@ -82,7 +82,7 @@ module Zap::Commands::Dlx
   def self.get_packages_versions(
     main_package : Package?,
     config_packages : Array(String)
-  ) : Array(Tuple(String, String | Zap::Package::Alias))
+  ) : Array({String, String | Zap::Package::Alias})
     config_packages.map do |package|
       name, version = Utils::Various.parse_key(package)
       # If the version is not specified, check if the package json has the package and get the version. Otherwise assume *.
@@ -97,7 +97,7 @@ module Zap::Commands::Dlx
   end
 
   # Infer an identifier and a suitable location from the packages and versions
-  def self.get_identifier_and_path(packages : Array(Tuple(String, String | Zap::Package::Alias)), *, prefix : String? = nil)
+  def self.get_identifier_and_path(packages : Array({String, String | Zap::Package::Alias}), *, prefix : String? = nil)
     identifier = Digest::SHA1.hexdigest(packages.map { |p| "#{p[0]}@#{p[1]}" }.join("+"))
     directory = "#{prefix}#{identifier}"
     path = Path.new(Dir.tempdir) / directory

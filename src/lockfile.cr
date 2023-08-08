@@ -1,6 +1,8 @@
 require "yaml"
 require "./utils/**"
 
+alias DependencyType = Zap::Package::DependencyType
+
 class Zap::Lockfile
   include YAML::Serializable
   include Utils::Macros
@@ -12,6 +14,7 @@ class Zap::Lockfile
     include YAML::Serializable
 
     getter name : String
+    getter version : String
 
     property dependencies : Hash(String, String)? = nil
     property dev_dependencies : Hash(String, String)? = nil
@@ -20,7 +23,7 @@ class Zap::Lockfile
     getter pinned_dependencies : SafeHash(String, String | Package::Alias) { SafeHash(String, String | Package::Alias).new }
     getter? pinned_dependencies
 
-    def initialize(@name)
+    def initialize(@name, @version)
     end
 
     def dependency_specifier?(name : String)
@@ -30,8 +33,6 @@ class Zap::Lockfile
     def set_dependency_specifier(name : String, specifier : String | Package::Alias, _type : _)
       pinned_dependencies[name] = specifier
     end
-
-    alias DependencyType = Package::DependencyType
 
     def map_dependencies(
       *,
@@ -46,7 +47,7 @@ class Zap::Lockfile
       *,
       include_dev : Bool = true,
       include_optional : Bool = true,
-      &block : (String, String | Package::Alias, Package::DependencyType) -> T
+      &block : (String, String | Package::Alias, DependencyType) -> T
     ) : Nil forall T
       pinned_dependencies.each { |key, val| block.call(key, val, find_dependency_type(key)) }
     end
@@ -167,16 +168,16 @@ class Zap::Lockfile
     File.write(@lockfile_path.to_s, self.to_yaml)
   end
 
-  def get_root(name : String)
+  def get_root(name : String, version : String)
     @roots_lock.synchronize do
-      (roots[name]? || Root.new(name)).tap do |root|
+      (roots[name]? || Root.new(name, version)).tap do |root|
         roots[name] = root
       end
     end
   end
 
   def set_root(package : Package)
-    root = roots[package.name] ||= Root.new(package.name)
+    root = roots[package.name] ||= Root.new(package.name, package.version)
     root.dependencies = package.dependencies.try &.transform_values(&.to_s)
     root.dev_dependencies = package.dev_dependencies.try &.transform_values(&.to_s)
     root.optional_dependencies = package.optional_dependencies.try &.transform_values(&.to_s)
@@ -195,9 +196,9 @@ class Zap::Lockfile
     end
   end
 
-  def add_dependency(name : String, version : String, type : Package::DependencyType, scope : String)
+  def add_dependency(name : String, version : String, type : DependencyType, scope : String, scope_version : String)
     @roots_lock.synchronize do
-      scoped_root = roots[scope] ||= Root.new(scope)
+      scoped_root = roots[scope] ||= Root.new(scope, scope_version)
       case type
       when .dependency?
         (scoped_root.dependencies ||= Hash(String, String).new)[name] = version
@@ -215,5 +216,39 @@ class Zap::Lockfile
         raise "Wrong dependency type: #{type}"
       end
     end
+  end
+
+  def crawl(&block : Package, DependencyType, Root, Deque({Package, DependencyType}) ->)
+    roots.each do |root_name, root|
+      root.each_dependency do |name, version, type|
+        if package = get_package?(name, version)
+          crawl_dependency(package, type, root) do |dependency, type, root, ancestors|
+            block.call(dependency, type, root, ancestors)
+          end
+        end
+      end
+    end
+  end
+
+  private def crawl_dependency(
+    package : Package,
+    type : DependencyType,
+    root : Root,
+    ancestors : Deque({Package, DependencyType}) = Deque({Package, DependencyType}).new,
+    &block : Package, DependencyType, Root, Deque({Package, DependencyType}) ->
+  )
+    return if ancestors.any? { |(ancestor, ancestor_type)| ancestor == package }
+
+    yield package, type, root, ancestors
+
+    ancestors << {package, type}
+    package.each_dependency do |name, version, type|
+      if dependency = get_package?(name, version)
+        crawl_dependency(dependency, type, root, ancestors) do |dependency, type, root, ancestors|
+          block.call(dependency, type, root, ancestors)
+        end
+      end
+    end
+    ancestors.pop
   end
 end

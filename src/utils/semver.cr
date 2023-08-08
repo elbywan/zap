@@ -178,7 +178,7 @@ module Zap::Utils::Semver
       Comparator.new(Comparison::ExactMatch, version)
     end
 
-    def valid?(version : self, allow_prereleases = false) : Bool
+    def satisfies?(version : self, allow_prereleases = false) : Bool
       score = self <=> version
       return false unless pre_compat?(version, allow_prereleases)
       case comparison
@@ -244,12 +244,12 @@ module Zap::Utils::Semver
       @comparators << comparator
     end
 
-    def valid?(semver : Comparator) : Bool
+    def satisfies?(semver : Comparator) : Bool
       allow_prereleases = semver.prerelease && @comparators.any? { |c|
         !!c.prerelease && semver.major == c.major && semver.minor == c.minor && semver.patch == c.patch
       }
       @comparators.all? { |comparator|
-        comparator.valid?(semver, allow_prereleases)
+        comparator.satisfies?(semver, allow_prereleases)
       }
     end
 
@@ -265,10 +265,10 @@ module Zap::Utils::Semver
   struct SemverSets
     @comparator_sets = [] of ComparatorSet
 
-    def valid?(version_str : String)
+    def satisfies?(version_str : String)
       version = SemverPartial.new(version_str)
       semver = Comparator.new(Comparison::ExactMatch, version)
-      @comparator_sets.any? &.valid?(semver)
+      @comparator_sets.any? &.satisfies?(semver)
     rescue ex
       false
     end
