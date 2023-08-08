@@ -6,14 +6,14 @@ module Zap::Resolver
 
     getter git_url : Utils::GitUrl
 
-    def initialize(state, package_name, version = "latest", aliased_name = nil, parent = nil, dependency_type = nil, skip_cache = false)
+    def initialize(state, package_name, version, aliased_name = nil, parent = nil, dependency_type = nil, skip_cache = false)
       super
       @git_url = Utils::GitUrl.new(@version.to_s, @state.reporter)
     end
 
     def resolve(*, dependent : Package? = nil) : Package
       fetch_metadata.tap do |pkg|
-        on_resolve(pkg, pkg.dist.as(Package::GitDist).commit_hash)
+        on_resolve(pkg, pkg.dist.as(Package::GitDist).key)
       end
     end
 
@@ -60,7 +60,7 @@ module Zap::Resolver
 
     def fetch_metadata : Package
       commit_hash = @git_url.commitish_hash
-      cache_key = Digest::SHA1.hexdigest("zap--git-#{@git_url.base_url}-#{commit_hash}")
+      cache_key = Digest::SHA1.hexdigest("#{@git_url.short_key}")
       cloned_repo_path = Path.new(Dir.tempdir, cache_key)
 
       GitBase.dedupe_clone(cache_key) do
@@ -75,7 +75,7 @@ module Zap::Resolver
               Utils::Directories.mkdir_p(::File.dirname(metadata_path))
               ::File.write(metadata_path, pkg.to_json)
             end
-            pkg.dist = Package::GitDist.new(commit_hash, version.to_s, cache_key)
+            pkg.dist = Package::GitDist.new(commit_hash, version.to_s, @git_url.key, cache_key)
           end
         end
       end
@@ -122,14 +122,14 @@ module Zap::Resolver
   struct Github < GitBase
     getter raw_version : String
 
-    def initialize(state, package_name, version = "latest", aliased_name = nil, parent = nil, dependency_type = nil, skip_cache = false)
+    def initialize(state, package_name, version, aliased_name = nil, parent = nil, dependency_type = nil, skip_cache = false)
       super(state, package_name, "git+https://github.com/#{version}", aliased_name, parent, dependency_type, skip_cache)
       @raw_version = version
     end
 
     def resolve(*, dependent : Package? = nil) : Package
       fetch_metadata.tap do |pkg|
-        on_resolve(pkg, pkg.dist.as(Package::GitDist).commit_hash)
+        on_resolve(pkg, pkg.dist.as(Package::GitDist).key)
       end
     end
 

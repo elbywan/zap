@@ -48,9 +48,10 @@ class Zap::Package
 
     property commit_hash : String
     property version : String
+    property key : String
     property cache_key : String
 
-    def initialize(@commit_hash, @version, @cache_key)
+    def initialize(@commit_hash, @version, @key, @cache_key)
     end
   end
 end

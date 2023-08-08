@@ -74,7 +74,7 @@ module Zap::Resolver
   Utils::DedupeLock::Global.setup(:store, Bool)
 
   GH_URL_REGEX   = /^https:\/\/github.com\/(?P<owner>[a-zA-Z0-9\-_]+)\/(?P<package>[^#^\/]+)(?:#(?P<hash>[.*]))?/
-  GH_SHORT_REGEX = /^[^@].*\/.*$/
+  GH_SHORT_REGEX = /^[^@.].*\/.*$/
 
   def self.make(
     state : Commands::Install::State,
@@ -175,11 +175,6 @@ module Zap::Resolver
       include_dev: is_root && !state.install_config.omit_dev?,
       include_optional: !state.install_config.omit_optional?
     ) do |name, version_or_alias, type|
-      # If the dependency is pinned, use the pinned version instead of the one in the package.json
-      if pinned_version = (pinned_dependencies.try &.[name]?)
-        version_or_alias = pinned_version
-      end
-
       if type.dependency?
         # "Entries in optionalDependencies will override entries of the same name in dependencies"
         # From: https://docs.npmjs.com/cli/v9/configuring-npm/package-json#optionaldependencies

@@ -168,7 +168,7 @@ class Zap::Package
         "#{name}@#{dist.tarball}"
       end
     when GitDist
-      "#{name}@#{dist.commit_hash}"
+      "#{name}@#{dist.key}"
     else
       "#{name}@#{version}"
     end

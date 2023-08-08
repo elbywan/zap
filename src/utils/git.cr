@@ -37,6 +37,14 @@ module Zap::Utils
       end
     end
 
+    getter key : String do
+      "git+#{base_url}##{commitish_hash}"
+    end
+
+    getter short_key : String do
+      "#{@hostname + (@port ? ":#{@port}" : "")}/#{@path}##{commitish_hash}"
+    end
+
     def initialize(@url : String, @reporter : Reporter? = nil)
       begin
         @match = GIT_URL_REGEX.match(@url).not_nil!
@@ -56,10 +64,10 @@ module Zap::Utils
       user_pwd_prefix = @user ? @user.not_nil! + (@password ? ":#{@password}" : "") + '@' : ""
       full_host = @hostname + (@port ? ":#{@port}" : "")
       case @protocol
-      when "git", "ssh"
-        @base_url = %(#{user_pwd_prefix}#{full_host}:/#{@path})
-      when "http", "https"
-        @base_url = %(#{@protocol}://#{user_pwd_prefix}#{full_host}:/#{@path})
+      when "git"
+        @base_url = %(#{@protocol}://#{full_host}:#{@path})
+      when "http", "https", "ssh"
+        @base_url = %(#{@protocol}://#{user_pwd_prefix}#{full_host}/#{@path})
       when "file"
         @base_url = %(#{@protocol}://#{@path})
       else
