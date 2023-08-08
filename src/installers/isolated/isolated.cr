@@ -339,13 +339,17 @@ module Zap::Installer::Isolated
         Log.debug { "(#{package.key}) Hoisting module: #{install_folder} <- #{@hoisted_store / package.name}" }
         symlink(install_folder, @hoisted_store / package.name)
         # Remove public hoisted link if it exists
-        deleted = Utils::File.delete_file_or_dir?(@node_modules / package.name)
-        Log.debug { "(#{package.key}) Removed publicly hoisted link at: #{@node_modules / package.name}" if deleted }
+        unless state.main_package.has_dependency?(package.name)
+          deleted = Utils::File.delete_file_or_dir?(@node_modules / package.name)
+          Log.debug { "(#{package.key}) Removed publicly hoisted link at: #{@node_modules / package.name}" if deleted }
+        end
         # Log.debug { "(#{package.key}) No publicly hoisted link found at: #{@node_modules / package.name}" unless deleted }
       else
         # Remove any existing hoisted link
-        deleted = Utils::File.delete_file_or_dir?(@node_modules / package.name)
-        Log.debug { "(#{package.key}) Removing publicly hoisted link at: #{@node_modules / package.name}" if deleted }
+        unless state.main_package.has_dependency?(package.name)
+          deleted = Utils::File.delete_file_or_dir?(@node_modules / package.name)
+          Log.debug { "(#{package.key}) Removing publicly hoisted link at: #{@node_modules / package.name}" if deleted }
+        end
         # Log.debug { "(#{package.key}) No publicly hoisted link found at: #{@node_modules / package.name}" unless deleted }
         deleted = Utils::File.delete_file_or_dir?(@hoisted_store / package.name)
         Log.debug { "(#{package.key}) Removing hoisted link at: #{@hoisted_store / package.name}" if deleted }

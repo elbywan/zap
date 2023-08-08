@@ -44,6 +44,7 @@ module Zap::Installer
             prune_workspace_orphans(package_path, unlink_binaries?: unlink_binaries?)
           else
             if should_prune_orphan?(package_path)
+              Log.debug { "Pruning orphan package: #{package_dir}" }
               if unlink_binaries?
                 package = Package.init?(package_path)
                 if package

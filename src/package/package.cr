@@ -298,6 +298,10 @@ class Zap::Package
     end
   end
 
+  def has_dependency?(name : String)
+    dependencies.try &.has_key?(name) || dev_dependencies.try &.has_key?(name) || optional_dependencies.try &.has_key?(name)
+  end
+
   # Attempt to replicate the "npm" definition of a local install
   # Which seems to be packages pulled from git or linked locally
   def local_install?
