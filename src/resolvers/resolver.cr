@@ -285,8 +285,9 @@ module Zap::Resolver
         end
       end
       metadata = lockfile_metadata || metadata
-      # Mark the package and add the leftmost ancestor as a root to prevent being pruned in the lockfile
-      metadata.marked_roots << ancestors.first.name
+      # Mark the package and store its parents
+      # Used to prevent packages being pruned in the lockfile
+      metadata.dependents << package if package
       Log.debug { "(#{name}@#{version}) Resolved version: #{metadata.version} #{(package ? " [parent: #{package.key}]" : "")}" }
       # If the package has already been resolved, skip it to prevent infinite loops
       next if !single_resolution && (lockfile_metadata || metadata).already_resolved?(state)

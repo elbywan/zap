@@ -7,26 +7,32 @@ class Zap::Lockfile
   include YAML::Serializable
   include Utils::Macros
 
-  NAME = ".zap-lock.yml"
-  Log  = Zap::Log.for(self)
-
-  @[YAML::Field(ignore: true)]
-  @roots_lock = Mutex.new
-  getter roots : Hash(String, Root) = Hash(String, Root).new
-  property overrides : Package::Overrides? = nil
-  getter packages : Hash(String, Package) = Hash(String, Package).new
-
-  @[YAML::Field(ignore: true)]
-  getter packages_lock = Mutex.new
-
-  @hoisting_hash : String? = nil
-
   enum ReadStatus
     FromDisk
     Error
     NotFound
   end
 
+  NAME = ".zap-lock.yml"
+  Log  = Zap::Log.for(self)
+
+  # Serialized
+  @[YAML::Field(converter: Zap::Utils::OrderedHashConverter(String, Zap::Lockfile::Root))]
+  getter roots : Hash(String, Root) do
+    Hash(String, Root).new
+  end
+  property overrides : Package::Overrides? = nil
+  @hoisting_hash : String? = nil
+  @[YAML::Field(converter: Zap::Utils::OrderedHashConverter(String, Zap::Package))]
+  getter packages : Hash(String, Package) do
+    Hash(String, Package).new
+  end
+
+  # Not serialized
+  @[YAML::Field(ignore: true)]
+  @roots_lock = Mutex.new
+  @[YAML::Field(ignore: true)]
+  getter packages_lock = Mutex.new
   @[YAML::Field(ignore: true)]
   property read_status : ReadStatus = ReadStatus::NotFound
   @[YAML::Field(ignore: true)]
@@ -60,6 +66,7 @@ class Zap::Lockfile
   end
 
   def prune(scope : Set(String)) : Set({String, String | Package::Alias, String})
+    Log.debug { "Pruning lockfile with scope #{scope}" }
     pruned_direct_dependencies = Set({String, String | Package::Alias, String}).new
 
     roots.each do |root_name, root|
@@ -69,19 +76,22 @@ class Zap::Lockfile
           (root.dev_dependencies.try(&.keys) || [] of String) +
           (root.optional_dependencies.try(&.keys) || [] of String)
       # Trim pinned dependencies that are not referenced in the package json file
-      root.pinned_dependencies?.try &.select! do |name, version|
+      root.pinned_dependencies.try &.select! do |name, version|
         all_dependencies.includes?(name).tap do |keep|
           unless keep
             pruned_direct_dependencies << {name, version, root_name}
           end
         end
       end
+      if (root.pinned_dependencies.try &.empty?)
+        root.pinned_dependencies = nil
+      end
     end
 
     # Do not prune overrides
     overrides.try &.each do |name, override_list|
       override_list.each do |override|
-        packages["#{name}@#{override.specifier}"]?.try(&.marked_roots.<< "@overrides")
+        packages["#{name}@#{override.specifier}"]?.try(&.prevent_pruning = true)
       end
     end
 
@@ -92,14 +102,21 @@ class Zap::Lockfile
       if pkg.scripts.try &.no_scripts?
         pkg.scripts = nil
       end
+
+      Log.debug { "(#{pkg.key}) Calculating root dependents…" }
+      root_dependents = pkg.get_root_dependents? || Set(String).new
+      Log.debug { "(#{pkg.key}) Root dependents for this run: #{root_dependents}" }
+
       # Do not prune if the package is not in the scope
-      is_in_scope = scope && (scope & pkg.roots).size > 0
-      # Recompute the roots: take the previous roots, remove the scoped roots and add back the marked roots
-      marked_roots = {% if flag?(:preview_mt) %}pkg.marked_roots.inner{% else %}pkg.marked_roots{% end %}
-      pkg.roots = (pkg.roots - scope + marked_roots) & Set.new(roots.map(&.[0])) # Remove non-existing roots
+      package_scope = pkg.roots & scope
+      is_in_scope = package_scope.try(&.size.> 0) || false
+      Log.debug { "(#{pkg.key}) Is package in scope? #{is_in_scope} (package scope: #{package_scope})" }
+      # Update package roots and remove roots that do not exist anymore
+      pkg.roots = (pkg.roots - scope + root_dependents) & Set.new(roots.map(&.[0]))
+      Log.debug { "(#{pkg.key}) Full root dependents: #{root_dependents}" }
 
       # Do not prune packages that were marked during the resolution phase
-      (!is_in_scope || pkg.roots.size > 0).tap do |kept|
+      (!is_in_scope || !root_dependents.empty?).tap do |kept|
         Log.debug { "(#{pkg.key}) Pruned from lockfile" } unless kept
       end
     end
@@ -219,8 +236,11 @@ class Zap::Lockfile
     property dev_dependencies : Hash(String, String)? = nil
     property optional_dependencies : Hash(String, String)? = nil
     property peer_dependencies : Hash(String, String)? = nil
-    getter pinned_dependencies : SafeHash(String, String | Package::Alias) { SafeHash(String, String | Package::Alias).new }
-    getter? pinned_dependencies
+    @[YAML::Field(converter: Zap::Utils::OrderedSafeHashConverter(String, String | Zap::Package::Alias))]
+    getter pinned_dependencies : SafeHash(String, String | Package::Alias) do
+      SafeHash(String, String | Package::Alias).new
+    end
+    setter pinned_dependencies : SafeHash(String, String | Package::Alias)?
 
     def initialize(@name, @version)
     end

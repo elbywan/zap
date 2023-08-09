@@ -3,6 +3,7 @@ require "yaml"
 require "colorize"
 require "../utils/macros"
 require "../utils/data_structures/*"
+require "../utils/converters"
 require "../config"
 require "../cli/install"
 require "./*"
@@ -97,7 +98,10 @@ class Zap::Package
   safe_property transitive_peer_dependencies : SafeSet(String)? = nil
 
   @[JSON::Field(ignore: true)]
-  property roots : Set(String) = Set(String).new
+  @[YAML::Field(converter: Zap::Utils::OrderedSetConverter(String))]
+  property roots : Set(String) do
+    Set(String).new
+  end
 
   ##############
   # Zap config #
@@ -127,9 +131,35 @@ class Zap::Package
     Unknown
   end
 
-  # Used to mark a package as visited during the dependency resolution.
+  # Used to mark a package as visited during the dependency resolution and point to its parents.
   __do_not_serialize__
-  property marked_roots : SafeSet(String) = SafeSet(String).new
+  getter dependents : SafeSet(Package) do
+    SafeSet(Package).new
+  end
+
+  def get_root_dependents? : Set(String)?
+    return nil if dependents.empty?
+
+    results = Set(String).new
+    visited = Set(Package).new
+    stack = Deque(Package).new << self
+    while (package = stack.pop?)
+      if package.dependents.empty?
+        results << package.name
+      else
+        next if visited.includes?(package)
+        visited << package
+        package.dependents.each do |dependent|
+          stack << dependent
+        end
+      end
+    end
+    results
+  end
+
+  # Prevents the package from being pruned in the lockfile.
+  __do_not_serialize__
+  property prevent_pruning : Bool = false
 
   # Where the package comes from.
   __do_not_serialize__
