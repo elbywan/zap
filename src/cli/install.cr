@@ -31,6 +31,7 @@ struct Zap::Config
     save_optional : Bool = false,
     print_logs : Bool = !ENV["CI"]?,
     force_hoisting : Bool = false,
+    force_metadata_retrieval : Bool = false
   ) do
     getter! install_strategy : InstallStrategy
 

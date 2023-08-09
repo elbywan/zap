@@ -1,6 +1,6 @@
 module Zap::Resolver
   struct TarballUrl < Base
-    def resolve(*, dependent : Package? = nil) : Package
+    def resolve(*, pinned_version : String? = nil) : Package
       tarball_url = version.to_s
       state.store.with_lock(tarball_url, state.config) do
         temp_path = @state.store.store_temp_tarball(tarball_url)

@@ -1,6 +1,6 @@
 module Zap::Resolver
   struct File < Base
-    def resolve(*, dependent : Package? = nil) : Package
+    def resolve(*, pinned_version : String? = nil) : Package
       path = Path.new version.to_s.split("file:").last
       base_path = begin
         if parent.is_a?(Lockfile::Root)

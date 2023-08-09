@@ -26,7 +26,7 @@ module Zap::Resolver
       }
     end
 
-    def resolve(*, dependent : Package? = nil) : Package
+    def resolve(*, pinned_version : String? = nil) : Package
       pkg = self.fetch_metadata
       on_resolve(pkg, pkg.version)
       pkg
@@ -201,7 +201,7 @@ module Zap::Resolver
       matching
     end
 
-    private def fetch_metadata : Package?
+    private def fetch_metadata(*, pinned_version : String? = nil) : Package?
       raise "Resolver::Registry has not been initialized" unless client_pool = @@client_pool
       base_url = @@base_url
       Log.debug { "(#{package_name}@#{version}) Fetching metadata… #{@skip_cache ? "(skipping cache)" : ""}" }
@@ -209,7 +209,7 @@ module Zap::Resolver
         manifest = @skip_cache ? client_pool.client { |http|
           http.get("/#{package_name}", HEADERS).body
         } : client_pool.cached_fetch("/#{package_name}", HEADERS)
-        find_valid_version(manifest, self.version)
+        find_valid_version(manifest, pinned_version || self.version)
       end
     end
   end

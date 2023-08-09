@@ -106,10 +106,14 @@ module Zap::Installer::Classic
             aliased_name: dependency_item.alias
           )
 
-          Log.debug { "(#{dependency.key}) Installed to: #{install_location}" }
+          if install_location
+            Log.debug { "(#{dependency.key}) Installed to: #{install_location.try &.value.node_modules}" }
+          else
+            # no install location = do not process the sub dependencies
+            Log.debug { "(#{dependency.key}) Skipping install" }
+            next
+          end
 
-          # no install location = do not process the sub dependencies
-          next unless install_location
           # Append self to the dependency ancestors
           ancestors = dependency_item.ancestors.dup.push(dependency)
           # Process each child dependency

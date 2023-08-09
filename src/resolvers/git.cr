@@ -11,7 +11,7 @@ module Zap::Resolver
       @git_url = Utils::GitUrl.new(@version.to_s, @state.reporter)
     end
 
-    def resolve(*, dependent : Package? = nil) : Package
+    def resolve(*, pinned_version : String? = nil) : Package
       fetch_metadata.tap do |pkg|
         on_resolve(pkg, pkg.dist.as(Package::GitDist).key)
       end
@@ -127,7 +127,7 @@ module Zap::Resolver
       @raw_version = version
     end
 
-    def resolve(*, dependent : Package? = nil) : Package
+    def resolve(*, pinned_version : String? = nil) : Package
       fetch_metadata.tap do |pkg|
         on_resolve(pkg, pkg.dist.as(Package::GitDist).key)
       end

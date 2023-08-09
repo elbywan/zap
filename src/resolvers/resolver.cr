@@ -65,7 +65,7 @@ abstract struct Zap::Resolver::Base
     end
   end
 
-  abstract def resolve : Package
+  abstract def resolve(*, pinned_version : String? = nil) : Package
   abstract def store(metadata : Package, &on_downloading) : Bool
   abstract def is_lockfile_cache_valid?(cached_package : Package) : Bool
 end
@@ -253,6 +253,7 @@ module Zap::Resolver
     if package && is_direct_dependency && type
       state.lockfile.add_dependency(name, version, type, package.name, package.version)
     end
+    force_metadata_retrieval = state.install_config.force_metadata_retrieval
     # Multithreaded dependency resolution (if enabled)
     state.pipeline.process do
       parent = package.try { |package| is_direct_dependency ? state.lockfile.get_root(package.name, package.version) : package }
@@ -264,10 +265,22 @@ module Zap::Resolver
       if metadata && is_direct_dependency
         metadata = nil unless resolver.is_lockfile_cache_valid?(metadata)
       end
+
       lockfile_cached = !!metadata
-      Log.debug { "(#{metadata.key}) Metatadata found in the lockfile cache" if lockfile_cached && metadata }
-      # If the package is not in the lockfile or if it is a direct dependency, resolve it
-      metadata ||= resolver.resolve
+      Log.debug { "(#{metadata.key}) Metatadata found in the lockfile cache" if metadata }
+
+      # Forcefully fetch the metadata from the registry if the force_metadata_retrieval option is enabled
+      if metadata && force_metadata_retrieval && !metadata.already_resolved?(state)
+        Log.debug { "(#{metadata.key}) Forcing metadata retrieval" }
+        state.lockfile.packages_lock.synchronize do
+          state.lockfile.packages.delete(metadata.key)
+        end
+        metadata = resolver.resolve(pinned_version: metadata.version)
+        lockfile_cached = false
+      else
+        # If the package is not in the lockfile or if it is a direct dependency, resolve it
+        metadata ||= resolver.resolve
+      end
       # Apply package extensions unless the package is already in the lockfile
       apply_package_extensions(metadata, state: state) unless lockfile_cached
       # Flag transitive dependencies and overrides
@@ -290,7 +303,7 @@ module Zap::Resolver
       metadata.dependents << package if package
       Log.debug { "(#{name}@#{version}) Resolved version: #{metadata.version} #{(package ? " [parent: #{package.key}]" : "")}" }
       # If the package has already been resolved, skip it to prevent infinite loops
-      next if !single_resolution && (lockfile_metadata || metadata).already_resolved?(state)
+      next if !single_resolution && metadata.already_resolved?(state)
       # Determine whether the dependencies should be resolved, most of the time they should
       should_resolve_dependencies = !single_resolution && metadata.should_resolve_dependencies?(state)
       # Repeat the process for transitive dependencies if needed
@@ -475,6 +488,7 @@ module Zap::Resolver
         name == metadata.name && (!version || Utils::Semver.parse(version).satisfies?(metadata.version))
       }.each { |_, ext|
         # Apply the extension by merging the fields
+        Log.debug { "Applying package extension for #{metadata.key}: #{ext.to_json}" }
         metadata.lock.synchronize { ext.merge_into(metadata) }
       }
       # If the extension added one or more "meta" peer dependencies then declare the matching peer dependencies

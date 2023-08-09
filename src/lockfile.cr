@@ -22,7 +22,8 @@ class Zap::Lockfile
     Hash(String, Root).new
   end
   property overrides : Package::Overrides? = nil
-  @hoisting_hash : String? = nil
+  @hoisting_shasum : String? = nil
+  @package_extensions_shasum : String? = nil
   @[YAML::Field(converter: Zap::Utils::OrderedHashConverter(String, Zap::Package))]
   getter packages : Hash(String, Package) do
     Hash(String, Package).new
@@ -103,9 +104,9 @@ class Zap::Lockfile
         pkg.scripts = nil
       end
 
-      Log.debug { "(#{pkg.key}) Calculating root dependents…" }
+      Log.debug { "(#{pkg.key}) Calculating roots depending on the package…" }
       root_dependents = pkg.get_root_dependents? || Set(String).new
-      Log.debug { "(#{pkg.key}) Root dependents for this run: #{root_dependents}" }
+      Log.debug { "(#{pkg.key}) Roots for this run: #{root_dependents}" }
 
       # Do not prune if the package is not in the scope
       package_scope = pkg.roots & scope
@@ -113,7 +114,7 @@ class Zap::Lockfile
       Log.debug { "(#{pkg.key}) Is package in scope? #{is_in_scope} (package scope: #{package_scope})" }
       # Update package roots and remove roots that do not exist anymore
       pkg.roots = (pkg.roots - scope + root_dependents) & Set.new(roots.map(&.[0]))
-      Log.debug { "(#{pkg.key}) Full root dependents: #{root_dependents}" }
+      Log.debug { "(#{pkg.key}) All roots: #{root_dependents}" }
 
       # Do not prune packages that were marked during the resolution phase
       (!is_in_scope || !root_dependents.empty?).tap do |kept|
@@ -194,13 +195,22 @@ class Zap::Lockfile
     end
   end
 
-  def update_hoisting_hash(main_package : Package) : Bool
-    hexstr = Digest::SHA1.digest do |ctx|
+  def update_hoisting_shasum(main_package : Package) : Bool
+    hexstr = Digest::MD5.digest do |ctx|
       (main_package.zap_config.try(&.public_hoist_patterns) || DEFAULT_PUBLIC_HOIST_PATTERNS).map(&.to_s).sort.each { |elt| ctx << elt }
       (main_package.zap_config.try(&.hoist_patterns) || DEFAULT_HOIST_PATTERNS).map(&.to_s).sort.each { |elt| ctx << elt }
     end.hexstring
-    diff = @hoisting_hash != hexstr
-    @hoisting_hash = hexstr
+    diff = @hoisting_shasum != hexstr
+    @hoisting_shasum = hexstr
+    diff
+  end
+
+  def update_package_extensions_shasum(main_package : Package) : Bool
+    hexstr = Digest::MD5.digest do |ctx|
+      ctx << main_package.zap_config.try(&.package_extensions).to_s
+    end.hexstring
+    diff = @package_extensions_shasum != hexstr
+    @package_extensions_shasum = hexstr
     diff
   end
 
@@ -237,10 +247,9 @@ class Zap::Lockfile
     property optional_dependencies : Hash(String, String)? = nil
     property peer_dependencies : Hash(String, String)? = nil
     @[YAML::Field(converter: Zap::Utils::OrderedSafeHashConverter(String, String | Zap::Package::Alias))]
-    getter pinned_dependencies : SafeHash(String, String | Package::Alias) do
+    property pinned_dependencies : SafeHash(String, String | Package::Alias)? do
       SafeHash(String, String | Package::Alias).new
     end
-    setter pinned_dependencies : SafeHash(String, String | Package::Alias)?
 
     def initialize(@name, @version)
     end
