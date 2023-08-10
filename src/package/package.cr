@@ -103,6 +103,9 @@ class Zap::Package
     Set(String).new
   end
 
+  @[JSON::Field(ignore: true)]
+  property package_extension_shasum : String? = nil
+
   ##############
   # Zap config #
   ##############
@@ -207,6 +210,9 @@ class Zap::Package
   __do_not_serialize__
   safe_property transitive_overrides : SafeSet(Package::Overrides::Override)? = nil
 
+  __do_not_serialize__
+  property package_extensions_updated : Bool = false
+
   ################
   # Constructors #
   ################
@@ -245,6 +251,15 @@ class Zap::Package
 
   def after_initialize
     propagate_meta_peer_dependencies
+  end
+
+  def override_dependencies(other : Package)
+    @lock.synchronize do
+      @dependencies = other.dependencies
+      @optional_dependencies = other.optional_dependencies
+      @peer_dependencies = other.peer_dependencies
+      @peer_dependencies_meta = other.peer_dependencies_meta
+    end
   end
 
   def propagate_meta_peer_dependencies
@@ -429,7 +444,7 @@ class Zap::Package
   end
 
   __do_not_serialize__
-  @resolved = Atomic(Int8).new(0_i8)
+  getter resolved = Atomic(Int8).new(0_i8)
 
   # For some dependencies, we need to remember when they have already been resolved
   # This is to prevent infinite loops when crawling the dependency tree

@@ -1,5 +1,5 @@
 require "../backends/*"
-require "./helpers"
+require "./writers"
 
 module Zap::Installer::Classic
   record DependencyItem,
@@ -17,6 +17,10 @@ module Zap::Installer::Classic
   class Node(T)
     getter value : T
     getter parent : Node(T)?
+
+    macro method_missing(call)
+      @value.{{call}}
+    end
 
     def initialize(@value : T, @parent : self? = nil)
     end
@@ -99,15 +103,19 @@ module Zap::Installer::Classic
           end
 
           # Install a dependency and get the new cache to pass to the subdeps
-          install_location = install_dependency(
+          install_location, did_install = install_dependency(
             dependency,
             location: dependency_item.location_node,
             ancestors: dependency_item.ancestors,
             aliased_name: dependency_item.alias
           )
 
-          if install_location
-            Log.debug { "(#{dependency.key}) Installed to: #{install_location.try &.value.node_modules}" }
+          if location = install_location
+            Log.debug { "(#{dependency.key}) Installed to: #{location.node_modules.parent}" if did_install }
+            if dependency.package_extensions_updated
+              Log.debug { "(#{dependency.key}) Package extensions updated, removing old folder '#{location.node_modules}'…" }
+              FileUtils.rm_rf(location.node_modules)
+            end
           else
             # no install location = do not process the sub dependencies
             Log.debug { "(#{dependency.key}) Skipping install" }
@@ -144,7 +152,7 @@ module Zap::Installer::Classic
           end
         rescue e
           state.reporter.stop
-          parent_path = dependency_item.location_node.value.node_modules
+          parent_path = dependency_item.location_node.node_modules
           ancestors_str = dependency_item.ancestors ? dependency_item.ancestors.map { |a| "#{a.name}@#{a.version}" }.join("~>") : ""
           package_in_error = dependency ? "#{dependency_item.alias.try &.+(":")}#{dependency.name}@#{dependency.version}" : ""
           state.reporter.error(e, "#{package_in_error.colorize.bold} (#{ancestors_str}) at #{parent_path.colorize.dim}")
@@ -153,21 +161,30 @@ module Zap::Installer::Classic
       end
     end
 
-    private def install_dependency(dependency : Package, *, location : LocationNode, ancestors : Array(Package), aliased_name : String?) : LocationNode?
-      case dependency.kind
-      when .tarball_file?, .link?
-        Helpers::File.install(dependency, installer: self, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
-      when .tarball_url?
-        Helpers::Tarball.install(dependency, installer: self, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
-      when .git?
-        Helpers::Git.install(dependency, installer: self, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
-      when .registry?
-        hoisted_location = Helpers::Registry.hoist(dependency, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
-        return unless hoisted_location
-        Helpers::Registry.install(dependency, installer: self, location: hoisted_location, state: state, ancestors: ancestors, aliased_name: aliased_name)
-      when .workspace?
-        Helpers::Workspace.install(dependency, installer: self, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
-      end
+    private def install_dependency(dependency : Package, *, location : LocationNode, ancestors : Array(Package), aliased_name : String?) : Writer::InstallResult
+      writer = case dependency.kind
+               in .tarball_file?, .link?
+                 Writer::File.new(dependency, installer: self, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
+               in .tarball_url?
+                 Writer::Tarball.new(dependency, installer: self, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
+               in .git?
+                 Writer::Git.new(dependency, installer: self, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
+               in .registry?
+                 registry_writer = Writer::Registry.new(
+                   dependency,
+                   installer: self,
+                   location: location,
+                   state: state,
+                   ancestors: ancestors,
+                   aliased_name: aliased_name
+                 ).hoist
+                 return {nil, false} unless registry_writer
+                 registry_writer
+               in .workspace?
+                 Writer::Workspace.new(dependency, installer: self, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
+               end
+
+      writer.install
     end
 
     # Actions to perform after the dependency has been freshly installed.
@@ -184,7 +201,7 @@ module Zap::Installer::Classic
         bin_folder_path = state.config.bin_path
         is_direct_dependency = ancestors.size <= 1
         if !is_direct_dependency && state.install_config.install_strategy.classic_shallow?
-          bin_folder_path = location.value.node_modules / ".bin"
+          bin_folder_path = location.node_modules / ".bin"
         end
         Utils::Directories.mkdir_p(bin_folder_path)
         if bin.is_a?(Hash)

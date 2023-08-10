@@ -9,25 +9,25 @@ module Zap::Backend
     Symlink
   end
 
-  def self.install(*, dependency : Package, target : Path | String, backend : Backends, store : Store, aliased_name : String? = nil, &on_installing) : Bool?
+  def self.install(*, dependency : Package, target : Path | String, backend : Backends, store : Store, aliased_name : String? = nil, &on_installing) : Bool
     case backend
-    when .clone_file?
+    in .clone_file?
       {% if flag?(:darwin) %}
         Backend::CloneFile.install(dependency, target, store: store, aliased_name: aliased_name, &on_installing)
       {% else %}
         raise "The clonefile backend is not supported on this platform"
       {% end %}
-    when .copy_file?
+    in .copy_file?
       {% if flag?(:darwin) %}
         Backend::CopyFile.install(dependency, target, store: store, aliased_name: aliased_name, &on_installing)
       {% else %}
         raise "The copyfile backend is not supported on this platform"
       {% end %}
-    when .hardlink?
+    in .hardlink?
       Backend::Hardlink.install(dependency, target, store: store, aliased_name: aliased_name, &on_installing)
-    when .copy?
+    in .copy?
       Backend::Copy.install(dependency, target, store: store, aliased_name: aliased_name, &on_installing)
-    when .symlink?
+    in .symlink?
       Backend::Symlink.install(dependency, target, store: store, aliased_name: aliased_name, &on_installing)
     end
   end

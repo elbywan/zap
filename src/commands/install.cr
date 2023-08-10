@@ -172,14 +172,16 @@ module Zap::Commands::Install
   end
 
   private def self.resolve_dependencies(state : State)
-    Log.debug { "• Resolving dependencies" }
     state.reporter.report_resolver_updates
     # Resolve overrides
+    Log.debug { "• Resolving overrides" }
     resolve_overrides(state)
     # Extract name / version from the updated packages strings
+    Log.debug { "• Resolving added direct dependencies" }
     state.context.scope_packages_and_paths(:command).each do |(package, path)|
       Resolver.resolve_added_packages(package, state: state, directory: path.to_s)
     end
+    Log.debug { "• Resolving dependencies" }
     # Resolve and store dependencies
     state.context.scope_packages(:install).each do |package|
       Resolver.resolve_dependencies_of(
@@ -195,7 +197,6 @@ module Zap::Commands::Install
   end
 
   private def self.resolve_overrides(state : State)
-    Log.debug { "• Resolving overrides" }
     state.lockfile.overrides = Package::Overrides.merge(state.main_package.overrides, state.lockfile.overrides)
     state.lockfile.overrides.try &.each do |name, override_list|
       override_list.each_with_index do |override, index|
@@ -258,7 +259,6 @@ module Zap::Commands::Install
   end
 
   private def self.install_packages(state : State, pruned_direct_dependencies)
-    Log.debug { "• Installing packages" }
     state.reporter.report_installer_updates
     installer = case state.install_config.install_strategy
                 when .isolated?
@@ -268,9 +268,11 @@ module Zap::Commands::Install
                 else
                   raise "Unsupported install strategy: #{state.install_config.install_strategy}"
                 end
-    installer.install
+    Log.debug { "• Pruning previous install" }
     installer.remove(pruned_direct_dependencies)
     installer.prune_orphan_modules
+    Log.debug { "• Installing packages" }
+    installer.install
     state.reporter.stop
     installer
   end

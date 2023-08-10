@@ -270,12 +270,13 @@ module Zap::Resolver
       Log.debug { "(#{metadata.key}) Metatadata found in the lockfile cache" if metadata }
 
       # Forcefully fetch the metadata from the registry if the force_metadata_retrieval option is enabled
-      if metadata && force_metadata_retrieval && !metadata.already_resolved?(state)
+      if metadata && force_metadata_retrieval && metadata.resolved.get == 0
         Log.debug { "(#{metadata.key}) Forcing metadata retrieval" }
         state.lockfile.packages_lock.synchronize do
           state.lockfile.packages.delete(metadata.key)
         end
-        metadata = resolver.resolve(pinned_version: metadata.version)
+        fresh_metadata = resolver.resolve(pinned_version: metadata.version)
+        metadata.override_dependencies(fresh_metadata)
         lockfile_cached = false
       else
         # If the package is not in the lockfile or if it is a direct dependency, resolve it
@@ -303,7 +304,10 @@ module Zap::Resolver
       metadata.dependents << package if package
       Log.debug { "(#{name}@#{version}) Resolved version: #{metadata.version} #{(package ? " [parent: #{package.key}]" : "")}" }
       # If the package has already been resolved, skip it to prevent infinite loops
-      next if !single_resolution && metadata.already_resolved?(state)
+      if !single_resolution && metadata.already_resolved?(state)
+        Log.debug { "(#{metadata.key}) Skipping dependencies resolution" }
+        next
+      end
       # Determine whether the dependencies should be resolved, most of the time they should
       should_resolve_dependencies = !single_resolution && metadata.should_resolve_dependencies?(state)
       # Repeat the process for transitive dependencies if needed
@@ -480,20 +484,36 @@ module Zap::Resolver
   end
 
   private def self.apply_package_extensions(metadata : Package, *, state : Commands::Install::State) : Nil
+    previous_extensions_shasum = metadata.package_extension_shasum
+    new_extensions_shasum = nil
+
     # Check the package_extensions field in the zap config
     if package_extensions = state.context.main_package.zap_config.try(&.package_extensions)
       # Find matching extensions
-      package_extensions.select { |selector|
+      extensions = package_extensions.select { |selector|
         name, version = Utils::Various.parse_key(selector)
         name == metadata.name && (!version || Utils::Semver.parse(version).satisfies?(metadata.version))
-      }.each { |_, ext|
-        # Apply the extension by merging the fields
-        Log.debug { "Applying package extension for #{metadata.key}: #{ext.to_json}" }
-        metadata.lock.synchronize { ext.merge_into(metadata) }
       }
-      # If the extension added one or more "meta" peer dependencies then declare the matching peer dependencies
-      metadata.propagate_meta_peer_dependencies
+
+      new_extensions_shasum = extensions.size > 0 ? Digest::MD5.hexdigest(extensions.to_json) : nil
+
+      if new_extensions_shasum == metadata.package_extension_shasum
+        Log.debug { "Skipping package extensions for #{metadata.key} because it has already been applied." }
+      else
+        extensions.each { |_, ext|
+          # Apply the extension by merging the fields
+          Log.debug { "Applying package extension for #{metadata.key}: #{ext.to_json}" }
+          metadata.lock.synchronize { ext.merge_into(metadata) }
+        }
+        # If the extensions added one or more "meta" peer dependencies then declare the matching peer dependencies
+        metadata.propagate_meta_peer_dependencies
+      end
     end
+
+    if new_extensions_shasum != previous_extensions_shasum
+      metadata.package_extensions_updated = true
+    end
+    metadata.package_extension_shasum = new_extensions_shasum
   end
 
   # Try to detect what kind of target it is

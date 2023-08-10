@@ -20,8 +20,11 @@ module Zap::Installer
         package_path = node_modules / name
         if File.directory?(package_path)
           package = Package.init?(package_path)
-          unlink_binaries(package, package_path) if package
-          FileUtils.rm_rf(package_path)
+          version = version_or_alias.is_a?(String) ? version_or_alias : version_or_alias.version
+          if package && package.name == name && package.version == version
+            unlink_binaries(package, package_path)
+            FileUtils.rm_rf(package_path)
+          end
         end
       end
     end

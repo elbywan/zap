@@ -116,23 +116,22 @@ module Zap::Installer::Isolated
 
           hoist_package(package, package_path)
         else
-          # No need to install and check dependencies more than once if the package has already been installed during this run
-          if @installed_packages.includes?(install_path.to_s)
-            Log.debug { "(#{package.name}) Already installed to folder '#{install_path}' during this run, skipping…" }
-            return package_path
+          if package.package_extensions_updated
+            Log.debug { "(#{package.key}) Package extensions updated, removing old folder '#{install_path}'…" }
+            FileUtils.rm_rf(install_path)
           end
 
           # Install package
           Utils::Directories.mkdir_p(install_path)
           case package.kind
           when .tarball_file?
-            Helpers::File.install(package, install_path, installer: self, state: state)
+            Writer::File.install(package, install_path, installer: self, state: state)
           when .tarball_url?
-            Helpers::Tarball.install(package, install_path, installer: self, state: state)
+            Writer::Tarball.install(package, install_path, installer: self, state: state)
           when .git?
-            Helpers::Git.install(package, install_path, installer: self, state: state)
+            Writer::Git.install(package, install_path, installer: self, state: state)
           when .registry?
-            Helpers::Registry.install(package, install_path, installer: self, state: state)
+            Writer::Registry.install(package, install_path, installer: self, state: state)
           end
         end
       else
@@ -312,8 +311,9 @@ module Zap::Installer::Isolated
       result
     end
 
-    protected def symlink(source, target)
+    protected def symlink(source, target, *, override = true)
       info = File.info?(target, follow_symlinks: false)
+      return if !info && !override
       if info
         case info.type
         when .symlink?
@@ -340,9 +340,11 @@ module Zap::Installer::Isolated
 
     private def hoist_package(package : Package, install_folder : Path)
       if @public_hoist_patterns.any?(&.=~ package.name)
-        Log.debug { "(#{package.key}) Publicly hoisting module: #{install_folder} <- #{@node_modules / package.name}" }
         # Hoist to the root node_modules folder
-        symlink(install_folder, @node_modules / package.name)
+        unless state.main_package.has_dependency?(package.name)
+          Log.debug { "(#{package.key}) Publicly hoisting module: #{install_folder} <- #{@node_modules / package.name}" }
+          symlink(install_folder, @node_modules / package.name)
+        end
         # Remove regular hoisted link if it exists
         deleted = Utils::File.delete_file_or_dir?(@hoisted_store / package.name)
         Log.debug { "(#{package.key}) Removed hoisted link at: #{@hoisted_store / package.name}" if deleted }
