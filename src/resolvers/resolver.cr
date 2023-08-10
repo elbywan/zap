@@ -497,17 +497,13 @@ module Zap::Resolver
 
       new_extensions_shasum = extensions.size > 0 ? Digest::MD5.hexdigest(extensions.to_json) : nil
 
-      if new_extensions_shasum == metadata.package_extension_shasum
-        Log.debug { "Skipping package extensions for #{metadata.key} because it has already been applied." }
-      else
-        extensions.each { |_, ext|
-          # Apply the extension by merging the fields
-          Log.debug { "Applying package extension for #{metadata.key}: #{ext.to_json}" }
-          metadata.lock.synchronize { ext.merge_into(metadata) }
-        }
-        # If the extensions added one or more "meta" peer dependencies then declare the matching peer dependencies
-        metadata.propagate_meta_peer_dependencies
-      end
+      extensions.each { |_, ext|
+        # Apply the extension by merging the fields
+        Log.debug { "Applying package extension for #{metadata.key}: #{ext.to_json}" }
+        metadata.lock.synchronize { ext.merge_into(metadata) }
+      }
+      # If the extensions added one or more "meta" peer dependencies then declare the matching peer dependencies
+      metadata.propagate_meta_peer_dependencies
     end
 
     if new_extensions_shasum != previous_extensions_shasum
