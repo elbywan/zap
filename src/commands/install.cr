@@ -40,19 +40,26 @@ module Zap::Commands::Install
       reporter ||= config.silent ? Reporter::Interactive.new(null_io) : Reporter::Interactive.new
       # Merge zap config from package.json
       install_config = install_config.merge_pkg(inferred_context.main_package)
-      # Force hoisting if the hoisting options have changed
-      if lockfile.update_hoisting_shasum(inferred_context.main_package)
-        Log.debug { "Detected a change in hoisting options in the package.json file" }
-        install_config = install_config.copy_with(force_hoisting: true)
-      end
-      # Force metadata retrieval if the package extensions options have changed
-      if lockfile.update_package_extensions_shasum(inferred_context.main_package)
-        Log.debug { "Detected a change in package extensions options in the package.json file" }
-        install_config = install_config.copy_with(force_metadata_retrieval: true)
-      end
 
       # Print info about the install
       self.print_info(config, inferred_context, install_config, lockfile, workspaces)
+
+      # Force hoisting if the hoisting options have changed
+      if lockfile.update_hoisting_shasum(inferred_context.main_package)
+        if lockfile.read_status.from_disk?
+          Log.debug { "Detected a change in hoisting options in the package.json file" }
+          reporter.info("Hoisting options were modified. The packages will be re-installed.")
+          install_config = install_config.copy_with(refresh_install: true)
+        end
+      end
+      # Force metadata retrieval if the package extensions options have changed
+      if lockfile.update_package_extensions_shasum(inferred_context.main_package)
+        if lockfile.read_status.from_disk?
+          Log.debug { "Detected a change in package extensions options in the package.json file" }
+          reporter.info("Package extensions have been modified. Package metadata will forcefully be fetched from the registry and packages will be re-installed.")
+          install_config = install_config.copy_with(force_metadata_retrieval: true, refresh_install: true)
+        end
+      end
 
       # Init state struct
       state = State.new(

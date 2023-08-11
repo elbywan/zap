@@ -115,6 +115,12 @@ class Zap::Reporter::Interactive < Zap::Reporter
     end
   end
 
+  def info(str : String)
+    @lock.synchronize do
+      @out << %( ℹ #{str.colorize(:blue)}) << "\n"
+    end
+  end
+
   def warning(error : Exception, location : String? = "")
     @lock.synchronize do
       @out << header("⚠️", "Warning", :yellow) + location

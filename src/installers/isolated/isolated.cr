@@ -99,11 +99,16 @@ module Zap::Installer::Isolated
         install_path = @modules_store / package_folder / "node_modules"
         package_path = install_path / package.name
 
+        if package.package_extensions_updated
+          Log.debug { "(#{package.key}) Package extensions updated, removing old folder '#{install_path}'…" }
+          FileUtils.rm_rf(install_path)
+        end
+
         # If the package folder exists, we assume that the package dependencies were already installed too
         if File.directory?(install_path)
           package_path = install_path / package.name
-          # If there is no need to perform hoisting, we can just return the package path and skip the dependencies
-          unless state.install_config.force_hoisting
+          # If there is no need to perform a full pass, we can just return the package path and skip the dependencies
+          unless state.install_config.refresh_install
             Log.debug { "(#{package.name}) Already installed to folder '#{install_path}', skipping…" }
             return package_path
           end
@@ -116,11 +121,6 @@ module Zap::Installer::Isolated
 
           hoist_package(package, package_path)
         else
-          if package.package_extensions_updated
-            Log.debug { "(#{package.key}) Package extensions updated, removing old folder '#{install_path}'…" }
-            FileUtils.rm_rf(install_path)
-          end
-
           # Install package
           Utils::Directories.mkdir_p(install_path)
           case package.kind
