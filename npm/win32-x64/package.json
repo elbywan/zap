@@ -1,6 +1,6 @@
 {
   "name": "@zap.org/win32-x64",
-  "version": "0.0.41",
+  "version": "0.0.42",
   "description": "Windows binaries for the zap package manager",
   "main": "index.js",
   "scripts": {
