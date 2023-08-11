@@ -27,7 +27,7 @@ module Zap::Resolver
     end
 
     def resolve(*, pinned_version : String? = nil) : Package
-      pkg = self.fetch_metadata
+      pkg = self.fetch_metadata(pinned_version: pinned_version)
       on_resolve(pkg, pkg.version)
       pkg
     rescue e
@@ -105,6 +105,7 @@ module Zap::Resolver
     # # PRIVATE ##########################
 
     private def find_valid_version(manifest_str : String, version : Utils::Semver::SemverSets | String) : Package
+      Log.debug { "(#{package_name}@#{@version}) Finding valid version/dist-tag inside metadata: #{version}" }
       matching = nil
       manifest_parser = JSON::PullParser.new(manifest_str)
       manifest_parser.read_begin_object
@@ -209,7 +210,7 @@ module Zap::Resolver
         manifest = @skip_cache ? client_pool.client { |http|
           http.get("/#{package_name}", HEADERS).body
         } : client_pool.cached_fetch("/#{package_name}", HEADERS)
-        find_valid_version(manifest, pinned_version || self.version)
+        find_valid_version(manifest, pinned_version ? Utils::Semver.parse(pinned_version) : self.version)
       end
     end
   end
