@@ -78,6 +78,26 @@ class Zap::Package
     getter name : String
     getter version : String
 
+    def initialize(specifier : String)
+      stripped_version = specifier[4..]
+      parts = stripped_version.split('@')
+      if parts[0] == "@"
+        @name = parts[0] + parts[1]
+        @version = parts[2]? || "*"
+      else
+        @name = parts[0]
+        @version = parts[1]? || "*"
+      end
+    end
+
+    def self.from_version?(specifier : String)
+      if specifier.starts_with?("npm:")
+        self.new(specifier)
+      else
+        nil
+      end
+    end
+
     def to_s(io)
       io << "npm:#{name}@#{version}"
     end
@@ -253,13 +273,29 @@ class Zap::Package
     propagate_meta_peer_dependencies
   end
 
-  def override_dependencies(other : Package)
+  def override_dependencies!(other : Package)
     @lock.synchronize do
-      @dependencies = other.dependencies
-      @optional_dependencies = other.optional_dependencies
+      @dependencies = merge_pinned_dependencies!(other.dependencies, @dependencies)
+      @optional_dependencies = merge_pinned_dependencies!(other.optional_dependencies, @optional_dependencies)
       @peer_dependencies = other.peer_dependencies
       @peer_dependencies_meta = other.peer_dependencies_meta
     end
+  end
+
+  private def merge_pinned_dependencies!(deps, pinned_deps)
+    return nil if !deps
+    return deps if !pinned_deps
+    pinned_deps.each do |name, pinned_dep|
+      # Merge the pinned dependency if it satisfies the current one.
+      if (dep = deps[name]?) && dep.is_a?(String)
+        satisfied = pinned_dep.is_a?(String) && Utils::Semver.parse?(dep).try &.satisfies?(pinned_dep)
+        satisfied ||= pinned_dep.is_a?(Alias) && (a = Alias.from_version?(dep)) && Utils::Semver.parse?(a.version).try &.satisfies?(pinned_dep.version)
+        if satisfied
+          deps[name] = pinned_dep
+        end
+      end
+    end
+    deps
   end
 
   def propagate_meta_peer_dependencies

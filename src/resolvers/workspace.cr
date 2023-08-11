@@ -19,7 +19,7 @@ module Zap::Resolver
       false
     end
 
-    def is_lockfile_cache_valid?(cached_package : Package) : Bool
+    def is_pinned_metadata_valid?(cached_package : Package) : Bool
       false
     end
   end

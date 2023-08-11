@@ -54,7 +54,7 @@ module Zap::Resolver
       raise e
     end
 
-    def is_lockfile_cache_valid?(cached_package : Package) : Bool
+    def is_pinned_metadata_valid?(cached_package : Package) : Bool
       !!cached_package.dist.as?(Package::GitDist).try(&.version.== version.to_s)
     end
 

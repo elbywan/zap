@@ -1,4 +1,5 @@
 require "../utils/semver"
+require "../utils/keyed_lock"
 require "../store"
 
 module Zap::Resolver
@@ -52,7 +53,7 @@ abstract struct Zap::Resolver::Base
     end
   end
 
-  def get_lockfile_cache(name : String)
+  def get_pinned_metadata(name : String)
     parent_package = parent
     pinned_dependency = parent_package.try &.dependency_specifier?(name)
     if pinned_dependency
@@ -67,11 +68,12 @@ abstract struct Zap::Resolver::Base
 
   abstract def resolve(*, pinned_version : String? = nil) : Package
   abstract def store(metadata : Package, &on_downloading) : Bool
-  abstract def is_lockfile_cache_valid?(cached_package : Package) : Bool
+  abstract def is_pinned_metadata_valid?(cached_package : Package) : Bool
 end
 
 module Zap::Resolver
   Utils::DedupeLock::Global.setup(:store, Bool)
+  Utils::KeyedLock::Global.setup(Package)
 
   GH_URL_REGEX   = /^https:\/\/github.com\/(?P<owner>[a-zA-Z0-9\-_]+)\/(?P<package>[^#^\/]+)(?:#(?P<hash>[.*]))?/
   GH_SHORT_REGEX = /^[^@.].*\/.*$/
@@ -121,9 +123,9 @@ module Zap::Resolver
     # Extract the aliased name and the version field
     aliased_name = nil
     if version_field.starts_with?("npm:")
+      aliased_name = name
       stripped_version = version_field[4..]
       stripped_version.split('@').tap do |parts|
-        aliased_name = name
         if parts[0] == "@"
           name = parts[0] + parts[1]
           version_field = parts[2]? || "*"
@@ -167,8 +169,7 @@ module Zap::Resolver
     state : Commands::Install::State,
     ancestors : Deque(Package) = Deque(Package).new,
     disable_cache_for_packages : Array(String)? = nil,
-    disable_cache : Bool = false,
-    pinned_dependencies : SafeHash(String, String | Package::Alias)? = nil
+    disable_cache : Bool = false
   )
     is_root = ancestors.size == 0
     package.each_dependency(
@@ -184,7 +185,7 @@ module Zap::Resolver
       end
 
       # Check if the package is in the no_cache_packages set and bust the lockfile cache if needed
-      bust_lockfile_cache = is_root && (disable_cache || begin
+      bust_pinned_cache = is_root && (disable_cache || begin
         disable_cache_for_packages.try &.any? do |pattern|
           ::File.match?(pattern, name)
         end || false
@@ -204,7 +205,7 @@ module Zap::Resolver
         state: state,
         is_direct_dependency: is_root,
         ancestors: Deque(Package).new(ancestors.size + 1).concat(ancestors).push(package),
-        bust_lockfile_cache: bust_lockfile_cache
+        bust_pinned_cache: bust_pinned_cache
       )
     end
   end
@@ -219,7 +220,7 @@ module Zap::Resolver
     is_direct_dependency : Bool = false,
     single_resolution : Bool = false,
     ancestors : Deque(Package) = Deque(Package).new,
-    bust_lockfile_cache : Bool = false
+    bust_pinned_cache : Bool = false
   )
     resolve(
       package,
@@ -230,7 +231,7 @@ module Zap::Resolver
       is_direct_dependency: is_direct_dependency,
       single_resolution: single_resolution,
       ancestors: ancestors,
-      bust_lockfile_cache: bust_lockfile_cache
+      bust_pinned_cache: bust_pinned_cache
     ) { }
   end
 
@@ -244,7 +245,7 @@ module Zap::Resolver
     is_direct_dependency : Bool = false,
     single_resolution : Bool = false,
     ancestors : Deque(Package) = Deque(Package).new,
-    bust_lockfile_cache : Bool = false,
+    bust_pinned_cache : Bool = false,
     &on_resolve : Package -> _
   )
     Log.debug { "(#{name}@#{version}) Resolving package…" + (type ? " [type: #{type}]" : "") + (package ? " [parent: #{package.key}]" : "") }
@@ -260,52 +261,60 @@ module Zap::Resolver
       # Create the appropriate resolver depending on the version (git, tarball, registry, local folder…)
       resolver = Resolver.make(state, name, version, parent, type)
       # Attempt to use the package data from the lockfile
-      metadata = resolver.get_lockfile_cache(name) unless bust_lockfile_cache
+      maybe_metadata = resolver.get_pinned_metadata(name) unless bust_pinned_cache
       # Check if the data from the lockfile is still valid (direct deps can be modified in the package.json file or through the cli)
-      if metadata && is_direct_dependency
-        metadata = nil unless resolver.is_lockfile_cache_valid?(metadata)
+      if maybe_metadata && is_direct_dependency
+        maybe_metadata = nil unless resolver.is_pinned_metadata_valid?(maybe_metadata)
       end
 
-      lockfile_cached = !!metadata
-      Log.debug { "(#{metadata.key}) Metatadata found in the lockfile cache" if metadata }
+      Log.debug { "(#{maybe_metadata.key}) Metatadata found in the lockfile cache #{(package ? "[parent: #{package.key}]" : "")}" if maybe_metadata }
+      # If the package is not in the lockfile or if it is a direct dependency, resolve it
+      metadata = maybe_metadata || resolver.resolve
+      metadata_key = metadata.key
+      metadata_ref = metadata # Because otherwise the compiler has trouble with "metadata" and thinks it is nilable - which is wrong
 
-      # Forcefully fetch the metadata from the registry if the force_metadata_retrieval option is enabled
-      if metadata && force_metadata_retrieval && metadata.resolved.get == 0
-        Log.debug { "(#{metadata.key}) Forcing metadata retrieval" }
+      already_resolved = false
+      lockfile_cached = !!maybe_metadata
+      metadata = keyed_lock(metadata_key) do
+        # If another fiber has already resolved the package, use the cached metadata
+        lockfile_metadata = state.lockfile.packages[metadata_key]?
+        lockfile_cached = !!lockfile_metadata
+        _metadata = lockfile_metadata || metadata_ref
+        already_resolved = _metadata.already_resolved?(state)
+
+        # Forcefully fetch the metadata from the registry if the force_metadata_retrieval option is enabled
+        if (forced_retrieval = lockfile_cached && force_metadata_retrieval && !already_resolved)
+          Log.debug { "(#{metadata_key}) Forcing metadata retrieval #{(package ? "[parent: #{package.key}]" : "")}" }
+          fresh_metadata = resolver.resolve(pinned_version: _metadata.version)
+          _metadata.override_dependencies!(fresh_metadata)
+        end
+
+        # Apply package extensions unless the package is already in the lockfile
+        apply_package_extensions(_metadata, state: state) if forced_retrieval || !lockfile_metadata
+        # Flag transitive dependencies and overrides
+        flag_transitive_dependencies(_metadata, ancestors)
+        flag_transitive_overrides(_metadata, ancestors, state)
+        # Mutate only if the package is not already in the lockfile
         state.lockfile.packages_lock.synchronize do
-          state.lockfile.packages.delete(metadata.key)
+          # Mark the package and store its parents
+          # Used to prevent packages being pruned in the lockfile
+          _metadata.dependents << package if package
+
+          if !lockfile_metadata || forced_retrieval
+            Log.debug { "(#{metadata_key}) Saving package metadata in the lockfile #{(package ? "[parent: #{package.key}]" : "")}" }
+            # Remove dev dependencies
+            _metadata.dev_dependencies = nil
+            # Store the package data in the lockfile
+            state.lockfile.packages[metadata_key] = _metadata
+          end
         end
-        fresh_metadata = resolver.resolve(pinned_version: metadata.version)
-        metadata.override_dependencies(fresh_metadata)
-        lockfile_cached = false
-      else
-        # If the package is not in the lockfile or if it is a direct dependency, resolve it
-        metadata ||= resolver.resolve
+        _metadata
       end
-      # Apply package extensions unless the package is already in the lockfile
-      apply_package_extensions(metadata, state: state) unless lockfile_cached
-      # Flag transitive dependencies and overrides
-      flag_transitive_dependencies(metadata, ancestors)
-      flag_transitive_overrides(metadata, ancestors, state)
-      # Mutate only if the package is not already in the lockfile
-      lockfile_metadata = nil
-      state.lockfile.packages_lock.synchronize do
-        unless lockfile_metadata = state.lockfile.packages[metadata.key]?
-          Log.debug { "(#{metadata.key}) Saving package metadata in the lockfile" }
-          # Remove dev dependencies
-          metadata.dev_dependencies = nil
-          # Store the package data in the lockfile
-          state.lockfile.packages[metadata.key] = metadata
-        end
-      end
-      metadata = lockfile_metadata || metadata
-      # Mark the package and store its parents
-      # Used to prevent packages being pruned in the lockfile
-      metadata.dependents << package if package
-      Log.debug { "(#{name}@#{version}) Resolved version: #{metadata.version} #{(package ? " [parent: #{package.key}]" : "")}" }
+
+      Log.debug { "(#{name}@#{version}) Resolved version: #{metadata.version} #{(package ? "[parent: #{package.key}]" : "")}" }
       # If the package has already been resolved, skip it to prevent infinite loops
-      if !single_resolution && metadata.already_resolved?(state)
-        Log.debug { "(#{metadata.key}) Skipping dependencies resolution" }
+      if !single_resolution && already_resolved
+        Log.debug { "(#{metadata_key}) Skipping dependencies resolution #{(package ? "[parent: #{package.key}]" : "")}" }
         next
       end
       # Determine whether the dependencies should be resolved, most of the time they should
@@ -324,10 +333,10 @@ module Zap::Resolver
         end
       end
       # Attempt to store the package in the filesystem or in the cache if needed
-      stored = dedupe_store(metadata.key) do
+      stored = dedupe_store(metadata_key) do
         resolver.store(metadata) { state.reporter.on_downloading_package }
       end
-      Log.debug { "(#{metadata.key}) Saved package metadata in the store" if stored }
+      Log.debug { "(#{metadata_key}) Saved package metadata in the store #{(package ? "[parent: #{package.key}]" : "")}" if stored }
       # Call the on_resolve callback
       on_resolve.call(metadata)
       # Report the package as downloaded if it was stored

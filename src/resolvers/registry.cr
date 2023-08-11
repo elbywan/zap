@@ -94,7 +94,7 @@ module Zap::Resolver
       end
     end
 
-    def is_lockfile_cache_valid?(cached_package : Package) : Bool
+    def is_pinned_metadata_valid?(cached_package : Package) : Bool
       range_set = self.version
       cached_package.kind.registry? && (
         (range_set.is_a?(String) && range_set == cached_package.version) ||
@@ -205,7 +205,7 @@ module Zap::Resolver
     private def fetch_metadata(*, pinned_version : String? = nil) : Package?
       raise "Resolver::Registry has not been initialized" unless client_pool = @@client_pool
       base_url = @@base_url
-      Log.debug { "(#{package_name}@#{version}) Fetching metadata… #{@skip_cache ? "(skipping cache)" : ""}" }
+      Log.debug { "(#{package_name}@#{version}) Fetching metadata… #{@skip_cache ? "(skipping cache)" : ""} #{pinned_version ? "[pinned_version #{pinned_version}]" : ""}" }
       state.store.with_lock("#{base_url}/#{package_name}", state.config) do
         manifest = @skip_cache ? client_pool.client { |http|
           http.get("/#{package_name}", HEADERS).body
