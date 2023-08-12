@@ -62,7 +62,9 @@ abstract struct Zap::Resolver::Base
       else
         packages_ref = "#{name}@#{pinned_dependency}"
       end
-      state.lockfile.packages[packages_ref]?
+      state.lockfile.packages_lock.synchronize do
+        state.lockfile.packages[packages_ref]?
+      end
     end
   end
 
@@ -273,11 +275,13 @@ module Zap::Resolver
       metadata_key = metadata.key
       metadata_ref = metadata # Because otherwise the compiler has trouble with "metadata" and thinks it is nilable - which is wrong
 
-      already_resolved = false
-      lockfile_cached = !!maybe_metadata
+      already_resolved = uninitialized Bool
+      lockfile_cached = uninitialized Bool
       metadata = keyed_lock(metadata_key) do
         # If another fiber has already resolved the package, use the cached metadata
-        lockfile_metadata = state.lockfile.packages[metadata_key]?
+        lockfile_metadata = state.lockfile.packages_lock.synchronize do
+          state.lockfile.packages[metadata_key]?
+        end
         lockfile_cached = !!lockfile_metadata
         _metadata = lockfile_metadata || metadata_ref
         already_resolved = _metadata.already_resolved?(state)
@@ -295,19 +299,20 @@ module Zap::Resolver
         flag_transitive_dependencies(_metadata, ancestors)
         flag_transitive_overrides(_metadata, ancestors, state)
         # Mutate only if the package is not already in the lockfile
-        state.lockfile.packages_lock.synchronize do
-          # Mark the package and store its parents
-          # Used to prevent packages being pruned in the lockfile
-          _metadata.dependents << package if package
+        # Mark the package and store its parents
+        # Used to prevent packages being pruned in the lockfile
+        _metadata.dependents << package if package
 
-          if !lockfile_metadata || forced_retrieval
-            Log.debug { "(#{metadata_key}) Saving package metadata in the lockfile #{(package ? "[parent: #{package.key}]" : "")}" }
-            # Remove dev dependencies
-            _metadata.dev_dependencies = nil
-            # Store the package data in the lockfile
+        if !lockfile_metadata || forced_retrieval
+          Log.debug { "(#{metadata_key}) Saving package metadata in the lockfile #{(package ? "[parent: #{package.key}]" : "")}" }
+          # Remove dev dependencies
+          _metadata.dev_dependencies = nil
+          # Store the package data in the lockfile
+          state.lockfile.packages_lock.synchronize do
             state.lockfile.packages[metadata_key] = _metadata
           end
         end
+
         _metadata
       end
 

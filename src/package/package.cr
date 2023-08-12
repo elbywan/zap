@@ -156,8 +156,8 @@ class Zap::Package
 
   # Used to mark a package as visited during the dependency resolution and point to its parents.
   __do_not_serialize__
-  getter dependents : SafeSet(Package) do
-    SafeSet(Package).new
+  getter dependents : Set(Package) do
+    Set(Package).new
   end
 
   def get_root_dependents? : Set(String)?
