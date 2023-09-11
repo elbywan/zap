@@ -86,9 +86,16 @@ module Zap
     def parse
       # Parse options and extract configs
       parser = OptionParser.new do |parser|
-        banner(parser, "[command]", "Zap is a package manager for the Javascript language.")
+        banner_desc = <<-DESCRIPTION
+          #{"A package manager for the Javascript language.".colorize.bold}
+
+          Check out #{"https://github.com/elbywan/zap".colorize.magenta} for more information.
+          DESCRIPTION
+        banner(parser, "[command]", banner_desc)
 
         separator("Commands")
+
+        subSeparator("Install", early_line_break: false)
 
         command(["install", "i", "add"], "This command installs one or more packages and any packages that they depends on.", "[options] <package(s)>") do
           on_install(parser)
@@ -102,31 +109,25 @@ module Zap
           on_install(parser, update_packages: true)
         end
 
-        command(
-          ["dlx", "x"],
-          (
-            <<-DESCRIPTION
-            Install one or more packages and run a command in a temporary environment.
+        command(["why", "y"], "Show information about why a package is installed.", "<package(s)>") do
+          on_why(parser)
+        end
 
-            Examples:
-              - zap x create-react-app my-app
-              - zap x -p ts-node -p typescript ts-node --transpile-only -e "console.log('hello!')"
-              - zap x --package cowsay --package lolcatjs -c 'echo "hi zap" | cowsay | lolcatjs'
+        subSeparator("Execute")
 
-            DESCRIPTION
-          ),
-          "[options] <command>"
-        ) do
+        command(["dlx", "x"], "Install one or more packages and run a command in a temporary environment.", "[options] <command>") do
           on_dlx(parser)
+        end
+
+        command(["exec", "e"], "Execute a command in the project scope.", "<command>") do
+          on_exec(parser)
         end
 
         command(["run", "r"], "Run a package's \"script\" command.", "[options] <script>") do
           on_run(parser)
         end
 
-        command(["exec", "e"], "Execute a command in the project scope.", "<command>") do
-          on_exec(parser)
-        end
+        subSeparator("Miscellaneous")
 
         command(["init", "innit", "create"], "Create a new package.json file.", "[options] <initializer>") do
           on_init(parser)
@@ -140,10 +141,6 @@ module Zap
           on_store(parser)
         end
 
-        command(["why", "y"], "Show information about why a package is installed.", "<package(s)>") do
-          on_why(parser)
-        end
-
         parser.before_each do |arg|
           if @command_config.nil? && !parser.@handlers.keys.includes?(arg)
             @command_config = Config::Run.new(fallback_to_exec: true)
@@ -151,8 +148,10 @@ module Zap
           end
         end
 
-        common_options()
-        workspace_options()
+        separator("Options")
+
+        common_options(true)
+        workspace_options(true)
       end
 
       parser.parse
@@ -169,43 +168,20 @@ module Zap
     # -- Utility methods --
 
     macro common_options(sub = false)
-      {% if sub %}subSeparator{% else %}separator{% end %}("Common Options")
+      {% if sub %}subSeparator{% else %}separator{% end %}("Common", early_line_break: false)
 
-      parser.on("-h", "--help", "Show this help.") do
-        puts parser
-        exit
-      end
-      parser.on("--version", "Show version.") do
-        puts "v#{VERSION}"
-        exit
-      end
-      parser.on("-g", "--global", "Operates in \"global\" mode, so that packages are installed into the global folder instead of the current working directory.") do |path|
-        @config = @config.copy_with(prefix: @config.deduce_global_prefix, global: true)
-      end
       parser.on("-C PATH", "--dir PATH", "Use PATH as the root directory of the project.") do |path|
         @config = @config.copy_with(prefix: Path.new(path).expand.to_s, global: false)
       end
-      parser.on("--silent", "Minimize the output.") do
-        @config = @config.copy_with(silent: true)
-      end
+
       parser.on("--concurrency NB", "Set the maximum number of tasks that will be run in parallel. (default: 5)") do |concurrency|
         @config = @config.copy_with(concurrency: concurrency.to_i32)
       end
+
       parser.on("--deferred-output", "Do not print the output in real time when running multiple scripts in parallel but instead defer it to have a nicer packed output. (default: false unless CI)") do
         @config = @config.copy_with(deferred_output: true)
       end
-      parser.on(
-        "--flock-scope SCOPE",
-        <<-DESCRIPTION
-        Set the scope of the file lock mechanism used to prevent store corruption.
-        Possible values:
-          - global (default) : The lock is global to the whole store. Slower, but will not hit the maximum number of open files limit.
-          - package : The lock is scoped to the current package. Faster, but may hit the default maximum number of open files limit.
-          - none : No flock lock is used. Faster, but will not work if multiple Zap processes are running in parallel.
-        DESCRIPTION
-      ) do |scope|
-        @config = @config.copy_with(flock_scope: Config::FLockScope.parse(scope))
-      end
+
       parser.on(
         "--file-backend BACKEND",
         <<-DESCRIPTION
@@ -219,15 +195,50 @@ module Zap
       ) do |backend|
         @config = @config.copy_with(file_backend: Backend::Backends.parse(backend))
       end
+
+      parser.on(
+        "--flock-scope SCOPE",
+        <<-DESCRIPTION
+        Set the scope of the file lock mechanism used to prevent store corruption.
+        Possible values:
+          - global (default) : The lock is global to the whole store. Slower, but will not hit the maximum number of open files limit.
+          - package : The lock is scoped to the current package. Faster, but may hit the default maximum number of open files limit.
+          - none : No flock lock is used. Faster, but will not work if multiple Zap processes are running in parallel.
+        DESCRIPTION
+      ) do |scope|
+        @config = @config.copy_with(flock_scope: Config::FLockScope.parse(scope))
+      end
+
+      parser.on("-g", "--global", "Operates in \"global\" mode, so that packages are installed into the global folder instead of the current working directory.") do |path|
+        @config = @config.copy_with(prefix: @config.deduce_global_prefix, global: true)
+      end
+
+      parser.on("-h", "--help", "Show this help.") do
+        puts parser
+        exit
+      end
+
+      parser.on("--silent", "Minimize the output.") do
+        @config = @config.copy_with(silent: true)
+      end
+
+      parser.on("-v", "--version", "Show version.") do
+        puts "v#{VERSION}"
+        exit
+      end
     end
 
     macro workspace_options(sub = false)
-      {% if sub %}subSeparator{% else %}separator{% end %}("Workspace Options")
+      {% if sub %}subSeparator{% else %}separator{% end %}("Workspace")
 
       parser.on("-F FILTER", "--filter FILTER", "Filtering allows you to restrict commands to specific subsets of packages.") do |filter|
         filters = @config.filters || Array(Utils::Filter).new
         filters << Utils::Filter.new(filter)
         @config = @config.copy_with(filters: filters)
+      end
+
+      parser.on("--ignore-workspaces", "Will completely ignore workspaces when applying the command.") do
+        @config = @config.copy_with(no_workspaces: true)
       end
 
       parser.on("-r", "--recursive", "Will apply the command to all packages in the workspace.") do
@@ -237,48 +248,77 @@ module Zap
       parser.on("-w", "--workspace-root", "Will apply the command to the root workspace package.") do
         @config = @config.copy_with(root_workspace: true)
       end
-
-      parser.on("--ignore-workspaces", "Will completely ignore workspaces when applying the command.") do
-        @config = @config.copy_with(no_workspaces: true)
-      end
     end
 
     private def banner(parser, command, description, *, args = "[options]")
       parser.banner = <<-BANNER
-      ⚡ #{"Zap".colorize.bold.underline} #{"(v#{VERSION})".colorize.dim}
+      ⚡ #{"Zap".colorize.yellow.bold.underline} #{"(v#{VERSION})".colorize.dim}
 
-      #{description.colorize.bold}
-      #{"Usage".colorize.underline.bold}: zap #{command} #{args}
+      #{description}
 
+      #{"Usage".colorize.underline.magenta.bold}: zap #{command} #{args}
+      #{"       zap [command] --help for more information on a specific command".colorize.dim}
       BANNER
     end
 
-    private macro separator(text)
-      parser.separator("\n• #{ {{text}}.colorize.underline }\n")
+    private macro separator(text, *, prepend = false)
+      %text = "\n• #{ {{text}}.colorize.underline }\n".colorize.blue.bold.to_s
+      {% if prepend %}
+      parser.@flags.unshift(%text)
+      {% else %}
+      parser.separator(%text)
+      {% end %}
     end
 
-    private macro subSeparator(text)
-      parser.separator("\n  #{ {{text}}.colorize.dim }\n")
+    private macro subSeparator(text, *, early_line_break = true)
+      prefix = "#{ {% if early_line_break %}"\n"{% else %}nil{% end %} }"
+      parser.separator("#{prefix}  #{ {{text}}.colorize.light_blue }\n")
+    end
+
+    # @command_color_index = 0
+    private def command_formatter(flag)
+      # flag.colorize(COLORS[@command_color_index % COLORS.size]).bold.tap {
+      #   @command_color_index += 1
+      # }.to_s
+      flag.colorize.bold.to_s
     end
 
     private macro command(input, description, args = nil)
       {% if input.is_a?(StringLiteral) %}
-        parser.on({{input}},{{description}}) do
-          banner(parser, {{input}}, {{description}}{% if args %}, args: {{args}}{% end %})
+        parser.on({{input}},{{description}}, ->command_formatter(String)) do
+          banner(parser, {{input}}, {{description}} {% if args %}, args: {{args}}{% end %})
+          separator("Inherited", prepend: true)
+          %flags_bak = parser.@flags.dup
+          parser.@flags.clear
           {{ yield }}
+          %flags_bak.each { |flag| parser.@flags << flag }
         end
       {% else %}
         {% for a, idx in input %}
+          %aliases = {{input}}[...{{idx}}] + {{input}}[({{idx}} + 1)...]
+          %desc = {{description}} + %( alias(es): #{%aliases.join(", ")}).colorize.dim.to_s
           {% if idx == 0 %}
-            parser.on({{a}},{{description}} + %(\n# aliases: #{{{input[1..]}}.join(", ")})) do
-              banner(parser, {{a}}, {{description}}{% if args %}, args: {{args}}{% end %})
+            parser.on({{a}}, %desc, ->command_formatter(String)) do
+              %aliases = {{input}}[...{{idx}}] + {{input}}[({{idx}} + 1)...]
+              %desc = {{description}} + %(\nalias(es): #{%aliases.join(", ")}).colorize.dim.to_s
+              banner(parser, {{a}}, %desc {% if args %}, args: {{args}}{% end %})
+              separator("Inherited", prepend: true)
+              %flags_bak = parser.@flags.dup
+              parser.@flags.clear
               {{ yield }}
+              %flags_bak.each { |flag| parser.@flags << flag }
             end
           {% else %}
-            parser.@handlers[{{a}}] = OptionParser::Handler.new(OptionParser::FlagValue::None, ->(str : String) {
-              banner(parser, {{a}}, {{description}}{% if args %}, args: {{args}}{% end %})
-              {{yield}}
-          })
+            parser.on({{a}}, %desc, no_help_text: true) do
+              %aliases = {{input}}[...{{idx}}] + {{input}}[({{idx}} + 1)...]
+              %desc = {{description}} + %(\nalias(es): #{%aliases.join(", ")}).colorize.dim.to_s
+              banner(parser, {{a}}, %desc {% if args %}, args: {{args}}{% end %})
+              separator("Inherited", prepend: true)
+              %flags_bak = parser.@flags.dup
+              parser.@flags.clear
+              {{ yield }}
+              %flags_bak.each { |flag| parser.@flags << flag }
+            end
           {% end %}
         {% end %}
       {% end %}

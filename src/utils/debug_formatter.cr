@@ -2,32 +2,6 @@ require "log"
 require "colorize"
 
 struct Zap::Debug::Formatter < ::Log::StaticFormatter
-  COLORS = {
-    # IndianRed1
-    Colorize::Color256.new(203),
-    # DeepSkyBlue2
-    Colorize::Color256.new(38),
-    # Chartreuse3
-    Colorize::Color256.new(76),
-    # LightGoldenrod1
-    Colorize::Color256.new(227),
-    # MediumVioletRed
-    Colorize::Color256.new(126),
-    :blue,
-    :light_red,
-    :light_green,
-    :yellow,
-    :red,
-    :magenta,
-    :cyan,
-    :light_gray,
-    :green,
-    :dark_gray,
-    :light_yellow,
-    :light_blue,
-    :light_magenta,
-    :light_cyan,
-  }
   record SourceData, color : Colorize::Color256 | Symbol, timestamp : Time::Span? = nil
   @@sources = Hash(String, SourceData).new
 

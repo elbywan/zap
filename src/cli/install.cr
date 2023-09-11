@@ -64,6 +64,15 @@ class Zap::CLI
     parser.on("--ignore-scripts", "If true, does not run scripts specified in package.json files.") do
       @command_config = install_config.copy_with(ignore_scripts: true)
     end
+    parser.on("--no-logs", "If true, will not print logs like deprecation warnings.") do
+      @command_config = install_config.copy_with(print_logs: false)
+    end
+    parser.on("--production", "If true, will not install devDependencies.") do
+      @command_config = install_config.copy_with(omit: [Config::Omit::Dev])
+    end
+
+    subSeparator("Strategies")
+
     parser.on(
       "--install-strategy STRATEGY",
       <<-DESCRIPTION
@@ -76,33 +85,29 @@ class Zap::CLI
     ) do |strategy|
       @command_config = install_config.copy_with(install_strategy: Config::InstallStrategy.parse(strategy))
     end
-    parser.on("--isolated", "Shorthand for: --install-strategy isolated") do
-      @command_config = install_config.copy_with(install_strategy: Config::InstallStrategy::Isolated)
-    end
+
     parser.on("--classic", "Shorthand for: --install-strategy classic") do
       @command_config = install_config.copy_with(install_strategy: Config::InstallStrategy::Classic)
     end
-    parser.on("--no-logs", "If true, will not print logs like deprecation warnings.") do
-      @command_config = install_config.copy_with(print_logs: false)
-    end
-    parser.on("--production", "If true, will not install devDependencies.") do
-      @command_config = install_config.copy_with(omit: [Config::Omit::Dev])
+
+    parser.on("--isolated", "Shorthand for: --install-strategy isolated") do
+      @command_config = install_config.copy_with(install_strategy: Config::InstallStrategy::Isolated)
     end
 
-    subSeparator("Save flags")
+    subSeparator("Save")
 
     unless update_packages
       parser.on("-D", "--save-dev", "Added packages will appear in your devDependencies.") do
         @command_config = install_config.copy_with(save_dev: true)
       end
-      parser.on("-P", "--save-prod", "Added packages will appear in your dependencies.") do
-        @command_config = install_config.copy_with(save_prod: true)
+      parser.on("-E", "--save-exact", "Saved dependencies will be configured with an exact version rather than using npm's default semver range operator.") do |path|
+        @command_config = install_config.copy_with(save_exact: true)
       end
       parser.on("-O", "--save-optional", "Added packages will appear in your optionalDependencies.") do
         @command_config = install_config.copy_with(save_optional: true)
       end
-      parser.on("-E", "--save-exact", "Saved dependencies will be configured with an exact version rather than using npm's default semver range operator.") do |path|
-        @command_config = install_config.copy_with(save_exact: true)
+      parser.on("-P", "--save-prod", "Added packages will appear in your dependencies.") do
+        @command_config = install_config.copy_with(save_prod: true)
       end
       parser.on("--no-save", "Prevents saving to dependencies.") do
         @command_config = install_config.copy_with(save: false)
