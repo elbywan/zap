@@ -1,3 +1,4 @@
+# Adapted from: https://github.com/npm/node-semver/blob/main/test/fixtures/range-exclude.js
 RANGE_EXCLUSION_FIXTURES = [
   {"1.0.0 - 2.0.0", "2.2.3"},
   {"1.2.3+asdf - 2.4.3+asdf", "1.2.3-pre.2"},

@@ -98,19 +98,19 @@ module Zap::Resolver
       range_set = self.version
       cached_package.kind.registry? && (
         (range_set.is_a?(String) && range_set == cached_package.version) ||
-          (range_set.is_a?(Utils::Semver::SemverSets) && range_set.satisfies?(cached_package.version))
+          (range_set.is_a?(Utils::Semver::Range) && range_set.satisfies?(cached_package.version))
       )
     end
 
     # # PRIVATE ##########################
 
-    private def find_valid_version(manifest_str : String, version : Utils::Semver::SemverSets | String) : Package
+    private def find_valid_version(manifest_str : String, version : Utils::Semver::Range | String) : Package
       Log.debug { "(#{package_name}@#{@version}) Finding valid version/dist-tag inside metadata: #{version}" }
       matching = nil
       manifest_parser = JSON::PullParser.new(manifest_str)
       manifest_parser.read_begin_object
       dist_tag = version.is_a?(String) ? version : nil
-      semantic_version = version.is_a?(Utils::Semver::SemverSets) ? version : nil
+      semantic_version = version.is_a?(Utils::Semver::Range) ? version : nil
       versions_raw = nil
       loop do
         break if manifest_parser.kind.end_object?
@@ -177,18 +177,18 @@ module Zap::Resolver
       semantic_version
     end
 
-    private def parse_versions_field(parser : JSON::PullParser, semantic_version : Utils::Semver::SemverSets | String) : {Utils::Semver::Comparator, String}?
+    private def parse_versions_field(parser : JSON::PullParser, semantic_version : Utils::Semver::Range | String) : {Utils::Semver::Version, String}?
       parser.read_begin_object
       matching = nil
       loop do
         break parser.read_end_object if parser.kind.end_object?
         version_str = parser.read_object_key
-        semver = Utils::Semver::Comparator.parse(version_str)
+        semver = Utils::Semver::Version.parse(version_str)
         if (semantic_version.is_a?(String) || semantic_version.exact_match?) && version_str == semantic_version.to_s
           # For exact comparisons - we compare the version string
           matching = {semver, parser.read_raw}
           break
-        elsif semantic_version.is_a?(Utils::Semver::SemverSets) && (matching.nil? || matching[0] < semver)
+        elsif semantic_version.is_a?(Utils::Semver::Range) && (matching.nil? || matching[0] < semver)
           # For range comparisons - take the highest version that matches the range
           if semantic_version.satisfies?(version_str)
             matching = {semver, parser.read_raw}

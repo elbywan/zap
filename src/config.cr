@@ -211,7 +211,7 @@ module Zap
 
       raise "Could not find a package.json file in #{config.prefix} and parent folders." unless main_package
 
-      main_package = main_package.tap(&.refine)
+      main_package = main_package.tap(&.prepare)
 
       InferredContext.new(main_package, config, workspaces, install_scope, command_scope)
     end

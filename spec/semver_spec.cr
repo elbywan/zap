@@ -51,4 +51,28 @@ describe Zap::Utils::Semver do
       end
     }
   end
+
+  describe "comparator set intersection" do
+    COMPARATOR_INTERSECTION_FIXTURES.each { |fixture|
+      it "should intersect #{fixture[0]} and #{fixture[1]}" do
+        range1 = Semver.parse(fixture[0])
+        range2 = Semver.parse(fixture[1])
+        range1.comparator_sets.size.should eq 1
+        range2.comparator_sets.size.should eq 1
+        comparator_set_1 = range1.comparator_sets[0]
+        comparator_set_2 = range2.comparator_sets[0]
+        comparator_set_1.intersection?(comparator_set_2).to_s.should eq(fixture[2])
+      end
+    }
+  end
+
+  describe "range intersection" do
+    RANGE_INTERSECTION_FIXTURES.each { |fixture|
+      it "should intersect #{fixture[0]} and #{fixture[1]}" do
+        range1 = Semver.parse(fixture[0])
+        range2 = Semver.parse(fixture[1])
+        range1.intersection?(range2).to_s.should eq(fixture[2])
+      end
+    }
+  end
 end

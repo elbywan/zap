@@ -1,3 +1,4 @@
+# Adapted from: https://github.com/npm/node-semver/blob/main/test/fixtures/range-include.js
 RANGE_INCLUSION_FIXTURES = [
   {"1.0.0 - 2.0.0", ">=1.0.0 <=2.0.0", "1.2.3"},
   {"^1.2.3+build", ">=1.2.3+build <2.0.0", "1.2.3"},

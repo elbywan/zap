@@ -28,8 +28,7 @@ module Zap::Utils::Semver
     forward_missing_to @reader
   end
 
-  struct SemverPartial
-    getter comparison
+  struct Partial
     getter major : String
     getter minor : String? = nil
     getter patch : String? = nil
@@ -63,7 +62,7 @@ module Zap::Utils::Semver
       @build_metadata = self.class.build_metadata?(scanner)
     end
 
-    def self.parse?(scanner : Scanner) : SemverPartial?
+    def self.parse?(scanner : Scanner) : Partial?
       return nil if scanner.eos?
       new(scanner)
     rescue e
@@ -122,185 +121,28 @@ module Zap::Utils::Semver
       end
     end
 
-    def self.is_alpha?(char : Char) : Bool
+    protected def self.is_alpha?(char : Char) : Bool
       char.ord >= ZERO_ORD && char.ord <= ZERO_ORD + 9 || char.ord >= A_ORD && char.ord <= Z_ORD || char.ord >= A_CAPS_ORD && char.ord <= Z_CAPS_ORD
     end
 
-    def self.exception!(scanner : Scanner, suffix : String? = nil)
+    protected def self.exception!(scanner : Scanner, suffix : String? = nil)
       raise %(Invalid semver "#{scanner.string}" (invalid char: '#{scanner.current_char}'#{suffix ? " #{suffix}" : ""}) [codepoint: #{scanner.current_char.ord}, position: #{scanner.pos}])
     end
   end
 
-  enum Comparison
-    # >
-    GreaterThan
-    # >=
-    GreaterThanOrEqual
-    # <
-    LessThan
-    # <=
-    LessThanOrEqual
-    # =
-    ExactMatch
-  end
-
-  struct Comparator
-    include Comparable(Comparator)
-
-    getter comparison
-    getter major : UInt128
-    getter minor : UInt128
-    getter patch : UInt128
-    getter prerelease : String | Nil
-    getter build_metadata : String | Nil
-
-    def initialize(@comparison : Comparison, @major : UInt128 = 0, @minor : UInt128 = 0, @patch : UInt128 = 0, @prerelease = nil, @build_metadata = nil)
-    end
-
-    def initialize(@comparison : Comparison, partial : Regex::MatchData)
-      @major = partial["major"].to_u128
-      @minor = partial["minor"].to_u128
-      @patch = partial["patch"].to_u128
-      @prerelease = partial["prerelease"]?
-      @build_metadata = partial["buildmetadata"]?
-    end
-
-    def initialize(@comparison : Comparison, partial : SemverPartial)
-      @major = partial.major.to_u128? || 0_u128
-      @minor = partial.minor.try(&.to_u128?) || 0_u128
-      @patch = partial.patch.try(&.to_u128?) || 0_u128
-      @prerelease = partial.prerelease
-      @build_metadata = partial.build_metadata
-    end
-
-    def self.parse(version_str : String)
-      version = SemverPartial.new(version_str)
-      Comparator.new(Comparison::ExactMatch, version)
-    end
-
-    def satisfies?(version : self, allow_prereleases = false) : Bool
-      score = self <=> version
-      return false unless pre_compat?(version, allow_prereleases)
-      case comparison
-      when .greater_than?
-        score == -1
-      when .greater_than_or_equal?
-        score == 0 || score == -1
-      when .less_than?
-        score == 1
-      when .less_than_or_equal?
-        score == 0 || score == 1
-      when .exact_match?
-        score == 0
-      else
-        false
-      end
-    end
-
-    def pre_compat?(version : self, allow_prereleases = false) : Bool
-      !version.prerelease || !!allow_prereleases
-    end
-
-    def <=>(other : self) : Int32
-      return -1 if major < other.major
-      return 1 if major > other.major
-      return -1 if minor < other.minor
-      return 1 if minor > other.minor
-      return -1 if patch < other.patch
-      return 1 if patch > other.patch
-      return 0 if @prerelease == other.prerelease
-      return 1 if @prerelease.nil? && !other.prerelease.nil?
-      return -1 if !@prerelease.nil? && other.prerelease.nil?
-      @prerelease.not_nil! <=> other.prerelease.not_nil!
-    end
-
-    def to_s(io)
-      case @comparison
-      when .greater_than?
-        io << ">"
-      when .greater_than_or_equal?
-        io << ">="
-      when .less_than?
-        io << "<"
-      when .less_than_or_equal?
-        io << "<="
-      when .exact_match?
-        io << ""
-      end
-      io << @major
-      io << "."
-      io << @minor
-      io << "."
-      io << @patch
-      io << (@prerelease ? "-#{@prerelease}" : "")
-      io << (@build_metadata ? "+#{@build_metadata}" : "")
-    end
-  end
-
-  struct ComparatorSet
-    @comparators = [] of Comparator
-
-    def <<(comparator : Comparator)
-      @comparators << comparator
-    end
-
-    def satisfies?(semver : Comparator) : Bool
-      allow_prereleases = semver.prerelease && @comparators.any? { |c|
-        !!c.prerelease && semver.major == c.major && semver.minor == c.minor && semver.patch == c.patch
-      }
-      @comparators.all? { |comparator|
-        comparator.satisfies?(semver, allow_prereleases)
-      }
-    end
-
-    def exact_match?
-      @comparators.size == 1 && @comparators[0].comparison.exact_match?
-    end
-
-    def to_s(io)
-      io << @comparators.map(&.to_s).join(" ")
-    end
-  end
-
-  struct SemverSets
-    @comparator_sets = [] of ComparatorSet
-
-    def satisfies?(version_str : String)
-      version = SemverPartial.new(version_str)
-      semver = Comparator.new(Comparison::ExactMatch, version)
-      @comparator_sets.any? &.satisfies?(semver)
-    rescue ex
-      false
-    end
-
-    def canonical : String
-      @comparator_sets.map(&.to_s).join(" || ")
-    end
-
-    def to_s(io)
-      io << canonical
-    end
-
-    def exact_match?
-      @comparator_sets.size == 1 && @comparator_sets[0].exact_match?
-    end
-
-    forward_missing_to @comparator_sets
-  end
-
-  def self.parse?(str : String) : SemverSets?
+  def self.parse?(str : String) : Range?
     parse(str)
   rescue ex
     nil
   end
 
-  def self.parse(str : String) : SemverSets
-    range_set = SemverSets.new
+  def self.parse(str : String) : Range
+    range_set = Range.new
 
     if (str.empty? || str == "*")
       comparator_set = ComparatorSet.new
       range_set << comparator_set
-      comparator_set << Comparator.new(Comparison::GreaterThanOrEqual)
+      comparator_set << Comparator.new(Operator::GreaterThanOrEqual)
       return range_set
     end
 
@@ -308,7 +150,7 @@ module Zap::Utils::Semver
 
     loop do
       # parse range
-      comparator_set = self.parse_range(scanner)
+      comparator_set = self.parse_comparator_set(scanner)
       range_set << comparator_set
       # check for logical or
       check_or = logical_or?(scanner)
@@ -341,38 +183,38 @@ module Zap::Utils::Semver
     result
   end
 
-  private def self.parse_range(scanner : Scanner) : ComparatorSet
+  private def self.parse_comparator_set(scanner : Scanner) : ComparatorSet
     comparator_set = ComparatorSet.new
 
     loop do
       prefix = primitive?(scanner) || tilde?(scanner) || caret?(scanner)
-      comparison = Comparison::ExactMatch
+      operator = Operator::ExactMatch
       tilde = false
       caret = false
       # parse simple (primitive | tilde | caret or/and partial )
       if prefix
         case prefix
         when ">"
-          comparison = Comparison::GreaterThan
+          operator = Operator::GreaterThan
         when ">="
-          comparison = Comparison::GreaterThanOrEqual
+          operator = Operator::GreaterThanOrEqual
         when "<"
-          comparison = Comparison::LessThan
+          operator = Operator::LessThan
         when "<="
-          comparison = Comparison::LessThanOrEqual
+          operator = Operator::LessThanOrEqual
         when "="
-          comparison = Comparison::ExactMatch
+          operator = Operator::ExactMatch
         when "~"
-          comparison = Comparison::ExactMatch
+          operator = Operator::ExactMatch
           tilde = true
         when "^"
-          comparison = Comparison::ExactMatch
+          operator = Operator::ExactMatch
           caret = true
         end
       end
       scanner.skip?(' ', '\t')
       break if scanner.current_char == '|'
-      break if self.parse_partial(scanner, comparison, comparator_set, tilde, caret)
+      break if self.parse_partial(scanner, operator, comparator_set, tilde, caret)
       scanner.skip?(' ', '\t')
       break if scanner.eos?
     end
@@ -412,8 +254,8 @@ module Zap::Utils::Semver
     end
   end
 
-  private def self.parse_partial(scanner : Scanner, comparison, comparator_set, tilde, caret)
-    partial = SemverPartial.new(scanner)
+  private def self.parse_partial(scanner : Scanner, operator, comparator_set, tilde, caret)
+    partial = Partial.new(scanner)
 
     scanner.skip?(' ', '\t')
     hyphen = scanner.current_char == '-'
@@ -428,16 +270,16 @@ module Zap::Utils::Semver
 
     if hyphen
       comparator_set << Comparator.new(
-        Comparison::GreaterThanOrEqual,
+        Operator::GreaterThanOrEqual,
         major.try &.to_u128 || 0_u128,
         minor.try &.to_u128 || 0_u128,
         patch.try &.to_u128 || 0_u128,
         prerelease,
         build_metadata
       )
-      partial = SemverPartial.new(scanner)
+      partial = Partial.new(scanner)
       comparator_set << Comparator.new(
-        Comparison::LessThanOrEqual,
+        Operator::LessThanOrEqual,
         partial.major.to_u128? || UInt128::MAX,
         partial.minor.try &.to_u128? || 0_u128,
         partial.patch.try &.to_u128? || 0_u128,
@@ -446,71 +288,71 @@ module Zap::Utils::Semver
       )
       true
       # *,x,X - any version
-    elsif comparison.exact_match? && !major
+    elsif operator.exact_match? && !major
       comparator_set << Comparator.new(
-        Comparison::GreaterThanOrEqual
+        Operator::GreaterThanOrEqual
       )
       # 1.* - >= 1.0.0 <2.0.0
-    elsif comparison.exact_match? && major && !minor && !patch
+    elsif operator.exact_match? && major && !minor && !patch
       comparator_set << Comparator.new(
-        Comparison::GreaterThanOrEqual,
+        Operator::GreaterThanOrEqual,
         major.not_nil!
       )
       comparator_set << Comparator.new(
-        Comparison::LessThan,
+        Operator::LessThan,
         major.not_nil! + 1
       )
       # >1.* - >= 2.0.0
-    elsif comparison.greater_than? && major && !minor && !patch
+    elsif operator.greater_than? && major && !minor && !patch
       comparator_set << Comparator.new(
-        Comparison::GreaterThanOrEqual,
+        Operator::GreaterThanOrEqual,
         major.not_nil! + 1
       )
       # <=1.* - < 2.0.0
-    elsif comparison.less_than_or_equal? && major && !minor && !patch
+    elsif operator.less_than_or_equal? && major && !minor && !patch
       comparator_set << Comparator.new(
-        Comparison::LessThan,
+        Operator::LessThan,
         major.not_nil! + 1
       )
       # 1.2.* - depends on caret
-    elsif comparison.exact_match? && major && minor && !patch
+    elsif operator.exact_match? && major && minor && !patch
       comparator_set << Comparator.new(
-        Comparison::GreaterThanOrEqual,
+        Operator::GreaterThanOrEqual,
         major.not_nil!,
         minor.not_nil!
       )
       # ^1.2.* - >= 1.2.0 < 2.0.0
       if caret && major.not_nil! != 0
         comparator_set << Comparator.new(
-          Comparison::LessThan,
+          Operator::LessThan,
           major.not_nil! + 1
         )
         # 1.2.* - >= 1.2.0 < 1.3.0
       else
         comparator_set << Comparator.new(
-          Comparison::LessThan,
+          Operator::LessThan,
           major.not_nil!,
           minor.not_nil! + 1
         )
       end
       # > 1.2.* - >= 1.3.0
-    elsif comparison.greater_than? && major && minor && !patch
+    elsif operator.greater_than? && major && minor && !patch
       comparator_set << Comparator.new(
-        Comparison::GreaterThanOrEqual,
+        Operator::GreaterThanOrEqual,
         major.not_nil!,
         minor.not_nil! + 1
       )
       # <= 1.2.* - < 1.3.0
-    elsif comparison.less_than_or_equal? && major && minor && !patch
+    elsif operator.less_than_or_equal? && major && minor && !patch
       comparator_set << Comparator.new(
-        Comparison::LessThan,
+        Operator::LessThan,
         major.not_nil!,
         minor.not_nil! + 1
       )
       # ~1.2.3 - >= 1.2.3 < 1.3.0
     elsif tilde
       comparator_set << Comparator.new(
-        Comparison::GreaterThanOrEqual,
+        Operator::GreaterThanOrEqual,
         major.not_nil!,
         minor.not_nil!,
         patch.not_nil!,
@@ -518,14 +360,14 @@ module Zap::Utils::Semver
         build_metadata
       )
       comparator_set << Comparator.new(
-        Comparison::LessThan,
+        Operator::LessThan,
         major.not_nil!,
         minor.not_nil! + 1,
       )
       # caret - depends on the leftmost non-zero number
     elsif caret
       comparator_set << Comparator.new(
-        Comparison::GreaterThanOrEqual,
+        Operator::GreaterThanOrEqual,
         major.not_nil!,
         minor.not_nil!,
         patch.not_nil!,
@@ -535,7 +377,7 @@ module Zap::Utils::Semver
       if major.not_nil! == 0 && minor.not_nil! == 0
         # ^0.0.3 - >= 0.0.3 < 0.0.4
         comparator_set << Comparator.new(
-          Comparison::LessThan,
+          Operator::LessThan,
           major.not_nil!,
           minor.not_nil!,
           patch.not_nil! + 1,
@@ -543,21 +385,21 @@ module Zap::Utils::Semver
       elsif major.not_nil! == 0
         # ^0.1.3 - >= 0.1.3 < 0.2.0
         comparator_set << Comparator.new(
-          Comparison::LessThan,
+          Operator::LessThan,
           major.not_nil!,
           minor.not_nil! + 1,
         )
       else
         # ^1.1.1 - >= 1.1.1 < 2.0.0
         comparator_set << Comparator.new(
-          Comparison::LessThan,
+          Operator::LessThan,
           major.not_nil! + 1,
         )
       end
     else
       # all other cases - treat nil as zero
       comparator_set << Comparator.new(
-        comparison,
+        operator,
         major.try &.to_u128 || 0_u128,
         minor.try &.to_u128 || 0_u128,
         patch.try &.to_u128 || 0_u128,

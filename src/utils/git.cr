@@ -101,7 +101,7 @@ module Zap::Utils
       tag = nil
       tags.each do |t|
         if semver.satisfies?(t)
-          comparator = Semver::Comparator.parse(t)
+          comparator = Semver::Version.parse(t)
           if tag.nil? || tag < comparator
             tag = comparator
           end

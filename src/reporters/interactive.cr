@@ -270,7 +270,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
     end
   end
 
-  def report_done(realtime, memory, install_config)
+  def report_done(realtime, memory, install_config, *, unmet_peers : Hash(String, Hash(String, Set(String)))? = nil)
     @io_lock.synchronize do
       if install_config.print_logs && @logs.size > 0
         @out << header("📝", "Logs", :blue)
@@ -279,6 +279,48 @@ class Zap::Reporter::Interactive < Zap::Reporter
         @out << separator
         @out << @logs.join(separator)
         @out << "\n\n"
+      end
+
+      # print missing peers
+      if unmet_peers && !unmet_peers.empty?
+        @out << header("❗️", "Unmet Peers", :light_red)
+        @out << "\n"
+        separator = "\n   • ".colorize(:red)
+        @out << separator
+        @out << unmet_peers.to_a.flat_map { |name, versions|
+          versions.map { |version, peers| {"#{name}@#{version}", name, version, peers} }
+        }.sort_by(&.[0]).map { |key, name, version, peers|
+          "#{name}@#{version} #{"(#{peers.join(", ")})".colorize.dim}"
+        }.join(separator)
+
+        incompatible_versions = Array({String, String}).new
+        install_versions = unmet_peers.to_a.map do |name, versions|
+          install_version = versions.reduce(Utils::Semver::Range.new) do |acc, (version, peers)|
+            acc.try &.intersection?(Utils::Semver.parse(version))
+          end
+
+          if install_version
+            %("#{name}@#{install_version}")
+          else
+            incompatible_versions << {name, versions.map { |v, _| "     #{v}" }.join("\n")}
+            nil
+          end
+        end.compact!
+
+        @out << "\n\n"
+
+        unless incompatible_versions.empty?
+          @out << "   ⚠️ These packages have incompatible peer dependencies versions: \n".colorize.red.bold
+          @out << separator
+          @out << incompatible_versions.map { |name, versions| "#{name.colorize.red}:\n#{versions}" }.join(separator)
+          @out << "\n\n"
+        end
+
+        unless install_versions.empty?
+          @out << "To install the missing peer dependencies, run:\n".colorize.bold
+          @out << "zap install #{install_versions.join(" ")}".colorize.bold.cyan
+          @out << "\n\n"
+        end
       end
 
       # print added / removed packages

@@ -4,11 +4,13 @@ require "../store"
 
 module Zap::Resolver
   Log = Zap::Log.for(self)
+
+  alias UnmetPeersHash = SafeHash(String, SafeHash(String, SafeSet(String)))
 end
 
 abstract struct Zap::Resolver::Base
   getter package_name : String
-  getter version : String | Utils::Semver::SemverSets
+  getter version : String | Utils::Semver::Range
   getter state : Commands::Install::State
   getter parent : (Package | Lockfile::Root)? = nil
   getter aliased_name : String? = nil
@@ -296,7 +298,7 @@ module Zap::Resolver
         # Apply package extensions unless the package is already in the lockfile
         apply_package_extensions(_metadata, state: state) if forced_retrieval || !lockfile_metadata
         # Flag transitive dependencies and overrides
-        flag_transitive_dependencies(_metadata, ancestors)
+        flag_transitive_dependencies(_metadata, ancestors, state)
         flag_transitive_overrides(_metadata, ancestors, state)
         # Mutate only if the package is not already in the lockfile
         # Mark the package and store its parents
@@ -329,7 +331,7 @@ module Zap::Resolver
         self.resolve_dependencies_of(
           metadata,
           state: state,
-          ancestors: ancestors,
+          ancestors: ancestors
         )
         # Print deprecation warnings unless the package is already in the lockfile
         # Prevents beeing flooded by logs
@@ -362,7 +364,7 @@ module Zap::Resolver
 
   # # Private
 
-  private def self.flag_transitive_dependencies(package : Package, ancestors : Iterable(Package))
+  private def self.flag_transitive_dependencies(package : Package, ancestors : Iterable(Package), state : Commands::Install::State)
     peers_hash = nil
     transitive_peers = package.transitive_peer_dependencies.try &.dup
 
@@ -394,7 +396,7 @@ module Zap::Resolver
 
         transitive_peers = transitive_peers.try &.select do |peer_name|
           # If the ancestor is the package itself or if it has the peer dependency, remove it
-          if ancestor.name == peer_name || ancestor.has_dependency?(peer_name, include_dev: index == 0)
+          if ancestor.name == peer_name || ancestor.has_dependency?(peer_name, include_dev: index == ancestors.size - 1)
             next false
           end
 
@@ -517,7 +519,7 @@ module Zap::Resolver
         metadata.lock.synchronize { ext.merge_into(metadata) }
       }
       # If the extensions added one or more "meta" peer dependencies then declare the matching peer dependencies
-      metadata.propagate_meta_peer_dependencies
+      metadata.propagate_meta_peer_dependencies!
     end
 
     if new_extensions_shasum != previous_extensions_shasum

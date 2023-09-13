@@ -2,7 +2,7 @@ alias Helpers = Zap::Utils::Various
 alias Semver = Zap::Utils::Semver
 
 struct Zap::Config
-  record Why < CommandConfig, packages : Array({Regex, Semver::SemverSets?}) = [] of {Regex, Semver::SemverSets?} do
+  record Why < CommandConfig, packages : Array({Regex, Semver::Range?}) = [] of {Regex, Semver::Range?} do
     def from_args(args : Array(String)) : self
       if args.size > 0
         args.map { |arg|

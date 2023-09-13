@@ -270,63 +270,7 @@ class Zap::Package
   end
 
   def after_initialize
-    propagate_meta_peer_dependencies
-  end
-
-  def override_dependencies!(other : Package)
-    @lock.synchronize do
-      @dependencies = merge_pinned_dependencies!(other.dependencies, @dependencies)
-      @optional_dependencies = merge_pinned_dependencies!(other.optional_dependencies, @optional_dependencies)
-      @peer_dependencies = other.peer_dependencies
-      @peer_dependencies_meta = other.peer_dependencies_meta
-    end
-  end
-
-  private def merge_pinned_dependencies!(deps, pinned_deps)
-    return nil if !deps
-    return deps if !pinned_deps
-    pinned_deps.each do |name, pinned_dep|
-      # Merge the pinned dependency if it satisfies the current one.
-      if (dep = deps[name]?) && dep.is_a?(String)
-        satisfied = pinned_dep.is_a?(String) && Utils::Semver.parse?(dep).try &.satisfies?(pinned_dep)
-        satisfied ||= pinned_dep.is_a?(Alias) && (a = Alias.from_version?(dep)) && Utils::Semver.parse?(a.version).try &.satisfies?(pinned_dep.version)
-        if satisfied
-          deps[name] = pinned_dep
-        end
-      end
-    end
-    deps
-  end
-
-  def propagate_meta_peer_dependencies
-    if meta = peer_dependencies_meta
-      @peer_dependencies ||= Hash(String, String).new
-      meta.each do |name, meta|
-        peer_dependencies.not_nil![name] ||= "*"
-      end
-    end
-  end
-
-  def refine
-    if override_entries = self.overrides
-      override_entries.each do |name, overrides|
-        overrides.each_with_index do |override, index|
-          if override.specifier.starts_with?("$")
-            dep_name = override.specifier[1..]
-            dependencies_specifier = self.dependencies.try &.[dep_name]?
-            if dependencies_specifier && dependencies_specifier.is_a?(String)
-              overrides[index] = override.copy_with(specifier: dependencies_specifier)
-            else
-              raise "There is no matching for #{override.specifier} in dependencies"
-            end
-          end
-        end
-      end
-    end
-    zap_config = self.zap_config ||= ZapConfig.new
-    PackageExtension::PACKAGE_EXTENSIONS.each do |(name, extension)|
-      zap_config.not_nil!.package_extensions[name] ||= extension
-    end
+    propagate_meta_peer_dependencies!
   end
 
   def self.read_package(config : Config) : Package
@@ -377,10 +321,6 @@ class Zap::Package
         raise "Wrong dependency type: #{type}"
       end
     end
-  end
-
-  def has_dependency?(name : String)
-    dependencies.try &.has_key?(name) || dev_dependencies.try &.has_key?(name) || optional_dependencies.try &.has_key?(name)
   end
 
   # Attempt to replicate the "npm" definition of a local install
@@ -470,6 +410,46 @@ class Zap::Package
     Digest::SHA1.hexdigest(peers.map(&.key).sort.join("+"))
   end
 
+  def override_dependencies!(other : Package)
+    @lock.synchronize do
+      @dependencies = merge_pinned_dependencies!(other.dependencies, @dependencies)
+      @optional_dependencies = merge_pinned_dependencies!(other.optional_dependencies, @optional_dependencies)
+      @peer_dependencies = other.peer_dependencies
+      @peer_dependencies_meta = other.peer_dependencies_meta
+    end
+  end
+
+  def propagate_meta_peer_dependencies!
+    if meta = peer_dependencies_meta
+      @peer_dependencies ||= Hash(String, String).new
+      meta.each do |name, meta|
+        peer_dependencies.not_nil![name] ||= "*"
+      end
+    end
+  end
+
+  def prepare
+    if override_entries = self.overrides
+      override_entries.each do |name, overrides|
+        overrides.each_with_index do |override, index|
+          if override.specifier.starts_with?("$")
+            dep_name = override.specifier[1..]
+            dependencies_specifier = self.dependencies.try &.[dep_name]?
+            if dependencies_specifier && dependencies_specifier.is_a?(String)
+              overrides[index] = override.copy_with(specifier: dependencies_specifier)
+            else
+              raise "There is no matching for #{override.specifier} in dependencies"
+            end
+          end
+        end
+      end
+    end
+    zap_config = self.zap_config ||= ZapConfig.new
+    PackageExtension::PACKAGE_EXTENSIONS.each do |(name, extension)|
+      zap_config.not_nil!.package_extensions[name] ||= extension
+    end
+  end
+
   ############
   # Internal #
   ############
@@ -516,5 +496,21 @@ class Zap::Package
           # …or one or more archs/platforms are specified and it will required the current one to be in the list
           !maybe_result[:rejected] && (!maybe_result[:exclusive] || maybe_result[:matched])
         }
+  end
+
+  private def merge_pinned_dependencies!(deps, pinned_deps)
+    return nil if !deps
+    return deps if !pinned_deps
+    pinned_deps.each do |name, pinned_dep|
+      # Merge the pinned dependency if it satisfies the current one.
+      if (dep = deps[name]?) && dep.is_a?(String)
+        satisfied = pinned_dep.is_a?(String) && Utils::Semver.parse?(dep).try &.satisfies?(pinned_dep)
+        satisfied ||= pinned_dep.is_a?(Alias) && (a = Alias.from_version?(dep)) && Utils::Semver.parse?(a.version).try &.satisfies?(pinned_dep.version)
+        if satisfied
+          deps[name] = pinned_dep
+        end
+      end
+    end
+    deps
   end
 end

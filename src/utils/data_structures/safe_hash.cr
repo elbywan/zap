@@ -1,7 +1,7 @@
 {% if flag?(:preview_mt) %}
   struct SafeHash(K, V)
     getter inner : Hash(K, V)
-    getter lock = Mutex.new
+    getter lock = Mutex.new(:reentrant)
 
     def initialize(*args, **kwargs)
       @inner = Hash(K, V).new(*args, **kwargs)
