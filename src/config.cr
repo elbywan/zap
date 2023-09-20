@@ -30,7 +30,7 @@ module Zap
       {% else %}
         Backend::Backends::Hardlink
       {% end %}
-    ),
+    )
   ) do
     enum FLockScope
       Global

@@ -31,7 +31,8 @@ struct Zap::Config
     save_optional : Bool = false,
     print_logs : Bool = !ENV["CI"]?,
     refresh_install : Bool = false,
-    force_metadata_retrieval : Bool = false
+    force_metadata_retrieval : Bool = false,
+    check_peer_dependencies : Bool? = nil,
   ) do
     getter! install_strategy : InstallStrategy
 
@@ -49,7 +50,8 @@ struct Zap::Config
 
     def merge_pkg(package : Package)
       self.copy_with(
-        install_strategy: @install_strategy || package.zap_config.try(&.install_strategy) || InstallStrategy::Classic
+        install_strategy: @install_strategy || package.zap_config.try(&.install_strategy) || InstallStrategy::Classic,
+        check_peer_dependencies: @check_peer_dependencies || package.zap_config.try(&.check_peer_dependencies) || false,
       )
     end
   end
@@ -69,6 +71,9 @@ class Zap::CLI
     end
     parser.on("--production", "If true, will not install devDependencies.") do
       @command_config = install_config.copy_with(omit: [Config::Omit::Dev])
+    end
+    parser.on("--peers", "Pass this flag to enable checking for missing peer dependencies.") do
+      @command_config = install_config.copy_with(check_peer_dependencies: true)
     end
 
     subSeparator("Strategies")

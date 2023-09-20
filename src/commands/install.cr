@@ -87,7 +87,7 @@ module Zap::Commands::Install
       pruned_direct_dependencies = clean_lockfile(state)
 
       # Check for missing peer dependencies
-      unmet_peers_hash = check_unmet_peer_dependencies(state)
+      unmet_peers_hash = check_unmet_peer_dependencies(state) if state.install_config.check_peer_dependencies
 
       # Do not edit lockfile or package.json files in global mode or if the save flag is false
       unless state.config.global || !state.install_config.save

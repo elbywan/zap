@@ -134,7 +134,8 @@ class Zap::Package
     hoist_patterns : Array(String)? = nil,
     public_hoist_patterns : Array(String)? = nil,
     install_strategy : Config::InstallStrategy? = nil,
-    package_extensions : Hash(String, PackageExtension) = Hash(String, PackageExtension).new do
+    package_extensions : Hash(String, PackageExtension) = Hash(String, PackageExtension).new,
+    check_peer_dependencies : Bool? = nil do
     include JSON::Serializable
     include YAML::Serializable
   end
