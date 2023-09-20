@@ -9,7 +9,7 @@
 
 <hr/>
 
-**`Zap` is a JavaScript package manager _(think npm/pnpm/yarn)_ that aims to be faster than most of the existing ones.**
+**`Zap` is a JavaScript package manager _(think npm/pnpm/yarn)_ that aims to be fast, reliable and developer friendly.**
 
 ### Disclaimer
 
