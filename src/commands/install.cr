@@ -161,7 +161,7 @@ module Zap::Commands::Install
            #{"add/remove scope".colorize.blue}: #{inferred_context.command_scope.size} package(s)#{suffix}
         TERM
       end
-      puts NEW_LINE
+      puts
     end
   end
 
