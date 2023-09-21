@@ -2,6 +2,7 @@ require "http/client"
 require "json"
 require "../utils/data_structures/safe_hash"
 require "../utils/dedupe_lock"
+require "../utils/macros"
 
 module Zap::Fetch
   CACHE_DIR = ".fetch_cache"
@@ -95,18 +96,23 @@ module Zap::Fetch
 
   class Pool
     include Zap::Utils::DedupeLock(Nil)
+    include Utils::Macros
 
     getter base_url : String
     @size = 0
-    @pool : Channel(HTTP::Client)
-
-    def initialize(@base_url : String, @size = 20, @cache : Cache = Cache::InMemory.new, &)
-      @pool = Channel(HTTP::Client).new(@size)
-      @size.times do
-        client = HTTP::Client.new(URI.parse base_url)
-        yield client
-        @pool.send(client)
+    safe_getter pool : Channel(HTTP::Client) do
+      Channel(HTTP::Client).new(@size).tap do |pool|
+        @size.times do
+          client = HTTP::Client.new(URI.parse base_url)
+          @client_init.call(client)
+          pool.send(client)
+        end
       end
+    end
+    @client_init : HTTP::Client ->
+
+    def initialize(@base_url : String, @size = 20, @cache : Cache = Cache::InMemory.new, &block : HTTP::Client ->)
+      @client_init = block
     end
 
     def initialize(base_url, max_clients = 20)
@@ -116,7 +122,7 @@ module Zap::Fetch
     def client(retry_attempts = 3, &)
       retry_count = 0
       begin
-        client = @pool.receive
+        client = pool.receive
         loop do
           retry_count += 1
           begin
@@ -130,7 +136,7 @@ module Zap::Fetch
         end
       end
     ensure
-      client.try { |c| @pool.send(c) }
+      client.try { |c| pool.send(c) }
     end
 
     def cached_fetch(*args, **kwargs, &block : HTTP::Client ->) : String
