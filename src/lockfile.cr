@@ -161,6 +161,16 @@ class Zap::Lockfile
     end
   end
 
+  def filter_roots(package : Package, workspaces : Array(Package | Workspaces::Workspace))
+    root_keys = Set(String).new
+    workspaces.try &.each do |workspace|
+      root_keys << (workspace.is_a?(Package) ? workspace.name : workspace.package.name)
+    end
+    roots.select do |name|
+      name.in?(root_keys)
+    end
+  end
+
   def add_dependency(name : String, version : String, type : DependencyType, scope : String, scope_version : String)
     @roots_lock.synchronize do
       scoped_root = roots[scope] ||= Root.new(scope, scope_version)
@@ -183,7 +193,7 @@ class Zap::Lockfile
     end
   end
 
-  def crawl(&block : Package, DependencyType, Root, Deque({Package, DependencyType}) ->)
+  def crawl(*, roots = self.roots, &block : Package, DependencyType, Root, Deque({Package, DependencyType}) ->)
     roots.each do |root_name, root|
       root.each_dependency do |name, version, type|
         if package = get_package?(name, version)

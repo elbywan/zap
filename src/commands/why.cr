@@ -1,7 +1,7 @@
 module Zap::Commands::Why
   alias PackageResult = {root: Lockfile::Root, ancestors: Deque({Package, DependencyType}), type: DependencyType}
 
-  DEPENDS_ON_CHAR = '←'
+  DEPENDS_ON_CHAR               = '←'
   ANCESTOR_PATH_PREFIX_CHAR     = '├'
   ANCESTOR_PATH_END_PREFIX_CHAR = '└'
 
@@ -18,7 +18,10 @@ module Zap::Commands::Why
 
     results = Hash(Package, Array(PackageResult)).new
 
-    lockfile.crawl do |dependency, type, root, ancestors|
+    # filter the roots in case the user provided a filter
+    roots = lockfile.filter_roots(inferred_context.main_package, inferred_context.get_scope(:command))
+
+    lockfile.crawl(roots: roots) do |dependency, type, root, ancestors|
       # for each package in the lockfile, check if it matches the provided pattern
       next unless why_config.packages.any? { |name_pattern, version|
                     name_pattern =~ dependency.name && (!version || version.satisfies?(dependency.version))
