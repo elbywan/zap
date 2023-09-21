@@ -161,7 +161,7 @@ module Zap::Commands::Install
            #{"add/remove scope".colorize.blue}: #{inferred_context.command_scope.size} package(s)#{suffix}
         TERM
       end
-      puts "\n"
+      puts NEW_LINE
     end
   end
 
@@ -344,7 +344,7 @@ module Zap::Commands::Install
         pipeline: state.pipeline
       )
 
-      puts "\n" if scripts.size > 0
+      puts NEW_LINE if scripts.size > 0
     end
   end
 

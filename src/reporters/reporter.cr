@@ -1,4 +1,5 @@
 require "term-cursor"
+require "../constants"
 
 abstract class Zap::Reporter
   getter io_lock = Mutex.new
@@ -17,7 +18,7 @@ abstract class Zap::Reporter
   end
 
   class ReporterFormattedAppendPipe < IO
-    def initialize(@reporter : Reporter, @separator = "\n", @prefix = "     ")
+    def initialize(@reporter : Reporter, @separator = NEW_LINE, @prefix = "     ")
       @separator_and_prefix = @separator + @prefix
     end
 

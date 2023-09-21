@@ -1,4 +1,6 @@
 module Zap
+  NEW_LINE = '\n'
+
   enum ErrorCodes : Int32
     EARLY_EXIT             = 1
     INSTALL_COMMAND_FAILED

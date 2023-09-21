@@ -117,7 +117,7 @@ module Zap::Utils
 
     def get_default_branch? : String?
       result = self.class.run_and_get_output("git ls-remote --symref #{@base_url} HEAD")
-      result.split("\n")[0]?.try &.split(/\s+/)[1]?.try &.split("/").last?
+      result.split(NEW_LINE)[0]?.try &.split(/\s+/)[1]?.try &.split("/").last?
     end
 
     def self.run(command : String, reporter : Reporter? = nil, **extra) : Nil

@@ -31,7 +31,7 @@ module Zap::Resolver
       on_resolve(pkg, pkg.version)
       pkg
     rescue e
-      Zap::Log.debug { e.message.colorize.red.to_s + "\n" + e.backtrace.map { |line| "\t#{line}" }.join("\n").colorize.red.to_s }
+      Zap::Log.debug { e.message.colorize.red.to_s + NEW_LINE + e.backtrace.map { |line| "\t#{line}" }.join(NEW_LINE).colorize.red.to_s }
       raise "Error resolving #{pkg.try &.name || self.package_name} #{pkg.try &.version || self.version} #{e.message}"
     end
 

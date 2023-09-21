@@ -106,7 +106,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
       @update_channel.close
       if @written
         @out.flush
-        @out.print "\n"
+        @out.print NEW_LINE
       end
       @written = false
       @lines.set(0)
@@ -117,39 +117,39 @@ class Zap::Reporter::Interactive < Zap::Reporter
 
   def info(str : String)
     @lock.synchronize do
-      @out << %( ℹ #{str.colorize(:blue)}) << "\n"
+      @out << %( ℹ #{str.colorize(:blue)}) << NEW_LINE
     end
   end
 
   def warning(error : Exception, location : String? = "")
     @lock.synchronize do
       @out << header("⚠️", "Warning", :yellow) + location
-      @out << "\n"
+      @out << NEW_LINE
       @out << "\n  • #{error.message}".colorize.yellow
-      @out << "\n"
-      Zap::Log.debug { error.backtrace?.try &.map { |line| "\t#{line}" }.join("\n").colorize.yellow }
+      @out << NEW_LINE
+      Zap::Log.debug { error.backtrace?.try &.map { |line| "\t#{line}" }.join(NEW_LINE).colorize.yellow }
     end
   end
 
   def error(error : Exception, location : String? = "")
     @lock.synchronize do
-      @out << "\n"
-      @out << header("❌", "Error(s):", :red) + location << "\n" << "\n"
-      @out << " • #{error.message.try &.split("\n").join("\n   ")}" << "\n"
-      @out << "\n"
-      Zap::Log.debug { error.backtrace.map { |line| "\t#{line}" }.join("\n").colorize.red }
+      @out << NEW_LINE
+      @out << header("❌", "Error(s):", :red) + location << NEW_LINE << NEW_LINE
+      @out << " • #{error.message.try &.split(NEW_LINE).join("\n   ")}" << NEW_LINE
+      @out << NEW_LINE
+      Zap::Log.debug { error.backtrace.map { |line| "\t#{line}" }.join(NEW_LINE).colorize.red }
     end
   end
 
   def errors(errors : Array({Exception, String}))
     @lock.synchronize do
-      @out << "\n"
-      @out << header("❌", "Error(s):", :red) << "\n" << "\n"
+      @out << NEW_LINE
+      @out << header("❌", "Error(s):", :red) << NEW_LINE << NEW_LINE
       errors.each do |(error, message)|
-        @out << " • #{message.try &.split("\n").join("\n   ")}" << "\n"
-        Zap::Log.debug { error.backtrace.map { |line| "\t#{line}" }.join("\n").colorize.red }
+        @out << " • #{message.try &.split(NEW_LINE).join("\n   ")}" << NEW_LINE
+        Zap::Log.debug { error.backtrace.map { |line| "\t#{line}" }.join(NEW_LINE).colorize.red }
       end
-      @out << "\n"
+      @out << NEW_LINE
     end
   end
 
@@ -171,7 +171,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
     @io_lock.synchronize do
       @out << @cursor.clear_lines(@lines.get, :up)
       @out << String.new(bytes)
-      @out << "\n"
+      @out << NEW_LINE
       @out.flush
     end
     update
@@ -181,7 +181,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
     @io_lock.synchronize do
       @out << @cursor.clear_lines(@lines.get, :up)
       @out << str
-      @out << "\n"
+      @out << NEW_LINE
       @out.flush
     end
     update
@@ -213,13 +213,13 @@ class Zap::Reporter::Interactive < Zap::Reporter
           str << %([#{@resolved_packages.get}/#{@resolving_packages.get}])
           @lines.set(1)
           if (downloading = @downloading_packages.get) > 0
-            str << "\n"
+            str << NEW_LINE
             str << downloading_header
             str << %([#{@downloaded_packages.get}/#{downloading}])
             @lines.add(1)
           end
           if (packing = @packing_packages.get) > 0
-            str << "\n"
+            str << NEW_LINE
             str << packing_header
             str << %([#{@packed_packages.get}/#{packing}])
             @lines.add(1)
@@ -274,7 +274,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
     @io_lock.synchronize do
       if install_config.print_logs && @logs.size > 0
         @out << header("📝", "Logs", :blue)
-        @out << "\n"
+        @out << NEW_LINE
         separator = "\n   • ".colorize(:default)
         @out << separator
         @out << @logs.join(separator)
@@ -284,7 +284,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
       # print missing peers
       if unmet_peers && !unmet_peers.empty?
         @out << header("❗️", "Unmet Peers", :light_red)
-        @out << "\n"
+        @out << NEW_LINE
         separator = "\n   • ".colorize(:red)
         @out << separator
         @out << unmet_peers.to_a.flat_map { |name, versions|
@@ -302,7 +302,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
           if install_version
             %("#{name}@#{install_version}")
           else
-            incompatible_versions << {name, versions.map { |v, _| "     #{v}" }.join("\n")}
+            incompatible_versions << {name, versions.map { |v, _| "     #{v}" }.join(NEW_LINE)}
             nil
           end
         end.compact!
@@ -342,7 +342,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
             @out << "   #{"－".colorize.red.bold} #{pkg_key}\n"
           end
         end
-        @out << "\n"
+        @out << NEW_LINE
       end
 
       @out << header("👌", "Done!", :green)
@@ -352,7 +352,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
       if memory
         @out << "total memory allocated #{memory.humanize}B".colorize.dim
       end
-      @out << "\n"
+      @out << NEW_LINE
     end
   end
 

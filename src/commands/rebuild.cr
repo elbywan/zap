@@ -17,7 +17,7 @@ module Zap::Commands::Rebuild
            #{"scope".colorize.blue}: #{context.command_scope.size} package(s) • #{scope_names.sort.join(", ")}
         TERM
       end
-      puts "\n"
+      puts NEW_LINE
     end
 
     scripts = [] of Utils::Scripts::ScriptData

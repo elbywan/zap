@@ -1,7 +1,7 @@
 class OptionParser
   private def append_flag(flag, description, flag_formatter : String -> String)
     indent = " " * 37
-    description = description.gsub("\n", "\n#{indent}")
+    description = description.gsub('\n', "\n#{indent}")
     if flag.size >= 33
       @flags << "    #{flag_formatter.call(flag)}\n#{indent}#{description}"
     else

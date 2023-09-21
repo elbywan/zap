@@ -24,7 +24,7 @@ class Zap::Workspaces
       unless status.success?
         raise "git diff failed with exit status code: #{status.exit_code}"
       end
-      @inner[base] = output.split("\n")
+      @inner[base] = output.split(NEW_LINE)
     end
   end
 

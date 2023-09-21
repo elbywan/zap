@@ -16,28 +16,28 @@ module Zap::Utils::Scripts
         if single_script
           @output = Process::Redirect::Inherit
         else
-          @output = Reporter::ReporterFormattedAppendPipe.new(reporter, "\n", "  #{@package.name.colorize(color).bold} #{@script_name.colorize.cyan} ")
+          @output = Reporter::ReporterFormattedAppendPipe.new(reporter, NEW_LINE, "  #{@package.name.colorize(color).bold} #{@script_name.colorize.cyan} ")
         end
       end
 
       def on_start(command : String)
         @reporter.output_sync do |output|
-          output << "⏺".colorize(:default) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{%(#{command}).colorize.dim}" << "\n"
-          output << "\n" if @single_script
+          output << "⏺".colorize(:default) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{%(#{command}).colorize.dim}" << NEW_LINE
+          output << NEW_LINE if @single_script
         end
       end
 
       def on_finish(time : Time::Span)
         @reporter.output_sync do |output|
-          output << "\n" if @single_script
-          output << "⏺".colorize(46) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{"success".colorize.bold.green} #{"(took: #{Utils::Various.format_time_span(time)})".colorize.dim}" << "\n"
+          output << NEW_LINE if @single_script
+          output << "⏺".colorize(46) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{"success".colorize.bold.green} #{"(took: #{Utils::Various.format_time_span(time)})".colorize.dim}" << NEW_LINE
         end
       end
 
       def on_error(error : Exception, time : Time::Span)
         @reporter.output_sync do |output|
-          output << "\n" if @single_script
-          output << "⏺".colorize(196) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{"failed".colorize.bold.red} #{"(took: #{Utils::Various.format_time_span(time)})".colorize.dim}" << "\n"
+          output << NEW_LINE if @single_script
+          output << "⏺".colorize(196) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{"failed".colorize.bold.red} #{"(took: #{Utils::Various.format_time_span(time)})".colorize.dim}" << NEW_LINE
         end
       end
     end
@@ -53,8 +53,8 @@ module Zap::Utils::Scripts
 
       def on_start(command : String)
         @reporter.output_sync do |output|
-          output << "⏺".colorize(:default) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{%(#{command}).colorize.dim}" << "\n"
-          output << "\n" if @single_script
+          output << "⏺".colorize(:default) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{%(#{command}).colorize.dim}" << NEW_LINE
+          output << NEW_LINE if @single_script
         end
       end
 
@@ -62,13 +62,13 @@ module Zap::Utils::Scripts
         @reporter.output_sync do |output|
           self_output = @output
           if @single_script
-            output << "\n"
+            output << NEW_LINE
           elsif self.output.as?(IO::Memory).try(&.size.> 0)
-            output << "\n"
+            output << NEW_LINE
             output << self_output
-            output << "\n"
+            output << NEW_LINE
           end
-          output << "⏺".colorize(46) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{"success".colorize.bold.green} #{"(took: #{Utils::Various.format_time_span(time)})".colorize.dim}" << "\n"
+          output << "⏺".colorize(46) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{"success".colorize.bold.green} #{"(took: #{Utils::Various.format_time_span(time)})".colorize.dim}" << NEW_LINE
         end
       end
 
@@ -76,13 +76,13 @@ module Zap::Utils::Scripts
         @reporter.output_sync do |output|
           self_output = @output
           if @single_script
-            output << "\n"
+            output << NEW_LINE
           elsif self.output.as?(IO::Memory).try(&.size.> 0)
-            output << "\n"
+            output << NEW_LINE
             output << self_output
-            output << "\n"
+            output << NEW_LINE
           end
-          output << "⏺".colorize(196) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{"failed".colorize.bold.red} #{"(took: #{Utils::Various.format_time_span(time)})".colorize.dim}" << "\n"
+          output << "⏺".colorize(196) << " " << "#{@package.name.colorize(@color).bold} #{@script_name.colorize.cyan} #{"failed".colorize.bold.red} #{"(took: #{Utils::Various.format_time_span(time)})".colorize.dim}" << NEW_LINE
         end
       end
     end
@@ -246,7 +246,7 @@ module Zap::Utils::Scripts
     yield command, :before
     status = Process.run(command, **args, shell: true, env: env, chdir: chdir.to_s, output: output, input: stdin, error: output)
     if !status.success? && raise_on_error_code
-      raise "#{output.is_a?(IO::Memory) && output_io.nil? ? output.to_s + "\n" : ""}Command failed: #{command} (#{status.exit_status})"
+      raise "#{output.is_a?(IO::Memory) && output_io.nil? ? output.to_s + NEW_LINE : ""}Command failed: #{command} (#{status.exit_status})"
     end
     yield command, :after
   end

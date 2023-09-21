@@ -26,7 +26,7 @@ module Zap::Commands::Run
              #{"scope".colorize.blue}: #{inferred_context.command_scope.size} package(s) • #{targets.map(&.[0].name).sort.join(", ")}
           TERM
         end
-        puts "\n"
+        puts NEW_LINE
       end
 
       scripts = targets.flat_map do |package, path|
