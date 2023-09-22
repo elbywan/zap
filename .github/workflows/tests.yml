@@ -1,4 +1,4 @@
-name: Specs
+name: Tests
 
 on:
   push:
@@ -7,7 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  linux:
+  specs:
+    name: Specs
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -20,3 +21,20 @@ jobs:
         run: crystal spec
       - name: Run tests (multithreaded)
         run: crystal spec -Dpreview_mt
+  launch:
+    name: Build and check if the binary is working
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      - name: Install Crystal
+        uses: crystal-lang/install-crystal@v1
+      - name: Install dependencies
+        run: shards install
+      - name: Build
+        run: shards build
+      - name: Print version
+        run: ./bin/zap --version

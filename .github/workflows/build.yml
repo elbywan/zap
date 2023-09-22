@@ -17,7 +17,7 @@ jobs:
       - name: Build the binary
         # Statically link most non-system libraries
         run: |
-          cc=$(env CRYSTAL_LIBRARY_PATH=`pwd`/libs/x86_64-apple-darwin shards build --target="x86_64-apple-darwin" --cross-compile --release -Dpreview_mt | tail -n 1)
+          cc=$(env CRYSTAL_LIBRARY_PATH=`pwd`/libs/x86_64-apple-darwin shards build --target="x86_64-apple-darwin" --cross-compile --no-debug --release -Dpreview_mt | tail -n 1)
           eval $cc
       - name: Upload a Build Artifact
         uses: actions/upload-artifact@v2
@@ -35,7 +35,7 @@ jobs:
       - name: Build the binary
         # Statically link most non-system libraries
         run: |
-          cc=$(env CRYSTAL_LIBRARY_PATH=`pwd`/libs/arm64-apple-darwin shards build --target="arm64-apple-darwin" --cross-compile --release | tail -n 1 | sed -e "s/-rdynamic/--target=arm64-apple-darwin -rdynamic/g")
+          cc=$(env CRYSTAL_LIBRARY_PATH=`pwd`/libs/arm64-apple-darwin shards build --target="arm64-apple-darwin" --cross-compile --no-debug --release | tail -n 1 | sed -e "s/-rdynamic/--target=arm64-apple-darwin -rdynamic/g")
           eval $cc
       - name: Upload a Build Artifact
         uses: actions/upload-artifact@v2
