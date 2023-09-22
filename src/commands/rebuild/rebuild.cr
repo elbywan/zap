@@ -1,7 +1,7 @@
 module Zap::Commands::Rebuild
   def self.run(
-    config : Config,
-    rebuild_config : Config::Rebuild
+    config : Zap::Config,
+    rebuild_config : Rebuild::Config
   )
     rebuild_config = rebuild_config.from_args(ARGV)
     context = config.infer_context

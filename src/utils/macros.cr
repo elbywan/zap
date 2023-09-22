@@ -86,4 +86,28 @@ module Zap::Utils::Macros
       "(#{%result.join(", ")})"
     {% end %}
   end
+
+  macro record_utils
+    def initialize(**fields : **T) forall T
+      \{% for ivar in @type.instance_vars %}
+        \{% if T[ivar.id] %}
+          @\{{ivar.id}} = fields[:\{{ivar.id}}]
+        \{% end %}
+      \{% end %}
+    end
+
+    def copy_with(**fields : **T) forall T
+      \{% begin %}
+      self.class.new(
+        \{% for ivar in @type.instance_vars %}
+          \{% if T[ivar.id] %}
+          \{{ivar.id}}: fields[:\{{ivar.id}}],
+          \{% else %}
+          \{{ivar.id}}: @\{{ivar.id}},
+          \{% end %}
+        \{% end %}
+      )
+      \{% end %}
+    end
+  end
 end

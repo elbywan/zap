@@ -1,4 +1,3 @@
-require "term-cursor"
 require "../constants"
 
 abstract class Zap::Reporter

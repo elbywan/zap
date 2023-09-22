@@ -1,5 +1,5 @@
 module Zap::Commands::Exec
-  def self.run(config : Config, exec_config : Config::Exec, *, no_banner : Bool = false)
+  def self.run(config : Zap::Config, exec_config : Exec::Config, *, no_banner : Bool = false)
     reporter = Reporter::Interactive.new
     begin
       raise "Please provide a command to run. Example: 'zap exec <command>'" if exec_config.command.empty?

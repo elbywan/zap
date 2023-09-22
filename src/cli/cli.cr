@@ -52,25 +52,25 @@ module Zap
     end
 
     case command_config
-    when Config::Install
+    when Commands::Install::Config
       Commands::Install.run(config, command_config)
-    when Config::Dlx
+    when Commands::Dlx::Config
       Commands::Dlx.run(config, command_config)
-    when Config::Init
+    when Commands::Init::Config
       Commands::Init.run(config, command_config)
-    when Config::Run
+    when Commands::Run::Config
       script_name = ARGV[0]?
       args = ARGV[1..-1]? || Array(String).new
       command_config = command_config.copy_with(script: script_name, args: args)
       Commands::Run.run(config, command_config)
-    when Config::Rebuild
+    when Commands::Rebuild::Config
       Commands::Rebuild.run(config, command_config)
-    when Config::Exec
+    when Commands::Exec::Config
       command_config = command_config.copy_with(command: ARGV.join(" "))
       Commands::Exec.run(config, command_config)
-    when Config::Store
+    when Commands::Store::Config
       Commands::Store.run(config, command_config)
-    when Config::Why
+    when Commands::Why::Config
       Commands::Why.run(config, command_config)
     else
       raise "Unknown command config: #{command_config}"
@@ -78,9 +78,9 @@ module Zap
   end
 
   class CLI
-    getter! command_config : Config::CommandConfig?
+    getter! command_config : Zap::Commands::Config?
 
-    def initialize(@config : Config = Config.new, @command_config : Config::CommandConfig? = nil)
+    def initialize(@config : Config = Config.new(ENV, "ZAP"), @command_config : Zap::Commands::Config? = nil)
     end
 
     def parse
@@ -143,7 +143,7 @@ module Zap
 
         parser.before_each do |arg|
           if @command_config.nil? && !parser.@handlers.keys.includes?(arg)
-            @command_config = Config::Run.new(fallback_to_exec: true)
+            @command_config = RunConfig.new(fallback_to_exec: true)
             parser.stop
           end
         end

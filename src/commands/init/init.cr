@@ -12,8 +12,8 @@ module Zap::Commands::Init
   end
 
   def self.run(
-    config : Config,
-    init_config : Config::Init
+    config : Zap::Config,
+    init_config : Init::Config
   )
     prefix_path = Path.new(config.prefix)
     package_path = prefix_path / "package.json"

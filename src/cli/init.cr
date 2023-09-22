@@ -1,10 +1,11 @@
-struct Zap::Config
-  record Init < CommandConfig, yes : Bool = !STDIN.tty?
-end
+require "../commands/init/config"
+require "../commands/dlx/config"
 
 class Zap::CLI
+  alias InitConfig = Commands::Init::Config
+
   private def on_init(parser : OptionParser)
-    @command_config = Config::Init.new
+    @command_config = InitConfig.new(ENV, "ZAP_INIT")
 
     separator("Options")
 
@@ -20,13 +21,13 @@ class Zap::CLI
           package_descriptor = "@#{slash_split.join("/create-")}"
           command = "create-#{slash_split[1]}"
           version = split_arg[1]? ? "@#{split_arg[1]}" : ""
-          @command_config = Config::Dlx.new(
+          @command_config = DlxConfig.new(
             packages: [package_descriptor],
             create_command: command
           )
         else
           package_descriptor = "create-#{arg}"
-          @command_config = Config::Dlx.new(
+          @command_config = DlxConfig.new(
             packages: [package_descriptor],
             create_command: package_descriptor.split('@').first
           )
@@ -37,6 +38,6 @@ class Zap::CLI
   end
 
   private macro init_config
-    @command_config.as(Config::Init)
+    @command_config.as(InitConfig)
   end
 end

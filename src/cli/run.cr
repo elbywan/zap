@@ -1,15 +1,10 @@
-struct Zap::Config
-  record Run < CommandConfig,
-    script : String? = nil,
-    args : Array(String) = [] of String,
-    if_present : Bool = false,
-    parallel : Bool = false,
-    fallback_to_exec : Bool = false
-end
+require "../commands/run/config"
 
 class Zap::CLI
+  alias RunConfig = Commands::Run::Config
+
   private def on_run(parser : OptionParser)
-    @command_config = Config::Run.new
+    @command_config = RunConfig.new(ENV, "ZAP_RUN")
 
     separator("Options")
 
@@ -29,6 +24,6 @@ class Zap::CLI
   end
 
   private macro run_config
-    @command_config.as(Config::Run)
+    @command_config.as(RunConfig)
   end
 end

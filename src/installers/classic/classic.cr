@@ -200,7 +200,7 @@ module Zap::Installer::Classic
       if bin = dependency.bin
         bin_folder_path = state.config.bin_path
         is_direct_dependency = ancestors.size <= 1
-        if !is_direct_dependency && state.install_config.install_strategy.classic_shallow?
+        if !is_direct_dependency && state.install_config.strategy.classic_shallow?
           bin_folder_path = location.node_modules / ".bin"
         end
         Utils::Directories.mkdir_p(bin_folder_path)

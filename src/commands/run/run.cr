@@ -6,8 +6,8 @@ end
 
 module Zap::Commands::Run
   def self.run(
-    config : Config,
-    run_config : Config::Run
+    config : Zap::Config,
+    run_config : Run::Config
   )
     reporter = Reporter::Interactive.new
     begin
@@ -76,7 +76,7 @@ module Zap::Commands::Run
       end
     rescue ex : Exception
       if ex.is_a?(ScriptNotFoundError) && run_config.fallback_to_exec
-        exec_config = Config::Exec.new(
+        exec_config = Exec::Config.new(
           command: ARGV.join(" "),
           parallel: run_config.parallel,
         )

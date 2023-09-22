@@ -1,65 +1,11 @@
+require "../commands/install/config"
 require "../installers/backends/backend"
 
-struct Zap::Config
-  enum Omit
-    Dev
-    Optional
-    Peer
-  end
-
-  enum InstallStrategy
-    Classic
-    Classic_Shallow
-    Isolated
-  end
-
-  # Configuration specific for the install command
-  record(Install < CommandConfig,
-    frozen_lockfile : Bool = !!ENV["CI"]?,
-    ignore_scripts : Bool = false,
-    install_strategy : InstallStrategy? = nil,
-    omit : Array(Omit) = ENV["NODE_ENV"]? === "production" ? [Omit::Dev] : [] of Omit,
-    added_packages : Array(String) = Array(String).new,
-    removed_packages : Array(String) = Array(String).new,
-    updated_packages : Array(String) = Array(String).new,
-    update_all : Bool = false,
-    update_to_latest : Bool = false,
-    save : Bool = true,
-    save_exact : Bool = false,
-    save_prod : Bool = true,
-    save_dev : Bool = false,
-    save_optional : Bool = false,
-    print_logs : Bool = !ENV["CI"]?,
-    refresh_install : Bool = false,
-    force_metadata_retrieval : Bool = false,
-    check_peer_dependencies : Bool? = nil,
-  ) do
-    getter! install_strategy : InstallStrategy
-
-    def omit_dev?
-      omit.includes?(Omit::Dev)
-    end
-
-    def omit_optional?
-      omit.includes?(Omit::Optional)
-    end
-
-    def omit_peer?
-      omit.includes?(Omit::Peer)
-    end
-
-    def merge_pkg(package : Package)
-      self.copy_with(
-        install_strategy: @install_strategy || package.zap_config.try(&.install_strategy) || InstallStrategy::Classic,
-        check_peer_dependencies: @check_peer_dependencies || package.zap_config.try(&.check_peer_dependencies) || false,
-      )
-    end
-  end
-end
-
 class Zap::CLI
+  alias InstallConfig = Commands::Install::Config
+
   private def on_install(parser : OptionParser, *, remove_packages : Bool = false, update_packages : Bool = false)
-    @command_config = Config::Install.new(update_all: update_packages)
+    @command_config = InstallConfig.new(ENV, "ZAP_INSTALL").copy_with(update_all: update_packages)
 
     separator("Options")
 
@@ -70,7 +16,7 @@ class Zap::CLI
       @command_config = install_config.copy_with(print_logs: false)
     end
     parser.on("--production", "If true, will not install devDependencies.") do
-      @command_config = install_config.copy_with(omit: [Config::Omit::Dev])
+      @command_config = install_config.copy_with(omit: [Commands::Install::Config::Omit::Dev])
     end
     parser.on("--peers", "Pass this flag to enable checking for missing peer dependencies.") do
       @command_config = install_config.copy_with(check_peer_dependencies: true)
@@ -88,15 +34,15 @@ class Zap::CLI
         - classic_shallow : like classic but will only install direct dependencies at top-level.
       DESCRIPTION
     ) do |strategy|
-      @command_config = install_config.copy_with(install_strategy: Config::InstallStrategy.parse(strategy))
+      @command_config = install_config.copy_with(strategy: InstallConfig::InstallStrategy.parse(strategy))
     end
 
     parser.on("--classic", "Shorthand for: --install-strategy classic") do
-      @command_config = install_config.copy_with(install_strategy: Config::InstallStrategy::Classic)
+      @command_config = install_config.copy_with(strategy: InstallConfig::InstallStrategy::Classic)
     end
 
     parser.on("--isolated", "Shorthand for: --install-strategy isolated") do
-      @command_config = install_config.copy_with(install_strategy: Config::InstallStrategy::Isolated)
+      @command_config = install_config.copy_with(strategy: InstallConfig::InstallStrategy::Isolated)
     end
 
     subSeparator("Save")
@@ -132,6 +78,6 @@ class Zap::CLI
   end
 
   private macro install_config
-    @command_config.as(Config::Install)
+    @command_config.as(InstallConfig)
   end
 end

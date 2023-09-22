@@ -1,33 +1,24 @@
-struct Zap::Config
-  enum StoreAction
-    PrintPath
-    Clear
-    ClearHttpCache
-    ClearPackages
-  end
-
-  record Store < CommandConfig, action : StoreAction
-end
-
 class Zap::CLI
+  alias StoreConfig = Commands::Store::Config
+
   private def on_store(parser : OptionParser)
     @command_config = nil
     separator("Options")
 
     command("path", "Prints the path to the zap store.") do
-      @command_config = Zap::Config::Store.new(action: Zap::Config::StoreAction::PrintPath)
+      @command_config = StoreConfig.new(action: StoreConfig::StoreAction::PrintPath)
     end
 
     command("clear", "Clears the zap store.") do
-      @command_config = Zap::Config::Store.new(action: Zap::Config::StoreAction::Clear)
+      @command_config = StoreConfig.new(action: StoreConfig::StoreAction::Clear)
     end
 
     command("clear-http-cache", "Clears the cached registry responses.") do
-      @command_config = Zap::Config::Store.new(action: Zap::Config::StoreAction::ClearHttpCache)
+      @command_config = StoreConfig.new(action: StoreConfig::StoreAction::ClearHttpCache)
     end
 
     command("clear-packages", "Clears the stored packages.") do
-      @command_config = Zap::Config::Store.new(action: Zap::Config::StoreAction::ClearPackages)
+      @command_config = StoreConfig.new(action: StoreConfig::StoreAction::ClearPackages)
     end
 
     parser.before_each do |arg|

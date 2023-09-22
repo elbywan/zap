@@ -1,7 +1,9 @@
+require "./config"
+
 module Zap::Commands::Dlx
   def self.run(
-    config : Config,
-    dlx_config : Config::Dlx
+    config : Zap::Config,
+    dlx_config : Dlx::Config
   )
     dlx_config = dlx_config.from_args(ARGV)
     main_package = Package.init?(Path.new(config.prefix))
@@ -34,7 +36,7 @@ module Zap::Commands::Dlx
       # Install it
       Commands::Install.run(
         process_config,
-        Config::Install.new
+        Commands::Install::Config.new
       )
 
       # Line break

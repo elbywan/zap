@@ -91,7 +91,7 @@ module Zap::Resolver
     )
       Commands::Install.run(
         config,
-        Config::Install.new(save: false),
+        Commands::Install::Config.new(save: false),
         store: state.store
       )
     end

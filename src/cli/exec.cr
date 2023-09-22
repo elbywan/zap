@@ -1,12 +1,10 @@
+require "../commands/exec/config"
+
 class Zap::CLI
-  struct Zap::Config
-    record Exec < CommandConfig,
-      command : String = "",
-      parallel : Bool = false
-  end
+  alias ExecConfig = Commands::Exec::Config
 
   private def on_exec(parser : OptionParser)
-    @command_config = Config::Exec.new
+    @command_config = ExecConfig.new(ENV, "ZAP_EXEC")
 
     separator("Options")
 
@@ -22,6 +20,6 @@ class Zap::CLI
   end
 
   private macro exec_config
-    @command_config.as(Config::Exec)
+    @command_config.as(ExecConfig)
   end
 end

@@ -71,7 +71,7 @@ module Zap::Installer::Classic
     end
 
     private def hoisting_action?(location : LocationNode) : HoistAction
-      shallow_strategy = state.install_config.install_strategy.classic_shallow?
+      shallow_strategy = state.install_config.strategy.classic_shallow?
 
       # if shallow strategy is used, stop hoisting if the location is not a root location
       return HoistAction::Stop if shallow_strategy && ancestors.size > 1 && location.value.root

@@ -1,21 +1,23 @@
-require "../resolvers/resolver"
-require "../installers/**"
-require "../workspaces"
+require "./config"
+require "../../config"
+require "../../resolvers/resolver"
+require "../../installers/**"
+require "../../workspaces"
 
 module Zap::Commands::Install
   record State,
-    config : Config,
-    install_config : Config::Install,
+    config : Zap::Config,
+    install_config : Install::Config,
     store : Zap::Store,
     main_package : Package,
     lockfile : Lockfile,
-    context : Config::InferredContext,
+    context : Zap::Config::InferredContext,
     pipeline : Pipeline = Pipeline.new,
     reporter : Reporter = Reporter::Interactive.new
 
   def self.run(
-    config : Config,
-    install_config : Config::Install,
+    config : Zap::Config,
+    install_config : Install::Config,
     *,
     reporter : Reporter? = nil,
     store : Zap::Store? = nil
@@ -66,7 +68,7 @@ module Zap::Commands::Install
       state = State.new(
         config: config,
         install_config: config.global ? install_config.copy_with(
-          install_strategy: Config::InstallStrategy::Classic_Shallow
+          strategy: Config::InstallStrategy::Classic_Shallow
         ) : install_config,
         store: store,
         main_package: inferred_context.main_package,
@@ -129,7 +131,13 @@ module Zap::Commands::Install
     {realtime, memory}
   end
 
-  private def self.print_info(config : Config, inferred_context : Config::InferredContext, install_config : Config::Install, lockfile : Lockfile, workspaces : Workspaces?)
+  private def self.print_info(
+    config : Zap::Config,
+    inferred_context : Zap::Config::InferredContext,
+    install_config : Install::Config,
+    lockfile : Lockfile,
+    workspaces : Workspaces?
+  )
     unless config.silent
       workers_info = begin
         {% if flag?(:preview_mt) %}
@@ -140,7 +148,7 @@ module Zap::Commands::Install
       end
       puts <<-TERM
          #{"project:".colorize.blue} #{config.prefix} • #{"store:".colorize.blue} #{config.store_path}#{workers_info}
-         #{"lockfile:".colorize.blue} #{lockfile.read_status.from_disk? ? "ok".colorize.green : lockfile.read_status.error? ? "read error".colorize.red : "not found".colorize.red} • #{"install strategy:".colorize.blue} #{install_config.install_strategy.to_s.downcase}
+         #{"lockfile:".colorize.blue} #{lockfile.read_status.from_disk? ? "ok".colorize.green : lockfile.read_status.error? ? "read error".colorize.red : "not found".colorize.red} • #{"install strategy:".colorize.blue} #{install_config.strategy.to_s.downcase}
       TERM
 
       if workspaces
@@ -270,13 +278,13 @@ module Zap::Commands::Install
 
   private def self.install_packages(state : State, pruned_direct_dependencies)
     state.reporter.report_installer_updates
-    installer = case state.install_config.install_strategy
+    installer = case state.install_config.strategy
                 when .isolated?
                   Installer::Isolated::Installer.new(state)
                 when .classic?, .classic_shallow?
                   Installer::Classic::Installer.new(state)
                 else
-                  raise "Unsupported install strategy: #{state.install_config.install_strategy}"
+                  raise "Unsupported install strategy: #{state.install_config.strategy}"
                 end
     Log.debug { "• Pruning previous install" }
     installer.remove(pruned_direct_dependencies)

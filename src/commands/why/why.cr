@@ -5,7 +5,7 @@ module Zap::Commands::Why
   ANCESTOR_PATH_PREFIX_CHAR     = '├'
   ANCESTOR_PATH_END_PREFIX_CHAR = '└'
 
-  def self.run(config : Config, why_config : Config::Why)
+  def self.run(config : Zap::Config, why_config : Why::Config)
     why_config = why_config.from_args(ARGV)
     Log.debug { "Parsed package arguments: #{why_config.packages}" }
 
@@ -56,7 +56,7 @@ module Zap::Commands::Why
     end
   end
 
-  private def self.format_root_results(root, root_results, *, config : Config::Why)
+  private def self.format_root_results(root, root_results, *, config : Why::Config)
     String.build do |str|
       str << root_results
         .sort(&->sort_by_direct_ancestor(PackageResult, PackageResult))
@@ -88,7 +88,7 @@ module Zap::Commands::Why
     end
   end
 
-  private def self.direct_ancestor_output(direct_ancestor : String, direct_ancestor_results : Array(PackageResult), *, config : Config::Why)
+  private def self.direct_ancestor_output(direct_ancestor : String, direct_ancestor_results : Array(PackageResult), *, config : Why::Config)
     String.build do |result_str|
       direct_ancestor_name, direct_ancestor_version = Utils::Various.parse_key(direct_ancestor)
       result_str << "#{direct_ancestor_name.colorize.bold.cyan}#{"@#{direct_ancestor_version}"}"

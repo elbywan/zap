@@ -1,3 +1,8 @@
+require "./utils/filter"
+require "./utils/from_env"
+require "./installers/backends/backend"
+require "./package"
+
 module Zap
   DEFAULT_HOIST_PATTERNS        = ["*"]
   DEFAULT_PUBLIC_HOIST_PATTERNS = [
@@ -5,41 +10,51 @@ module Zap
   ]
 
   # Global configuration for Zap
-  record(Config,
-    global : Bool = false,
-    store_path : String = File.expand_path(
-      ENV["ZAP_STORE_PATH"]? || (
-        {% if flag?(:windows) %}
-          "%LocalAppData%/.zap/store"
-        {% else %}
-          "~/.zap/store"
-        {% end %}
-      ), home: true),
-    prefix : String = Dir.current,
-    concurrency : Int32 = 5,
-    silent : Bool = false,
-    no_workspaces : Bool = false,
-    filters : Array(Utils::Filter)? = nil,
-    recursive : Bool = false,
-    root_workspace : Bool = false,
-    deferred_output : Bool = !!ENV["CI"]?,
-    flock_scope : FLockScope = FLockScope::Global,
-    file_backend : Backend::Backends = (
-      {% if flag?(:darwin) %}
-        Backend::Backends::CloneFile
-      {% else %}
-        Backend::Backends::Hardlink
-      {% end %}
-    )
-  ) do
+  struct Config
+    include Utils::FromEnv
+    Utils::Macros.record_utils
+
     enum FLockScope
       Global
       Package
       None
     end
 
-    abstract struct CommandConfig
-    end
+    getter global : Bool = false
+    @[Env]
+    getter store_path : String = ::File.expand_path(
+      (
+        {% if flag?(:windows) %}
+          "%LocalAppData%/.zap/store"
+        {% else %}
+          "~/.zap/store"
+        {% end %}
+      ), home: true)
+    @[Env]
+    getter prefix : String = Dir.current
+    @[Env]
+    getter concurrency : Int32 = 5
+    @[Env]
+    getter silent : Bool = false
+    @[Env]
+    getter recursive : Bool = false
+    @[Env]
+    getter root_workspace : Bool = false
+    @[Env]
+    getter no_workspaces : Bool = false
+    getter filters : Array(Utils::Filter)? = nil
+    @[Env]
+    getter deferred_output : Bool = !!ENV["CI"]?
+    @[Env]
+    getter flock_scope : FLockScope = Config::FLockScope::Global
+    @[Env]
+    getter file_backend : Backend::Backends = (
+      {% if flag?(:darwin) %}
+        Backend::Backends::CloneFile
+      {% else %}
+        Backend::Backends::Hardlink
+      {% end %}
+    )
 
     getter node_modules : String do
       if global

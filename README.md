@@ -25,7 +25,8 @@ Zap is a **hobby** project that I am currently working on in my free time. Docum
 
 I am not looking for contributors at the moment, but feel free to open an issue if you have any question or suggestion.
 
-#### ⚠️ TLDR: Use it at your own risk
+> [!WARNING]
+> **Use it at your own risk.**
 
 ## Installation
 

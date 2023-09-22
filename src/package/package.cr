@@ -5,7 +5,7 @@ require "../utils/macros"
 require "../utils/data_structures/*"
 require "../utils/converters"
 require "../config"
-require "../cli/install"
+require "../commands/install/config"
 require "./*"
 
 # A class that represents a package.
@@ -133,7 +133,7 @@ class Zap::Package
   record ZapConfig,
     hoist_patterns : Array(String)? = nil,
     public_hoist_patterns : Array(String)? = nil,
-    install_strategy : Config::InstallStrategy? = nil,
+    strategy : Commands::Install::Config::InstallStrategy? = nil,
     package_extensions : Hash(String, PackageExtension) = Hash(String, PackageExtension).new,
     check_peer_dependencies : Bool? = nil do
     include JSON::Serializable
