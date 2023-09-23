@@ -49,6 +49,8 @@ struct Zap::Commands::Install::Config < Zap::Commands::Config
   getter force_metadata_retrieval : Bool = false
   @[Env]
   getter check_peer_dependencies : Bool? = nil
+  @[Env]
+  getter prefer_offline : Bool = false
 
   def omit_dev?
     omit.includes?(Omit::Dev)

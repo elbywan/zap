@@ -21,6 +21,9 @@ class Zap::CLI
     parser.on("--peers", "Pass this flag to enable checking for missing peer dependencies.") do
       @command_config = install_config.copy_with(check_peer_dependencies: true)
     end
+    parser.on("--prefer-offline", "Bypass staleness checks for package metadata cached from the registry.") do
+      @command_config = install_config.copy_with(prefer_offline: true)
+    end
 
     subSeparator("Strategies")
 

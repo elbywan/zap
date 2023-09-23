@@ -1,7 +1,7 @@
 require "./data_structures/safe_hash"
 
 module Zap::Utils::DedupeLock(T)
-  @lock = Mutex.new
+  @lock = Mutex.new(:unchecked)
   @channels = {} of String => Channel(T)
 
   def dedupe(key : String, &block : -> T) : T

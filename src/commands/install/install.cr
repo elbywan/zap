@@ -31,8 +31,6 @@ module Zap::Commands::Install
     Zap.print_banner unless config.silent
 
     realtime, memory = self.measure do
-      Resolver::Registry.init(config.store_path)
-
       # Infer context like the nearest package.json file and workspaces
       inferred_context = config.infer_context
       workspaces, config = inferred_context.workspaces, inferred_context.config
@@ -43,6 +41,10 @@ module Zap::Commands::Install
       reporter ||= config.silent ? Reporter::Interactive.new(null_io) : Reporter::Interactive.new
       # Merge zap config from package.json
       install_config = install_config.merge_pkg(inferred_context.main_package)
+
+      Log.debug { "Install Configuration: #{install_config.pretty_inspect}" }
+
+      Resolver::Registry.init(config.store_path, bypass_staleness_checks: install_config.prefer_offline)
 
       # Print info about the install
       self.print_info(config, inferred_context, install_config, lockfile, workspaces)

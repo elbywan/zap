@@ -51,8 +51,10 @@ module Zap::Fetch
       META_FILE_NAME      = "meta.json"
       META_FILE_NAME_TEMP = "meta.json.temp"
       @path : Path
+      @bypass_staleness_checks : Bool
+      @raise_on_cache_miss : Bool
 
-      def initialize(store_path)
+      def initialize(store_path, *, @bypass_staleness_checks : Bool = false, @raise_on_cache_miss : Bool = false)
         @path = Path.new(store_path, CACHE_DIR)
         Utils::Directories.mkdir_p(@path)
       end
@@ -61,6 +63,7 @@ module Zap::Fetch
         key = self.class.hash(url)
         path = @path / key / BODY_FILE_NAME
         return nil unless File.readable?(path)
+        return File.read(path) if @bypass_staleness_checks
         meta_path = @path / key / META_FILE_NAME
         meta = File.read(meta_path) if File.readable?(meta_path)
         meta = JSON.parse(meta) if meta

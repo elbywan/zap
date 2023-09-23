@@ -15,9 +15,9 @@ module Zap::Resolver
     class_getter base_url : String = "https://registry.npmjs.org"
     @@client_pool = nil
 
-    def self.init(store_path : String, base_url = nil)
+    def self.init(store_path : String, base_url = nil, *, bypass_staleness_checks = false)
       @@base_url = base_url if base_url
-      fetch_cache = Fetch::Cache::InStore.new(store_path) # Fetch::Cache::InMemory.new(fallback: Fetch::Cache::InStore.new(store_path))
+      fetch_cache = Fetch::Cache::InStore.new(store_path, bypass_staleness_checks: bypass_staleness_checks)
       # Reusable client pool
       @@client_pool ||= Fetch::Pool.new(@@base_url, 50, cache: fetch_cache) { |client|
         client.read_timeout = 10.seconds
