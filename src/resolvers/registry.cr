@@ -17,9 +17,9 @@ module Zap::Resolver
 
     def self.init(store_path : String, base_url = nil, *, bypass_staleness_checks = false)
       @@base_url = base_url if base_url
-      fetch_cache = Fetch::Cache::InStore.new(store_path, bypass_staleness_checks: bypass_staleness_checks)
+      fetch_cache = Utils::Fetch::Cache::InStore.new(store_path, bypass_staleness_checks: bypass_staleness_checks)
       # Reusable client pool
-      @@client_pool ||= Fetch::Pool.new(@@base_url, 50, cache: fetch_cache) { |client|
+      @@client_pool ||= Utils::Fetch.new(@@base_url, pool_max_size: 50, cache: fetch_cache) { |client|
         client.read_timeout = 10.seconds
         client.write_timeout = 1.seconds
         client.connect_timeout = 1.second
@@ -209,7 +209,7 @@ module Zap::Resolver
       state.store.with_lock("#{base_url}/#{package_name}", state.config) do
         manifest = @skip_cache ? client_pool.client { |http|
           http.get("/#{package_name}", HEADERS).body
-        } : client_pool.cached_fetch("/#{package_name}", HEADERS)
+        } : client_pool.fetch("/#{package_name}", HEADERS)
         find_valid_version(manifest, pinned_version ? Utils::Semver.parse(pinned_version) : self.version)
       end
     end
