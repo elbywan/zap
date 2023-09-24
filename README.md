@@ -60,16 +60,16 @@ Here is a non exhaustive list of features that are currently implemented:
 
 ```bash
 # Classic install by default
-zap i
+zap i # or zap i --classic
 # Isolated install
-zap i --install-strategy isolated
+zap i --isolated
 ```
 
 _or:_
 
 ```js
 "zap": {
-  "install_strategy": "isolated",
+  "strategy": "isolated",
   "hoist_patterns": [
     "react*"
   ],
@@ -116,7 +116,7 @@ zap i -w add pkg
 # Run a single script in the current workspace.
 zap run my-script
 # Run scripts in all workspaces in parallel.
-# Will use topological ordering by default: dependencies will run first.
+# Will use topological ordering by default - dependencies will run first…
 zap -r run test
 # …or omit the "run" argument.
 zap -r test
@@ -228,7 +228,7 @@ shards build --progress -Dpreview_mt --release
 
 - [Julien Elbaz](https://github.com/your-github-user) - creator and maintainer
 
-## Credits
+## Related
 
 - [pnpm](https://pnpm.io/)
 - [bun](https://bun.sh/)
