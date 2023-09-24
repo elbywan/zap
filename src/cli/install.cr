@@ -1,5 +1,5 @@
 require "../commands/install/config"
-require "../installers/backends/backend"
+require "../installer/backends/backend"
 
 class Zap::CLI
   alias InstallConfig = Commands::Install::Config

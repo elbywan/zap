@@ -1,7 +1,8 @@
 require "./config"
 require "../../config"
+require "../../npmrc"
 require "../../resolvers/resolver"
-require "../../installers/**"
+require "../../installer/**"
 require "../../workspaces"
 
 module Zap::Commands::Install
@@ -12,6 +13,7 @@ module Zap::Commands::Install
     main_package : Package,
     lockfile : Lockfile,
     context : Zap::Config::InferredContext,
+    npmrc : Npmrc,
     pipeline : Pipeline = Pipeline.new,
     reporter : Reporter = Reporter::Interactive.new
 
@@ -41,10 +43,10 @@ module Zap::Commands::Install
       reporter ||= config.silent ? Reporter::Interactive.new(null_io) : Reporter::Interactive.new
       # Merge zap config from package.json
       install_config = install_config.merge_pkg(inferred_context.main_package)
-
       Log.debug { "Install Configuration: #{install_config.pretty_inspect}" }
-
-      Resolver::Registry.init(config.store_path, bypass_staleness_checks: install_config.prefer_offline)
+      # Load .npmrc file
+      npmrc = Npmrc.new(config.prefix)
+      Log.debug { "Npmrc: #{npmrc.pretty_inspect}" }
 
       # Print info about the install
       self.print_info(config, inferred_context, install_config, lockfile, workspaces)
@@ -74,6 +76,7 @@ module Zap::Commands::Install
         ) : install_config,
         store: store,
         main_package: inferred_context.main_package,
+        npmrc: npmrc,
         lockfile: lockfile,
         reporter: reporter,
         context: inferred_context

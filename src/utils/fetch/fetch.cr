@@ -7,7 +7,7 @@ require "../pool"
 require "./cache"
 
 class Zap::Utils::Fetch
-  include Zap::Utils::DedupeLock(Nil)
+  include Zap::Utils::DedupeLock(String)
   include Utils::Macros
 
   Log       = Zap::Log.for(self)
@@ -18,7 +18,7 @@ class Zap::Utils::Fetch
 
   def initialize(@base_url : String, @pool_max_size = 20, @cache : Cache = Cache::InMemory.new, &block : HTTP::Client ->)
     @pool = Pool(HTTP::Client).new(@pool_max_size) do
-      HTTP::Client.new(URI.parse base_url).tap do |client|
+      HTTP::Client.new(URI.parse(base_url)).tap do |client|
         block.call(client)
       end
     end
@@ -50,50 +50,49 @@ class Zap::Utils::Fetch
     full_url = @base_url + url
 
     # Extract the body from the cache if possible
-    # (will try in memory, then on disk if the expiry date is still valid)
     if body = @cache.get(full_url)
       return body
     end
     # Dedupe requests by having an inflight channel for each URL
     dedupe(url) do
-      # debug! "[fetch] getting client… #{url}"
       client do |http|
         block.call(http)
 
-        # debug! "[fetch] got client #{url}"
-
-        http.head(*args, **kwargs) do |response|
-          # debug! "[fetch] got response #{url}"
-          raise "Invalid status code from #{url} (#{response.status_code})" unless response.status_code == 200
-          etag = response.headers["ETag"]?
-          # Attempt to extract the body from the cache again but this time with the etag
-          if cached_body = @cache.get(full_url, etag)
+        expiry = nil
+        cache_control_directives = nil
+        etag = nil
+        cached_body = @cache.get(full_url) do
+          http.head(*args, **kwargs) do |response|
+            raise "Invalid status code from #{url} (#{response.status_code})" unless response.status_code == 200
             cache_control_directives, expiry = extract_cache_headers(response)
-            @cache.set(full_url, cached_body, expiry, etag)
-            next body
+            etag = response.headers["ETag"]?
           end
         end
 
+        # Attempt to extract the body from the cache again but this time with the etag
+        if cached_body
+          @cache.set(full_url, cached_body, expiry, etag)
+          next cached_body
+        end
+
         http.get(*args, **kwargs) do |response|
-          # debug! "[fetch] got response #{url}"
           raise "Invalid status code from #{url} (#{response.status_code})" unless response.status_code == 200
 
           etag = response.headers["ETag"]?
           cache_control_directives, expiry = extract_cache_headers(response)
           response_body = response.body_io.gets_to_end
+          content_length = response.headers["Content-Length"]?
 
-          if (response.headers["Content-Length"].to_i != response_body.bytesize)
+          if (content_length && content_length.to_i != response_body.bytesize)
             # I do not know why this happens, but it does sometimes.
-            raise "Content-Length mismatch for #{url} (#{response.headers["Content-Length"]} != #{response_body.bytesize})"
+            raise "Content-Length mismatch for #{url} (#{content_length} != #{response_body.bytesize})"
           end
 
           @cache.set(full_url, response_body, expiry, etag)
+          next response_body
         end
       end
     end
-
-    # Cache should now be populated
-    @cache.get(full_url).not_nil!
   end
 
   def fetch(*args, **kwargs) : String

@@ -1,6 +1,6 @@
 require "./utils/filter"
 require "./utils/from_env"
-require "./installers/backends/backend"
+require "./installer/backends/backend"
 require "./package"
 
 module Zap
@@ -55,6 +55,10 @@ module Zap
         Backend::Backends::Hardlink
       {% end %}
     )
+    @[Env]
+    getter network_concurrency : Int32 = 50
+
+    #############################
 
     getter node_modules : String do
       if global

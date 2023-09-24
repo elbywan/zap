@@ -126,6 +126,25 @@ zap -F "my_app^..." --deferred-output run build
 zap run --parallel -r build
 ```
 
+- **[Private registries](https://docs.npmjs.com/cli/v10/configuring-npm/npmrc#auth-related-configuration)**
+
+```ini
+; .npmrc file
+
+; default registry:
+registry=https://registry.yarnpkg.com/
+; scoped registries:
+@myorg:registry=https://somewhere-else.com/myorg
+@another:registry=https://somewhere-else.com/another
+; scoped authentication: (supported fields -> _auth, _authToken, certfile, keyfile)
+//registry.org/:_auth=BASICAUTHTOKEN
+//registry.npmjs.org/:_authToken=BEARERTOKEN
+; disable strict ssl peers checking: (default is true)
+strict_ssl=false
+; use a custom certificate authority file:
+cafile=/certs/rootCA.crt
+```
+
 - **[Overrides](https://docs.npmjs.com/cli/v9/configuring-npm/package-json?v=true#overrides) / [Package Extensions](https://pnpm.io/package_json#pnpmpackageextensions)**
 
 ```js

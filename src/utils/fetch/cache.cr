@@ -1,10 +1,11 @@
 class Zap::Utils::Fetch
   abstract class Cache
     abstract def get(url : String, etag : String?) : String?
+    abstract def get(url : String, &etag : -> String?) : String?
     abstract def set(url : String, value : String, expiry : Time::Span?, etag : String?) : Nil
 
-    def self.hash(name)
-      Digest::SHA1.hexdigest(name)
+    def self.hash(str)
+      Digest::SHA1.hexdigest(str)
     end
 
     class InMemory < Cache
@@ -18,6 +19,19 @@ class Zap::Utils::Fetch
         return own if own
         if fallback
           fb = @fallback.try &.get(key, etag)
+          @cache[key] = fb if fb
+          fb
+        end
+      rescue
+        # cache miss
+      end
+
+      def get(url : String, *, fallback = true, &etag : -> String?) : String?
+        key = self.class.hash(url)
+        own = @cache[key]?
+        return own if own
+        if fallback
+          fb = @fallback.try &.get(key, &etag)
           @cache[key] = fb if fb
           fb
         end
@@ -67,6 +81,29 @@ class Zap::Utils::Fetch
         if etag && meta_etag && meta_etag == etag
           Log.debug { "(#{url}) Cache hit (etag) - serving metadata from #{path}" }
           return ::File.read(path)
+        end
+      end
+
+      def get(url : String, &etag : -> String?) : String?
+        key = self.class.hash(url)
+        path = @path / key / BODY_FILE_NAME
+        return nil unless ::File.readable?(path)
+        return ::File.read(path) if @bypass_staleness_checks
+        meta_path = @path / key / META_FILE_NAME
+        meta = ::File.read(meta_path) if ::File.readable?(meta_path)
+        meta = JSON.parse(meta) if meta
+        if expiry = meta.try &.["expiry"]?.try &.as_i64?
+          if expiry > Time.utc.to_unix
+            Log.debug { "(#{url}) Cache hit - serving metadata from #{path}" }
+            return ::File.read(path)
+          end
+        end
+        if meta_etag = meta.try &.["etag"]?.try &.as_s?
+          etag = yield
+          if etag && meta_etag == etag
+            Log.debug { "(#{url}) Cache hit (etag) - serving metadata from #{path}" }
+            return ::File.read(path)
+          end
         end
       end
 

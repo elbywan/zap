@@ -1,3 +1,4 @@
+require "uri"
 require "../utils/fetch"
 require "digest"
 require "compress/gzip"
@@ -12,17 +13,35 @@ HEADERS       = HTTP::Headers{"Accept" => ACCEPT_HEADER}
 
 module Zap::Resolver
   struct Registry < Base
-    class_getter base_url : String = "https://registry.npmjs.org"
-    @@client_pool = nil
+    @@client_pool_by_registry : Hash(String, Utils::Fetch) = Hash(String, Utils::Fetch).new
+    @@client_pool_by_registry_lock = Mutex.new
 
-    def self.init(store_path : String, base_url = nil, *, bypass_staleness_checks = false)
-      @@base_url = base_url if base_url
-      fetch_cache = Utils::Fetch::Cache::InStore.new(store_path, bypass_staleness_checks: bypass_staleness_checks)
-      # Reusable client pool
-      @@client_pool ||= Utils::Fetch.new(@@base_url, pool_max_size: 50, cache: fetch_cache) { |client|
-        client.read_timeout = 10.seconds
-        client.write_timeout = 1.seconds
-        client.connect_timeout = 1.second
+    @client_pool : Utils::Fetch
+    getter base_url : URI
+    @base_url_str : String
+
+    def initialize(
+      @state,
+      @package_name,
+      @version = "latest",
+      @aliased_name = nil,
+      @parent = nil,
+      @dependency_type = nil,
+      @skip_cache = false
+    )
+      super
+
+      # Get the registry url from the npmrc file
+      @base_url = URI.parse(@state.npmrc.registry)
+      if @package_name.starts_with?('@')
+        scope = @package_name.split('/')[0]
+        if scoped_registry = @state.npmrc.scoped_registries[scope]?
+          @base_url = URI.parse(scoped_registry)
+        end
+      end
+      @base_url_str = @base_url.to_s
+      @client_pool = @@client_pool_by_registry_lock.synchronize {
+        @@client_pool_by_registry[@base_url_str] ||= init_client_pool(@base_url_str)
       }
     end
 
@@ -36,7 +55,6 @@ module Zap::Resolver
     end
 
     def store(metadata : Package, &on_downloading) : Bool
-      raise "Resolver::Registry has not been initialized" unless client_pool = @@client_pool
       state.store.with_lock(metadata.name, metadata.version, state.config) do
         next false if state.store.package_is_cached?(metadata.name, metadata.version)
 
@@ -68,28 +86,36 @@ module Zap::Resolver
                                Digest::SHA1.new
                              end
 
-        client_pool.client &.get(tarball_url) do |response|
-          raise "Invalid status code from #{tarball_url} (#{response.status_code})" unless response.status_code == 200
+        # the tarball_url is absolute and can point to an entirely different domain
+        # so we need to find the right client pool for it
+        pool_key, pool = find_matching_client_pool(tarball_url)
+        pool.client do |client|
+          # we also need to relativize the tarball url to the pool base url
+          # otherwise some registries (verdaccio for instance) will return a 404
+          relative_url = URI.parse(pool_key).relativize(tarball_url).to_s
+          client.get("/" + relative_url) do |response|
+            raise "Invalid status code from #{tarball_url} (#{response.status_code})" unless response.status_code == 200
 
-          IO::Digest.new(response.body_io, algorithm_instance).tap do |io|
-            state.store.store_unpacked_tarball(package_name, version, io)
+            IO::Digest.new(response.body_io, algorithm_instance).tap do |io|
+              state.store.store_unpacked_tarball(package_name, version, io)
 
-            io.skip_to_end
-            computed_hash = io.final
-            if unsupported_algorithm
-              if computed_hash.hexstring != shasum
-                raise "shasum mismatch for #{tarball_url} (#{shasum})"
+              io.skip_to_end
+              computed_hash = io.final
+              if unsupported_algorithm
+                if computed_hash.hexstring != shasum
+                  raise "shasum mismatch for #{tarball_url} (#{shasum})"
+                end
+              else
+                if Base64.strict_encode(computed_hash) != hash
+                  raise "integrity mismatch for #{tarball_url} (#{integrity})"
+                end
               end
-            else
-              if Base64.strict_encode(computed_hash) != hash
-                raise "integrity mismatch for #{tarball_url} (#{integrity})"
-              end
+            rescue e
+              state.store.remove_package(package_name, version)
+              raise e
             end
-          rescue e
-            state.store.remove_package(package_name, version)
-            raise e
+            true
           end
-          true
         end
       end
     end
@@ -103,6 +129,71 @@ module Zap::Resolver
     end
 
     # # PRIVATE ##########################
+
+    private def find_matching_client_pool(url : String) : {String, Utils::Fetch}
+      @@client_pool_by_registry_lock.synchronize do
+        # Find if an existing pool matches the url
+        @@client_pool_by_registry.find do |registry_url, _|
+          url.starts_with?(registry_url)
+        end || begin
+          # Otherwise create a new pool for the url hostname
+          uri = URI.parse(url)
+          # Remove the path - because it is impossible to infer based on the tarball url
+          uri.path = "/"
+          uri_str = uri.to_s
+          pool = init_client_pool(uri.to_s).tap { |pool|
+            @@client_pool_by_registry[pool.base_url] = pool
+          }
+          {uri_str, pool}
+        end
+      end
+    end
+
+    private def init_client_pool(base_url : String) : Utils::Fetch
+      # Cache the metadata in the store
+      cache = Utils::Fetch::Cache::InStore.new(
+        @state.config.store_path,
+        bypass_staleness_checks: @state.install_config.prefer_offline
+      )
+
+      authentication = @state.npmrc.registries_auth[@base_url_str]?
+
+      Utils::Fetch.new(
+        base_url,
+        pool_max_size: @state.config.network_concurrency,
+        cache: cache
+      ) { |client|
+        client.read_timeout = 10.seconds
+        client.write_timeout = 1.seconds
+        client.connect_timeout = 1.second
+
+        # TLS options
+        if tls_context = client.tls?
+          if cafile = @state.npmrc.cafile
+            tls_context.ca_certificates = cafile
+          end
+          if capath = @state.npmrc.capath
+            tls_context.ca_certificates_path = capath
+          end
+          if (certfile = authentication.try &.certfile) && (keyfile = authentication.try &.keyfile)
+            tls_context.certificate_chain = certfile
+            tls_context.private_key = keyfile
+          end
+          unless @state.npmrc.strict_ssl
+            tls_context.verify_mode = OpenSSL::SSL::VerifyMode::NONE
+          end
+        end
+
+        client.before_request do |request|
+          # Authorization header
+          if auth = authentication.try &.auth
+            request.headers["Authorization"] = "Basic #{auth}"
+          elsif authToken = authentication.try &.authToken
+            request.headers["Authorization"] = "Bearer #{authToken}"
+          end
+        end
+      }
+    end
 
     private def find_valid_version(manifest_str : String, version : Utils::Semver::Range | String) : Package
       Log.debug { "(#{package_name}@#{@version}) Finding valid version/dist-tag inside metadata: #{version}" }
@@ -203,13 +294,12 @@ module Zap::Resolver
     end
 
     private def fetch_metadata(*, pinned_version : String? = nil) : Package?
-      raise "Resolver::Registry has not been initialized" unless client_pool = @@client_pool
-      base_url = @@base_url
       Log.debug { "(#{package_name}@#{version}) Fetching metadata… #{@skip_cache ? "(skipping cache)" : ""} #{pinned_version ? "[pinned_version #{pinned_version}]" : ""}" }
-      state.store.with_lock("#{base_url}/#{package_name}", state.config) do
-        manifest = @skip_cache ? client_pool.client { |http|
-          http.get("/#{package_name}", HEADERS).body
-        } : client_pool.fetch("/#{package_name}", HEADERS)
+      state.store.with_lock("#{@base_url.to_s}/#{package_name}", state.config) do
+        metadata_url = @base_url.relativize("/#{package_name}").to_s
+        manifest = @skip_cache ? @client_pool.client { |http|
+          http.get(metadata_url, HEADERS).body
+        } : @client_pool.fetch(metadata_url, HEADERS)
         find_valid_version(manifest, pinned_version ? Utils::Semver.parse(pinned_version) : self.version)
       end
     end
