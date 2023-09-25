@@ -532,12 +532,13 @@ module Zap::Resolver
   # See: https://docs.npmjs.com/cli/v9/commands/npm-install?v=true#description
   # Returns a {version, name} tuple
   private def self.parse_new_package(cli_input : String, *, directory : String) : {String?, String}
-    fs_path = Path.new(cli_input).expand
-    if ::File.directory?(fs_path)
+    input_is_path = cli_input.starts_with?(".") || cli_input.starts_with?("/") || cli_input.starts_with?("~")
+    fs_path = input_is_path ? Path.new(cli_input).expand : nil
+    if fs_path && ::File.directory?(fs_path)
       # 1. npm install <folder>
       return "file:#{fs_path.relative_to(directory)}", ""
       # 2. npm install <tarball file>
-    elsif ::File.file?(fs_path) && (fs_path.to_s.ends_with?(".tgz") || fs_path.to_s.ends_with?(".tar.gz") || fs_path.to_s.ends_with?(".tar"))
+    elsif fs_path && ::File.file?(fs_path) && (fs_path.to_s.ends_with?(".tgz") || fs_path.to_s.ends_with?(".tar.gz") || fs_path.to_s.ends_with?(".tar"))
       return "file:#{fs_path.relative_to(directory)}", ""
       # 3. npm install <tarball url>
     elsif cli_input.starts_with?("https://") || cli_input.starts_with?("http://")
