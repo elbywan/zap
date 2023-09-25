@@ -8,8 +8,8 @@ struct Zap::Store
   def initialize(store_path : String)
     @global_package_store_path = ::File.join(store_path, PACKAGES_STORE_PREFIX)
     @global_locks_store_path = ::File.join(store_path, LOCKS_STORE_PREFIX)
-    Dir.mkdir_p(@global_package_store_path)
-    Dir.mkdir_p(@global_locks_store_path)
+    Utils::Directories.mkdir_p(@global_package_store_path)
+    Utils::Directories.mkdir_p(@global_locks_store_path)
   end
 
   def package_path(name : String, version : String)

@@ -6,11 +6,11 @@ module Zap::Utils::Directories
 
     path.each_parent do |parent|
       Dir.mkdir(parent, mode)
-    rescue e : ::File::AlreadyExistsError
+    rescue ::File::AlreadyExistsError | ::File::AccessDeniedError
       # ignore
     end
     Dir.mkdir(path, mode)
-  rescue e : ::File::AlreadyExistsError
+  rescue ::File::AlreadyExistsError | ::File::AccessDeniedError
     # ignore
   end
 end

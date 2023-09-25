@@ -25,7 +25,7 @@ module Zap
     getter store_path : String = ::File.expand_path(
       (
         {% if flag?(:windows) %}
-          "%LocalAppData%/.zap/store"
+          "#{ENV["LocalAppData"]}/.zap/store"
         {% else %}
           "~/.zap/store"
         {% end %}
@@ -46,7 +46,13 @@ module Zap
     @[Env]
     getter deferred_output : Bool = !!ENV["CI"]?
     @[Env]
-    getter flock_scope : FLockScope = Config::FLockScope::Global
+    getter flock_scope : FLockScope = (
+      {% if flag?(:windows) %}
+        Config::FLockScope::None
+      {% else %}
+        Config::FLockScope::Global
+      {% end %}
+    )
     @[Env]
     getter file_backend : Backend::Backends = (
       {% if flag?(:darwin) %}
@@ -116,12 +122,19 @@ module Zap
 
     def check_if_store_is_linkeable : Config
       if self.file_backend.hardlink?
-        # Check if the store can be used (not on another mount point for instance)
-        can_link_store = Utils::File.can_hardlink?(self.store_path, self.prefix)
+        can_link_store = begin
+          store_exists = ::File.exists?(self.store_path)
+          Utils::Directories.mkdir_p(self.store_path) unless store_exists
+          # Check if the store can be used (not on another mount point for instance)
+          Utils::File.can_hardlink?(self.store_path, self.prefix)
+        rescue
+          false
+        end
+
         unless can_link_store
           linkeable_ancestor = Utils::File.linkeable_ancestor?(Path.new(self.prefix))
           if linkeable_ancestor
-            return self.copy_with(store_path: "#{linkeable_ancestor}/.zap/store")
+            return self.copy_with(store_path: Path.new("#{linkeable_ancestor}/.zap/store").to_s)
           else
             Log.warn { "The store cannot be linked to the project because it is not on the same mount point." }
             Log.warn { "The store will be copied instead of linked." }
