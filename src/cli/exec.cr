@@ -8,7 +8,7 @@ class Zap::CLI
 
     separator("Options")
 
-    parser.on("--parallel", "Run all commands in parallel without any kind of topological ordering.") do
+    parser.on("--parallel", "Run all commands in parallel without any kind of topological ordering. #{"[env: ZAP_EXEC_PARALLEL]".colorize.dim}") do
       @command_config = exec_config.copy_with(parallel: true)
     end
 

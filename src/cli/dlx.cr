@@ -14,7 +14,7 @@ class Zap::CLI
     parser.on("-p PACKAGE", "--package PACKAGE", "The package or packages to install.") do |package|
       dlx_config.packages << package
     end
-    parser.on("-q", "--quiet", "Mute most of the output coming from zap.") do |package|
+    parser.on("-q", "--quiet", "Mute most of the output coming from zap. #{"[env: ZAP_DLX_QUIET]".colorize.dim}") do |package|
       @command_config = dlx_config.copy_with(quiet: true)
     end
 

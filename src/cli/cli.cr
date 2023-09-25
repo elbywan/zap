@@ -170,22 +170,22 @@ module Zap
     macro common_options(sub = false)
       {% if sub %}subSeparator{% else %}separator{% end %}("Common", early_line_break: false)
 
-      parser.on("-C PATH", "--dir PATH", "Use PATH as the root directory of the project.") do |path|
+      parser.on("-C PATH", "--dir PATH", "Use PATH as the root directory of the project. #{"[env: ZAP_PREFIX]".colorize.dim}") do |path|
         @config = @config.copy_with(prefix: Path.new(path).expand.to_s, global: false)
       end
 
-      parser.on("--concurrency NB", "Set the maximum number of tasks that will be run in parallel. (default: 5)") do |concurrency|
+      parser.on("--concurrency NB", "Set the maximum number of tasks that will be run in parallel. (default: 5) #{"[env: ZAP_CONCURRENCY]".colorize.dim}") do |concurrency|
         @config = @config.copy_with(concurrency: concurrency.to_i32)
       end
 
-      parser.on("--deferred-output", "Do not print the output in real time when running multiple scripts in parallel but instead defer it to have a nicer packed output. (default: false unless CI)") do
+      parser.on("--deferred-output", "Do not print the output in real time when running multiple scripts in parallel but instead defer it to have a nicer packed output. (default: false unless CI) #{"[env: ZAP_DEFERRED_OUTPUT]".colorize.dim}") do
         @config = @config.copy_with(deferred_output: true)
       end
 
       parser.on(
         "--file-backend BACKEND",
         <<-DESCRIPTION
-        The backend to use when linking packages on disk.
+        The backend to use when linking packages on disk. #{"[env: ZAP_FILE_BACKEND]".colorize.dim}
         Possible values:
           - clonefile (default on macOS - macOS only)
           - hardlink  (default on linux)
@@ -199,7 +199,7 @@ module Zap
       parser.on(
         "--flock-scope SCOPE",
         <<-DESCRIPTION
-        Set the scope of the file lock mechanism used to prevent store corruption.
+        Set the scope of the file lock mechanism used to prevent store corruption. #{"[env: ZAP_FLOCK_SCOPE]".colorize.dim}
         Possible values:
           - global (default) : The lock is global to the whole store. Slower, but will not hit the maximum number of open files limit.
           - package : The lock is scoped to the current package. Faster, but may hit the default maximum number of open files limit.
@@ -218,7 +218,7 @@ module Zap
         exit
       end
 
-      parser.on("--silent", "Minimize the output.") do
+      parser.on("--silent", "Minimize the output. #{"[env: ZAP_SILENT]".colorize.dim}") do
         @config = @config.copy_with(silent: true)
       end
 
@@ -237,15 +237,15 @@ module Zap
         @config = @config.copy_with(filters: filters)
       end
 
-      parser.on("--ignore-workspaces", "Will completely ignore workspaces when applying the command.") do
+      parser.on("--ignore-workspaces", "Will completely ignore workspaces when applying the command. #{"[env: ZAP_NO_WORKSPACES]".colorize.dim}") do
         @config = @config.copy_with(no_workspaces: true)
       end
 
-      parser.on("-r", "--recursive", "Will apply the command to all packages in the workspace.") do
+      parser.on("-r", "--recursive", "Will apply the command to all packages in the workspace. #{"[env: ZAP_RECURSIVE]".colorize.dim}") do
         @config = @config.copy_with(recursive: true)
       end
 
-      parser.on("-w", "--workspace-root", "Will apply the command to the root workspace package.") do
+      parser.on("-w", "--workspace-root", "Will apply the command to the root workspace package. #{"[env: ZAP_ROOT_WORKSPACE]".colorize.dim}") do
         @config = @config.copy_with(root_workspace: true)
       end
     end

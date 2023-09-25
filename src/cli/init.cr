@@ -9,7 +9,7 @@ class Zap::CLI
 
     separator("Options")
 
-    parser.on("-y", "--yes", %(Automatically answer "yes" to any prompts that zap might print on the command line.)) do |package|
+    parser.on("-y", "--yes", %(Automatically answer "yes" to any prompts that zap might print on the command line. #{"[env: ZAP_INIT_YES]".colorize.dim})) do |package|
       @command_config = init_config.copy_with(yes: true)
     end
 

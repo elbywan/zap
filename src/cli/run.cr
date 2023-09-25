@@ -8,11 +8,11 @@ class Zap::CLI
 
     separator("Options")
 
-    parser.on("--if-present", "Will prevent exiting with status code != 0 when the script is not found.") do
+    parser.on("--if-present", "Will prevent exiting with status code != 0 when the script is not found. #{"[env: ZAP_RUN_IF_PRESENT]".colorize.dim}") do
       @command_config = run_config.copy_with(if_present: true)
     end
 
-    parser.on("--parallel", "Run all scripts in parallel without any kind of topological ordering.") do
+    parser.on("--parallel", "Run all scripts in parallel without any kind of topological ordering #{"[env: ZAP_RUN_PARALLEL]".colorize.dim}.") do
       @command_config = run_config.copy_with(parallel: true)
     end
 
