@@ -6,6 +6,8 @@ const childProcess = require("child_process");
 
 const packageName = `@zap.org/${process.platform}-${process.arch}`;
 
+BIN_NAME = process.platform === "win32" ? "zap.exe" : "zap";
+
 let modulePath = "";
 
 try {
@@ -27,11 +29,11 @@ if (!modulePath) {
 }
 
 // The actual binary is located in the [platform]-[arch] package's bin directory.
-const binaryPath = path.join(path.dirname(modulePath), "bin", "zap");
+const binaryPath = path.join(path.dirname(modulePath), "bin", BIN_NAME);
 
 // Attempt to replace this node.js script with the binary.
 try {
-  const targetPath = path.join(__dirname, "zap");
+  const targetPath = path.join(__dirname, BIN_NAME);
   const intermediatePath = path.join(__dirname, "zap.bin");
 
   // Make the binary executable.
