@@ -7,16 +7,16 @@ module Zap::Installer::Classic
 
       hoist_location = location
       while !hoist_location.nil?
-        parent_location = hoist_location.parent.as(LocationNode?)
-        return update_location(hoist_location) if parent_location.nil?
-        case action = hoisting_action?(parent_location)
+        location = hoist_location.parent.as(LocationNode?)
+        hoist_location.value.hoisted_packages[dependency.name] = dependency
+        return update_location(hoist_location) if location.nil?
+        case action = hoisting_action?(location)
         in .no_install?
           return
         in .stop?
           return update_location(hoist_location)
         in .continue?
-          parent_location.value.hoisted_packages[dependency.name] = dependency
-          hoist_location = parent_location
+          hoist_location = location
         end
       end
     end
@@ -78,21 +78,21 @@ module Zap::Installer::Classic
 
       package = location.value.package
 
-      # the package depends on dependency but the version of dependency is not compatible
+      # stop hoisting if the package at the current location depends on dependency but the version of dependency is not compatible
       package_dep = package.dependencies.try(&.[dependency.name]?) || package.optional_dependencies.try(&.[dependency.name]?)
       if package_dep
         version = package_dep.is_a?(String) ? package_dep : package_dep.version
         return HoistAction::Stop unless Utils::Semver.parse(version).satisfies?(dependency.version)
       end
 
-      # the package has a peer dependency but the version of dependency is not compatible
+      # stop hoisting if the package at the current location has a peer dependency but the version of dependency is not compatible
       package_peer = package.peer_dependencies.try(&.[dependency.name]?)
       if package_peer
         version = package_peer.is_a?(String) ? package_peer : package_peer.version
         return HoistAction::Stop unless Utils::Semver.parse(version).satisfies?(dependency.version)
       end
 
-      # dependency has a peer dependency on package, no matter the version
+      # stop hoisting if the dependency has a peer dependency on package, no matter the version
       if dependency.peer_dependencies.try(&.[package.name]?)
         return HoistAction::Stop
       end
