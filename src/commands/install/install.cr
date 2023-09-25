@@ -26,6 +26,7 @@ module Zap::Commands::Install
   )
     state = uninitialized State
     null_io = File.open(File::NULL, "w")
+    reporter ||= config.silent ? Reporter::Interactive.new(null_io) : Reporter::Interactive.new
     config = config.check_if_store_is_linkeable
     store = Zap::Store.new(config.store_path)
     unmet_peers_hash = nil
@@ -40,7 +41,6 @@ module Zap::Commands::Install
       Log.debug { "Configuration: #{config.pretty_inspect}" }
 
       lockfile = Lockfile.new(config.prefix)
-      reporter ||= config.silent ? Reporter::Interactive.new(null_io) : Reporter::Interactive.new
       # Merge zap config from package.json
       install_config = install_config.merge_pkg(inferred_context.main_package)
       Log.debug { "Install Configuration: #{install_config.pretty_inspect}" }
