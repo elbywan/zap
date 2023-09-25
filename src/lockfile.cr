@@ -285,9 +285,10 @@ class Zap::Lockfile
       *,
       include_dev : Bool = true,
       include_optional : Bool = true,
+      sort : Bool = false,
       &block : (String, String | Package::Alias, DependencyType) -> T
     ) : Nil forall T
-      pinned_dependencies.each { |key, val| block.call(key, val, find_dependency_type(key)) }
+      (sort ? pinned_dependencies.to_a.sort_by!(&.[0]).to_h : pinned_dependencies).each { |key, val| block.call(key, val, find_dependency_type(key)) }
     end
 
     private def find_dependency_type(name : String)

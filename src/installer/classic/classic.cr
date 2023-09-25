@@ -72,7 +72,7 @@ module Zap::Installer::Classic
           pkg_name = workspace_or_main_package.name
         end
         root = state.lockfile.roots[pkg_name]
-        root.each_dependency { |name, version_or_alias|
+        root.each_dependency(sort: state.lockfile.read_status.not_found?) { |name, version_or_alias|
           pkg = state.lockfile.get_package?(name, version_or_alias)
           next unless pkg
           dependency_queue << DependencyItem.new(

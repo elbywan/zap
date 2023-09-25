@@ -6,7 +6,7 @@ class Zap::Utils::OrderedSetConverter(T)
     if value.nil? || value.empty?
       nil.to_yaml(yaml)
     else
-      value.to_a.sort.to_yaml(yaml)
+      value.to_a.sort!.to_yaml(yaml)
     end
   end
 
@@ -24,7 +24,7 @@ class Zap::Utils::OrderedHashConverter(T, U)
     if value.nil? || value.empty?
       nil.to_yaml(yaml)
     else
-      value.to_a.sort { |a, b| a[0] <=> b[0] }.to_h.to_yaml(yaml)
+      value.to_a.sort_by!(&.[0]).to_h.to_yaml(yaml)
     end
   end
 
@@ -42,7 +42,7 @@ class Zap::Utils::OrderedSafeHashConverter(T, U)
     if value.nil? || value.empty?
       nil.to_yaml(yaml)
     else
-      value.to_a.sort { |a, b| a[0] <=> b[0] }.to_h.to_yaml(yaml)
+      value.to_a.sort_by!(&.[0]).to_h.to_yaml(yaml)
     end
   end
 
