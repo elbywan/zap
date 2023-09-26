@@ -103,10 +103,6 @@ class Zap::Reporter::Interactive < Zap::Reporter
       @update_channel.send 0 if @written
       Fiber.yield
       @update_channel.close
-      if @written
-        @out.flush
-        @out.print NEW_LINE
-      end
       @written = false
       @lines.set(0)
     rescue Channel::ClosedError
@@ -187,7 +183,10 @@ class Zap::Reporter::Interactive < Zap::Reporter
       packing_header = header("🎁", "Packing…")
       loop do
         msg = @update_channel.receive?
-        break if msg.nil?
+        if msg.nil?
+          @io_lock.synchronize { @out << NEW_LINE }
+          break
+        end
         output = String.build do |str|
           str << @cursor.clear_lines(@lines.get, :up)
           str << resolving_header
@@ -222,7 +221,10 @@ class Zap::Reporter::Interactive < Zap::Reporter
       installing_header = header("💽", "Installing…", :magenta)
       loop do
         msg = @update_channel.receive?
-        break if msg.nil?
+        if msg.nil?
+          @io_lock.synchronize { @out << NEW_LINE }
+          break
+        end
         next if @installing_packages.get == 0
         @io_lock.synchronize do
           @out << @cursor.clear_line
@@ -240,7 +242,10 @@ class Zap::Reporter::Interactive < Zap::Reporter
     Utils::Thread.worker do
       loop do
         msg = @update_channel.receive?
-        break if msg.nil?
+        if msg.nil?
+          @io_lock.synchronize { @out << NEW_LINE }
+          break
+        end
         @io_lock.synchronize do
           @out << @cursor.clear_line
           @out << building_header
