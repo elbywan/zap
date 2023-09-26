@@ -1,4 +1,5 @@
 require "yaml"
+require "digest"
 require "./utils/**"
 
 alias DependencyType = Zap::Package::DependencyType

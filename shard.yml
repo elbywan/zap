@@ -14,6 +14,8 @@ crystalline:
 dependencies:
   crystar:
     github: naqvis/crystar
+  msgpack:
+    github: crystal-community/msgpack-crystal
   term-cursor:
     github: crystal-term/cursor
 

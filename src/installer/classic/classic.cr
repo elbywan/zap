@@ -113,7 +113,7 @@ module Zap::Installer::Classic
           if location = install_location
             Log.debug { "(#{dependency.key}) Installed to: #{location.node_modules.parent}" if did_install }
             if dependency.package_extensions_updated
-              Log.debug { "(#{dependency.key}) Package extensions updated, removing old folder '#{location.node_modules}'…" }
+              Log.debug { "(#{dependency.key}) Package extensions updated, removing old node modules folder '#{location.node_modules}'…" }
               FileUtils.rm_rf(location.node_modules)
             end
           else

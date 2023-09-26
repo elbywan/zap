@@ -1,7 +1,7 @@
 require "./config"
 require "../../config"
 require "../../npmrc"
-require "../../resolvers/resolver"
+require "../../resolver"
 require "../../installer/**"
 require "../../workspaces"
 
@@ -25,8 +25,7 @@ module Zap::Commands::Install
     store : Zap::Store? = nil
   )
     state = uninitialized State
-    null_io = File.open(File::NULL, "w")
-    reporter ||= config.silent ? Reporter::Interactive.new(null_io) : Reporter::Interactive.new
+    reporter ||= config.silent ? Reporter::Null.new : Reporter::Interactive.new
     config = config.check_if_store_is_linkeable
     store = Zap::Store.new(config.store_path)
     unmet_peers_hash = nil
@@ -117,10 +116,8 @@ module Zap::Commands::Install
 
     # Print the report
     state.reporter.report_done(realtime, memory, state.install_config, unmet_peers: unmet_peers_hash)
-    null_io.try &.close
   rescue e
     reporter.try &.error(e)
-    null_io.try &.close
     exit ErrorCodes::INSTALL_COMMAND_FAILED.to_i32
   end
 

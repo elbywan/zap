@@ -1,4 +1,4 @@
-require "../reporters/*"
+require "../reporter/*"
 
 module Zap::Utils
   class GitUrl

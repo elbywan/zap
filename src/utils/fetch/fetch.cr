@@ -6,8 +6,8 @@ require "../macros"
 require "../pool"
 require "./cache"
 
-class Zap::Utils::Fetch
-  include Zap::Utils::DedupeLock(String)
+class Zap::Utils::Fetch(T)
+  include Zap::Utils::DedupeLock(T)
   include Utils::Macros
 
   Log       = Zap::Log.for(self)
@@ -16,7 +16,7 @@ class Zap::Utils::Fetch
   getter base_url : String
   @pool : Pool(HTTP::Client)
 
-  def initialize(@base_url : String, @pool_max_size = 20, @cache : Cache = Cache::InMemory.new, &block : HTTP::Client ->)
+  def initialize(@base_url : String, @pool_max_size = 20, @cache : Cache(T) = Cache::InMemory(T).new, &block : HTTP::Client ->)
     @pool = Pool(HTTP::Client).new(@pool_max_size) do
       HTTP::Client.new(URI.parse(base_url)).tap do |client|
         block.call(client)
@@ -45,7 +45,7 @@ class Zap::Utils::Fetch
     end
   end
 
-  def fetch(*args, **kwargs, &block : HTTP::Client ->) : String
+  def fetch_with_cache(*args, **kwargs, &transform_body : (String -> T)) : T
     url = args[0]
     full_url = @base_url + url
 
@@ -56,12 +56,10 @@ class Zap::Utils::Fetch
     # Dedupe requests by having an inflight channel for each URL
     dedupe(url) do
       client do |http|
-        block.call(http)
-
         expiry = nil
         cache_control_directives = nil
         etag = nil
-        cached_body = @cache.get(full_url) do
+        cached_value = @cache.get(full_url) do
           http.head(*args, **kwargs) do |response|
             raise "Invalid status code from #{url} (#{response.status_code})" unless response.status_code == 200
             cache_control_directives, expiry = extract_cache_headers(response)
@@ -69,10 +67,10 @@ class Zap::Utils::Fetch
           end
         end
 
-        # Attempt to extract the body from the cache again but this time with the etag
-        if cached_body
-          @cache.set(full_url, cached_body, expiry, etag)
-          next cached_body
+        # Attempt to extract the cached value from the cache again but this time with the etag
+        if cached_value
+          @cache.set(full_url, cached_value, expiry, etag)
+          next cached_value
         end
 
         http.get(*args, **kwargs) do |response|
@@ -88,15 +86,17 @@ class Zap::Utils::Fetch
             raise "Content-Length mismatch for #{url} (#{content_length} != #{response_body.bytesize})"
           end
 
-          @cache.set(full_url, response_body, expiry, etag)
-          next response_body
+          transformed_body = transform_body.call(response_body)
+
+          @cache.set(full_url, transformed_body, expiry, etag)
+          next transformed_body
         end
       end
     end
   end
 
-  def fetch(*args, **kwargs) : String
-    fetch(*args, **kwargs) { }
+  def fetch_with_cache(*args, **kwargs) : T
+    fetch_with_cache(*args, **kwargs) { |body| body }
   end
 
   def close

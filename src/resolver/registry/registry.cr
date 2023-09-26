@@ -1,11 +1,11 @@
 require "uri"
-require "../utils/fetch"
+require "../../utils/fetch"
 require "digest"
 require "compress/gzip"
 require "base64"
-require "./resolver"
-require "../package"
-require "../utils/semver"
+require "../../package"
+require "../../utils/semver"
+require "./manifest"
 
 # See: https://github.com/npm/registry/blob/master/docs/responses/package-metadata.md#package-metadata
 ACCEPT_HEADER = "application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*"
@@ -13,10 +13,10 @@ HEADERS       = HTTP::Headers{"Accept" => ACCEPT_HEADER}
 
 module Zap::Resolver
   struct Registry < Base
-    @@client_pool_by_registry : Hash(String, Utils::Fetch) = Hash(String, Utils::Fetch).new
+    @@client_pool_by_registry : Hash(String, Utils::Fetch(Manifest)) = Hash(String, Utils::Fetch(Manifest)).new
     @@client_pool_by_registry_lock = Mutex.new
 
-    @client_pool : Utils::Fetch
+    @client_pool : Utils::Fetch(Manifest)
     getter base_url : URI
     @base_url_str : String
 
@@ -130,7 +130,7 @@ module Zap::Resolver
 
     # # PRIVATE ##########################
 
-    private def find_matching_client_pool(url : String) : {String, Utils::Fetch}
+    private def find_matching_client_pool(url : String) : {String, Utils::Fetch(Manifest)}
       @@client_pool_by_registry_lock.synchronize do
         # Find if an existing pool matches the url
         @@client_pool_by_registry.find do |registry_url, _|
@@ -149,11 +149,12 @@ module Zap::Resolver
       end
     end
 
-    private def init_client_pool(base_url : String) : Utils::Fetch
+    private def init_client_pool(base_url : String) : Utils::Fetch(Manifest)
       # Cache the metadata in the store
-      cache = Utils::Fetch::Cache::InStore.new(
+      cache = Utils::Fetch::Cache::InStore(Manifest).new(
         @state.config.store_path,
-        bypass_staleness_checks: @state.install_config.prefer_offline
+        bypass_staleness_checks: @state.install_config.prefer_offline,
+        serializer: Utils::Fetch::Cache::InStore::MessagePackSerializer(Manifest).new
       )
 
       authentication = @state.npmrc.registries_auth[@base_url_str]?
@@ -195,113 +196,24 @@ module Zap::Resolver
       }
     end
 
-    private def find_valid_version(manifest_str : String, version : Utils::Semver::Range | String) : Package
-      Log.debug { "(#{package_name}@#{@version}) Finding valid version/dist-tag inside metadata: #{version}" }
-      matching = nil
-      manifest_parser = JSON::PullParser.new(manifest_str)
-      manifest_parser.read_begin_object
-      dist_tag = version.is_a?(String) ? version : nil
-      semantic_version = version.is_a?(Utils::Semver::Range) ? version : nil
-      versions_raw = nil
-      loop do
-        break if manifest_parser.kind.end_object?
-        key = manifest_parser.read_object_key
-        if key == "dist-tags"
-          if semantic_version
-            # No need to parse dist-tags, we already have a target version
-            manifest_parser.skip
-          elsif dist_tag
-            # Find the version that matches the dist-tag
-            semantic_version = parse_dist_tags_field(manifest_parser, dist_tag)
-            break unless semantic_version
-            if versions_raw
-              # Parse the versions field that was stored as a raw string
-              versions_parser = JSON::PullParser.new(versions_raw)
-              # Find the version that matches the dist-tag
-              matching = parse_versions_field(versions_parser, semantic_version)
-              break
-            end
-          end
-        elsif key == "versions"
-          if semantic_version
-            # Find the version that matches the semver formatted specifier
-            matching = parse_versions_field(manifest_parser, semantic_version)
-            break
-          else
-            # It means that the dist-tags field was not parsed yet
-            # We store the versions field as a raw string for later consumption
-            versions_raw = manifest_parser.read_raw
-          end
-        else
-          # Skip the rest of the fields
-          manifest_parser.skip
-        end
-      end
-
-      unless matching
-        raise "No version matching range or dist-tag #{version} for package #{package_name} found in the module registry"
-      end
-      Package.from_json matching[1]
-    end
-
-    private def parse_dist_tags_field(parser : JSON::PullParser, dist_tag : String) : String?
-      semantic_version = nil
-      parser.read_begin_object
-      loop do
-        break parser.read_end_object if parser.kind.end_object?
-        if !semantic_version
-          tag = parser.read_object_key
-          if tag == dist_tag
-            version_str = parser.read_string
-            # Store it as an exact specifier for later consumption
-            semantic_version = version_str
-          else
-            parser.skip
-          end
-        else
-          # skip key
-          parser.skip
-          # skip value
-          parser.skip
-        end
-      end
-      semantic_version
-    end
-
-    private def parse_versions_field(parser : JSON::PullParser, semantic_version : Utils::Semver::Range | String) : {Utils::Semver::Version, String}?
-      parser.read_begin_object
-      matching = nil
-      loop do
-        break parser.read_end_object if parser.kind.end_object?
-        version_str = parser.read_object_key
-        semver = Utils::Semver::Version.parse(version_str)
-        if (semantic_version.is_a?(String) || semantic_version.exact_match?) && version_str == semantic_version.to_s
-          # For exact comparisons - we compare the version string
-          matching = {semver, parser.read_raw}
-          break
-        elsif semantic_version.is_a?(Utils::Semver::Range) && (matching.nil? || matching[0] < semver)
-          # For range comparisons - take the highest version that matches the range
-          if semantic_version.satisfies?(version_str)
-            matching = {semver, parser.read_raw}
-          else
-            parser.skip
-          end
-        else
-          parser.skip
-        end
-      end
-      matching
-    end
-
     private def fetch_metadata(*, pinned_version : String? = nil) : Package?
       Log.debug { "(#{package_name}@#{version}) Fetching metadata… #{@skip_cache ? "(skipping cache)" : ""} #{pinned_version ? "[pinned_version #{pinned_version}]" : ""}" }
       state.store.with_lock("#{@base_url.to_s}/#{package_name}", state.config) do
         metadata_url = @base_url.relativize("/#{package_name}").to_s
         manifest = @skip_cache ? @client_pool.client { |http|
-          http.get(metadata_url, HEADERS).body
-        } : @client_pool.fetch(metadata_url, HEADERS)
-        find_valid_version(manifest, pinned_version ? Utils::Semver.parse(pinned_version) : self.version)
+          Manifest.new(http.get(metadata_url, HEADERS).body)
+        } : @client_pool.fetch_with_cache(metadata_url, HEADERS) { |body| Manifest.new(body) }
+        Log.debug { "(#{package_name}@#{@version}) Checking the registry metadata for a match against the version/dist-tag" }
+        raw_metadata = manifest.get_raw_metadata(pinned_version ? Utils::Semver.parse(pinned_version) : self.version)
+        unless raw_metadata
+          raise "No version matching range or dist-tag #{version} for package #{package_name} found in the module registry"
+        end
+        Package.from_json(raw_metadata)
       end
+    end
+
+    private def to_manifest(body : String) : Manifest
+      Manifest.new(body)
     end
   end
 end

@@ -119,8 +119,8 @@ module Zap::Backend
   protected def self.prepare(dependency : Package, node_modules : Path | String, *, store : Store, mkdir_parent = false, aliased_name : String? = nil) : {Path, Path, Bool}
     src_path = store.package_path(dependency.name, dependency.version)
     dest_path = node_modules / (aliased_name || dependency.name)
-    exists = Installer.package_already_installed?(dependency, dest_path)
-    Utils::Directories.mkdir_p(mkdir_parent ? dest_path.dirname : dest_path) unless exists
-    {src_path, dest_path, exists}
+    already_installed = Installer.package_already_installed?(dependency, dest_path)
+    Utils::Directories.mkdir_p(mkdir_parent ? dest_path.dirname : dest_path) unless already_installed
+    {src_path, dest_path, already_installed}
   end
 end

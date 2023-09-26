@@ -5,17 +5,6 @@ require "../utils/timers"
 class Zap::Reporter::Interactive < Zap::Reporter
   @lock = Mutex.new
   @out : IO
-
-  def output
-    @out
-  end
-
-  def output_sync
-    @lock.synchronize do
-      yield @out
-    end
-  end
-
   @lines = Atomic(Int32).new(0)
   @written : Bool = false
   @logs : Array(String) = [] of String
@@ -40,65 +29,75 @@ class Zap::Reporter::Interactive < Zap::Reporter
     end
   end
 
-  def on_resolving_package
+  def output : IO
+    @out
+  end
+
+  def output_sync(&block : IO ->) : Nil
+    @lock.synchronize do
+      yield @out
+    end
+  end
+
+  def on_resolving_package : Nil
     @resolving_packages.add(1)
     update()
   end
 
-  def on_package_resolved
+  def on_package_resolved : Nil
     @resolved_packages.add(1)
     update()
   end
 
-  def on_downloading_package
+  def on_downloading_package : Nil
     @downloading_packages.add(1)
     update()
   end
 
-  def on_package_downloaded
+  def on_package_downloaded : Nil
     @downloaded_packages.add(1)
     update()
   end
 
-  def on_packing_package
+  def on_packing_package : Nil
     @packing_packages.add(1)
     update()
   end
 
-  def on_package_packed
+  def on_package_packed : Nil
     @packed_packages.add(1)
     update()
   end
 
-  def on_package_installed
+  def on_package_installed : Nil
     @installed_packages.add(1)
     update()
   end
 
-  def on_installing_package
+  def on_installing_package : Nil
     @installing_packages.add(1)
     update()
   end
 
-  def on_package_built
+  def on_package_built : Nil
     @built_packages.add(1)
     update()
   end
 
-  def on_building_package
+  def on_building_package : Nil
     @building_packages.add(1)
     update()
   end
 
-  def on_package_added(pkg_key : String)
+  def on_package_added(pkg_key : String) : Nil
     @added_packages << pkg_key
   end
 
-  def on_package_removed(pkg_key : String)
+  def on_package_removed(pkg_key : String) : Nil
     @removed_packages << pkg_key
   end
 
-  def stop
+  def stop : Nil
     @lock.synchronize do
       @debounced_update.abort
       @update_channel.send 0 if @written
@@ -115,13 +114,13 @@ class Zap::Reporter::Interactive < Zap::Reporter
     end
   end
 
-  def info(str : String)
+  def info(str : String) : Nil
     @lock.synchronize do
       @out << %( ℹ #{str.colorize(:blue)}) << NEW_LINE
     end
   end
 
-  def warning(error : Exception, location : String? = "")
+  def warning(error : Exception, location : String? = "") : Nil
     @lock.synchronize do
       @out << header("⚠️", "Warning", :yellow) + location
       @out << NEW_LINE
@@ -131,7 +130,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
     end
   end
 
-  def error(error : Exception, location : String? = "")
+  def error(error : Exception, location : String? = "") : Nil
     @lock.synchronize do
       @out << NEW_LINE
       @out << header("❌", "Error(s):", :red) + location << NEW_LINE << NEW_LINE
@@ -141,7 +140,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
     end
   end
 
-  def errors(errors : Array({Exception, String}))
+  def errors(errors : Array({Exception, String})) : Nil
     @lock.synchronize do
       @out << NEW_LINE
       @out << header("❌", "Error(s):", :red) << NEW_LINE << NEW_LINE
@@ -153,21 +152,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
     end
   end
 
-  def update
-    @debounced_update.call
-  end
-
-  private def update_action
-    @lock.synchronize do
-      return if @update_channel.closed?
-      @written = true
-      @update_channel.send 0
-    rescue Channel::ClosedError
-      # Ignore
-    end
-  end
-
-  def prepend(bytes : Bytes)
+  def prepend(bytes : Bytes) : Nil
     @io_lock.synchronize do
       @out << @cursor.clear_lines(@lines.get, :up)
       @out << String.new(bytes)
@@ -177,7 +162,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
     update
   end
 
-  def prepend(str : String)
+  def prepend(str : String) : Nil
     @io_lock.synchronize do
       @out << @cursor.clear_lines(@lines.get, :up)
       @out << str
@@ -187,17 +172,13 @@ class Zap::Reporter::Interactive < Zap::Reporter
     update
   end
 
-  def log(str : String)
+  def log(str : String) : Nil
     @io_lock.synchronize do
       @logs << str
     end
   end
 
-  def header(emoji : String, str : String, color = :default)
-    %( ○ #{emoji} #{str.ljust(25).colorize(color).bright})
-  end
-
-  def report_resolver_updates
+  def report_resolver_updates : Nil
     @update_channel = Channel(Int32?).new
     Utils::Thread.worker do
       @lines.set(1)
@@ -235,7 +216,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
     end
   end
 
-  def report_installer_updates
+  def report_installer_updates : Nil
     @update_channel = Channel(Int32?).new
     Utils::Thread.worker do
       installing_header = header("💽", "Installing…", :magenta)
@@ -253,7 +234,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
     end
   end
 
-  def report_builder_updates
+  def report_builder_updates : Nil
     @update_channel = Channel(Int32?).new
     building_header = header("🧱", "Building…", :light_red)
     Utils::Thread.worker do
@@ -270,7 +251,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
     end
   end
 
-  def report_done(realtime, memory, install_config, *, unmet_peers : Hash(String, Hash(String, Set(String)))? = nil)
+  def report_done(realtime, memory, install_config, *, unmet_peers : Hash(String, Hash(String, Set(String)))? = nil) : Nil
     @io_lock.synchronize do
       if install_config.print_logs && @logs.size > 0
         @out << header("📝", "Logs", :blue)
@@ -356,10 +337,28 @@ class Zap::Reporter::Interactive < Zap::Reporter
     end
   end
 
+  def header(emoji : String, str : String, color = :default) : String
+    %( ○ #{emoji} #{str.ljust(25).colorize(color).bright})
+  end
+
   protected def self.format_pkg_keys(pkgs)
     pkgs.map { |pkg_key|
       parts = pkg_key.split('@')
       "#{parts[...-1].join('@').colorize.bold}#{("@#{parts.last}").colorize.dim}"
     }.sort!
+  end
+
+  private def update
+    @debounced_update.call
+  end
+
+  private def update_action
+    @lock.synchronize do
+      return if @update_channel.closed?
+      @written = true
+      @update_channel.send 0
+    rescue Channel::ClosedError
+      # Ignore
+    end
   end
 end
