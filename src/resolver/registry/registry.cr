@@ -151,18 +151,21 @@ module Zap::Resolver
 
     private def init_client_pool(base_url : String) : Utils::Fetch(Manifest)
       # Cache the metadata in the store
-      cache = Utils::Fetch::Cache::InStore(Manifest).new(
+
+      filesystem_cache = Utils::Fetch::Cache::InStore(Manifest).new(
         @state.config.store_path,
         bypass_staleness_checks: @state.install_config.prefer_offline,
         serializer: Utils::Fetch::Cache::InStore::MessagePackSerializer(Manifest).new
       )
+      # memory_cache = Utils::Fetch::Cache::InMemory(Manifest).new(fallback: filesystem_cache)
 
       authentication = @state.npmrc.registries_auth[@base_url_str]?
 
       Utils::Fetch.new(
         base_url,
         pool_max_size: @state.config.network_concurrency,
-        cache: cache
+        # cache: memory_cache
+        cache: filesystem_cache
       ) { |client|
         client.read_timeout = 10.seconds
         client.write_timeout = 1.seconds

@@ -341,7 +341,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
         @out << "took #{Utils::Various.format_time_span(realtime)} • ".colorize.dim
       end
       if memory
-        @out << "total memory allocated #{memory.humanize}B".colorize.dim
+        @out << "heap size #{GC.stats.heap_size.humanize}B • total memory allocated #{memory.humanize}B".colorize.dim
       end
       @out << NEW_LINE
     end

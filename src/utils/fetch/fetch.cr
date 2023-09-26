@@ -16,7 +16,12 @@ class Zap::Utils::Fetch(T)
   getter base_url : String
   @pool : Pool(HTTP::Client)
 
-  def initialize(@base_url : String, @pool_max_size = 20, @cache : Cache(T) = Cache::InMemory(T).new, &block : HTTP::Client ->)
+  def initialize(
+    @base_url : String,
+    @pool_max_size = 20,
+    @cache : Cache(T) = Cache::InMemory(T).new,
+    &block : HTTP::Client ->
+  )
     @pool = Pool(HTTP::Client).new(@pool_max_size) do
       HTTP::Client.new(URI.parse(base_url)).tap do |client|
         block.call(client)
