@@ -5,4 +5,5 @@ EQUALITY_FIXTURES = [
   {"1.2.3-beta", "1.2.3-beta", ["1.2.3-beta"], ["1.2.3-alpha"]},
   {"1.2.3+build", "1.2.3+build", ["1.2.3+otherbuild"], ["1.2.2+build"]},
   {"1.2.3-beta+build", "1.2.3-beta+build", ["1.2.3-beta+otherbuild"], ["1.2.2-beta+build"]},
+  {"0.0.2--canary.4566f4d.1", "0.0.2--canary.4566f4d.1", ["0.0.2--canary.4566f4d.1"], ["0.0.2--canary"]},
 ]

@@ -21,9 +21,14 @@ module Zap::Utils::Semver
     getter version : UInt128?
 
     def initialize(prerelease_string : String)
-      split_str = prerelease_string.split(".", 2)
-      @name = split_str[0]
-      @version = split_str[1]?.try(&.to_u128?)
+      split_str = prerelease_string.split(".")
+      if split_str.size === 1
+        @name = split_str[0]
+        @version = nil
+      else
+        @name = split_str[...-1].join('.')
+        @version = split_str.last.to_u128?
+      end
     end
 
     def <=>(other : self) : Int32
