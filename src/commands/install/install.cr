@@ -213,6 +213,7 @@ module Zap::Commands::Install
       )
     end
     state.pipeline.await
+  ensure
     state.reporter.stop
   end
 
@@ -293,8 +294,9 @@ module Zap::Commands::Install
     installer.prune_orphan_modules
     Log.debug { "• Installing packages" }
     installer.install
-    state.reporter.stop
     installer
+  ensure
+    state.reporter.stop
   end
 
   private def self.run_install_hooks(state : State, installer : Installer::Base)
@@ -304,25 +306,28 @@ module Zap::Commands::Install
       state.pipeline.reset
       # Process hooks in parallel
       state.pipeline.set_concurrency(state.config.concurrency)
-      state.reporter.report_builder_updates
-      installer.installed_packages_with_hooks.each do |package, path|
-        package.scripts.try do |scripts|
-          state.pipeline.process do
-            state.reporter.on_building_package
-            scripts.run_script(:preinstall, path, state.config)
-            scripts.run_script(:install, path, state.config)
-            scripts.run_script(:postinstall, path, state.config)
-          rescue e
-            error_messages << {e, "Error while running install scripts for #{package.name}@#{package.version} at #{path}\n\n#{e.message}"}
-            # raise Exception.new("Error while running install scripts for #{package.name}@#{package.version} at #{path}\n\n#{e.message}", e)
-          ensure
-            state.reporter.on_package_built
+      begin
+        state.reporter.report_builder_updates
+        installer.installed_packages_with_hooks.each do |package, path|
+          package.scripts.try do |scripts|
+            state.pipeline.process do
+              state.reporter.on_building_package
+              scripts.run_script(:preinstall, path, state.config)
+              scripts.run_script(:install, path, state.config)
+              scripts.run_script(:postinstall, path, state.config)
+            rescue e
+              error_messages << {e, "Error while running install scripts for #{package.name}@#{package.version} at #{path}\n\n#{e.message}"}
+              # raise Exception.new("Error while running install scripts for #{package.name}@#{package.version} at #{path}\n\n#{e.message}", e)
+            ensure
+              state.reporter.on_package_built
+            end
           end
         end
-      end
 
-      state.pipeline.await
-      state.reporter.stop
+        state.pipeline.await
+      ensure
+        state.reporter.stop
+      end
 
       state.reporter.errors(error_messages) if error_messages.size > 0
     end

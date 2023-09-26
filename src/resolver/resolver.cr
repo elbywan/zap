@@ -495,7 +495,6 @@ module Zap::Resolver
     end
     pipeline.await
   rescue e
-    state.reporter.stop
     raise e
   end
 

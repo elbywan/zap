@@ -23,6 +23,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
     @added_packages = SafeSet(String).new
     @removed_packages = SafeSet(String).new
     @update_channel = Channel(Int32?).new
+    @stop_channel = Channel(Nil).new
     @cursor = Term::Cursor
     @debounced_update = Utils::Debounce.new(0.05.seconds) do
       update_action
@@ -103,6 +104,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
       @update_channel.send 0 if @written
       Fiber.yield
       @update_channel.close
+      @stop_channel.receive
       @written = false
       @lines.set(0)
     rescue Channel::ClosedError
@@ -185,6 +187,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
         msg = @update_channel.receive?
         if msg.nil?
           @io_lock.synchronize { @out << NEW_LINE }
+          @stop_channel.send nil
           break
         end
         output = String.build do |str|
@@ -223,6 +226,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
         msg = @update_channel.receive?
         if msg.nil?
           @io_lock.synchronize { @out << NEW_LINE }
+          @stop_channel.send nil
           break
         end
         next if @installing_packages.get == 0
@@ -244,6 +248,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
         msg = @update_channel.receive?
         if msg.nil?
           @io_lock.synchronize { @out << NEW_LINE }
+          @stop_channel.send nil
           break
         end
         @io_lock.synchronize do
