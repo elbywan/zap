@@ -193,28 +193,27 @@ module Zap::Commands::Install
   end
 
   private def self.resolve_dependencies(state : State)
-    state.reporter.report_resolver_updates
-    # Resolve overrides
-    Log.debug { "• Resolving overrides" }
-    resolve_overrides(state)
-    # Extract name / version from the updated packages strings
-    Log.debug { "• Resolving added direct dependencies" }
-    state.context.scope_packages_and_paths(:command).each do |(package, path)|
-      Resolver.resolve_added_packages(package, state: state, directory: path.to_s)
+    state.reporter.report_resolver_updates do
+      # Resolve overrides
+      Log.debug { "• Resolving overrides" }
+      resolve_overrides(state)
+      # Extract name / version from the updated packages strings
+      Log.debug { "• Resolving added direct dependencies" }
+      state.context.scope_packages_and_paths(:command).each do |(package, path)|
+        Resolver.resolve_added_packages(package, state: state, directory: path.to_s)
+      end
+      Log.debug { "• Resolving dependencies" }
+      # Resolve and store dependencies
+      state.context.scope_packages(:install).each do |package|
+        Resolver.resolve_dependencies_of(
+          package,
+          state: state,
+          disable_cache_for_packages: state.install_config.updated_packages,
+          disable_cache: state.install_config.update_all
+        )
+      end
+      state.pipeline.await
     end
-    Log.debug { "• Resolving dependencies" }
-    # Resolve and store dependencies
-    state.context.scope_packages(:install).each do |package|
-      Resolver.resolve_dependencies_of(
-        package,
-        state: state,
-        disable_cache_for_packages: state.install_config.updated_packages,
-        disable_cache: state.install_config.update_all
-      )
-    end
-    state.pipeline.await
-  ensure
-    state.reporter.stop
   end
 
   private def self.resolve_overrides(state : State)
@@ -280,23 +279,22 @@ module Zap::Commands::Install
   end
 
   private def self.install_packages(state : State, pruned_direct_dependencies)
-    state.reporter.report_installer_updates
-    installer = case state.install_config.strategy
-                when .isolated?
-                  Installer::Isolated::Installer.new(state)
-                when .classic?, .classic_shallow?
-                  Installer::Classic::Installer.new(state)
-                else
-                  raise "Unsupported install strategy: #{state.install_config.strategy}"
-                end
-    Log.debug { "• Pruning previous install" }
-    installer.remove(pruned_direct_dependencies)
-    installer.prune_orphan_modules
-    Log.debug { "• Installing packages" }
-    installer.install
-    installer
-  ensure
-    state.reporter.stop
+    state.reporter.report_installer_updates do
+      installer = case state.install_config.strategy
+                  when .isolated?
+                    Installer::Isolated::Installer.new(state)
+                  when .classic?, .classic_shallow?
+                    Installer::Classic::Installer.new(state)
+                  else
+                    raise "Unsupported install strategy: #{state.install_config.strategy}"
+                  end
+      Log.debug { "• Pruning previous install" }
+      installer.remove(pruned_direct_dependencies)
+      installer.prune_orphan_modules
+      Log.debug { "• Installing packages" }
+      installer.install
+      installer
+    end
   end
 
   private def self.run_install_hooks(state : State, installer : Installer::Base)
@@ -307,26 +305,25 @@ module Zap::Commands::Install
       # Process hooks in parallel
       state.pipeline.set_concurrency(state.config.concurrency)
       begin
-        state.reporter.report_builder_updates
-        installer.installed_packages_with_hooks.each do |package, path|
-          package.scripts.try do |scripts|
-            state.pipeline.process do
-              state.reporter.on_building_package
-              scripts.run_script(:preinstall, path, state.config)
-              scripts.run_script(:install, path, state.config)
-              scripts.run_script(:postinstall, path, state.config)
-            rescue e
-              error_messages << {e, "Error while running install scripts for #{package.name}@#{package.version} at #{path}\n\n#{e.message}"}
-              # raise Exception.new("Error while running install scripts for #{package.name}@#{package.version} at #{path}\n\n#{e.message}", e)
-            ensure
-              state.reporter.on_package_built
+        state.reporter.report_builder_updates do
+          installer.installed_packages_with_hooks.each do |package, path|
+            package.scripts.try do |scripts|
+              state.pipeline.process do
+                state.reporter.on_building_package
+                scripts.run_script(:preinstall, path, state.config)
+                scripts.run_script(:install, path, state.config)
+                scripts.run_script(:postinstall, path, state.config)
+              rescue e
+                error_messages << {e, "Error while running install scripts for #{package.name}@#{package.version} at #{path}\n\n#{e.message}"}
+                # raise Exception.new("Error while running install scripts for #{package.name}@#{package.version} at #{path}\n\n#{e.message}", e)
+              ensure
+                state.reporter.on_package_built
+              end
             end
           end
-        end
 
-        state.pipeline.await
-      ensure
-        state.reporter.stop
+          state.pipeline.await
+        end
       end
 
       state.reporter.errors(error_messages) if error_messages.size > 0

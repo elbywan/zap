@@ -24,9 +24,9 @@ abstract class Zap::Reporter
   abstract def errors(errors : Array({Exception, String})) : Nil
   abstract def prepend(bytes : Bytes) : Nil
   abstract def log(str : String) : Nil
-  abstract def report_resolver_updates : Nil
-  abstract def report_installer_updates : Nil
-  abstract def report_builder_updates : Nil
+  abstract def report_resolver_updates(& : -> T) forall T
+  abstract def report_installer_updates(& : -> T) forall T
+  abstract def report_builder_updates(& : -> T) forall T
   abstract def report_done(realtime, memory, install_config, *, unmet_peers : Hash(String, Hash(String, Set(String)))? = nil) : Nil
   abstract def header(emoji : String, str : String, color = :default) : String
 

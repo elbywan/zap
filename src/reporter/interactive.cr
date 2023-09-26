@@ -176,7 +176,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
     end
   end
 
-  def report_resolver_updates : Nil
+  def report_resolver_updates(& : -> T) : T forall T
     @update_channel = Channel(Int32?).new
     Utils::Thread.worker do
       @lines.set(1)
@@ -216,9 +216,12 @@ class Zap::Reporter::Interactive < Zap::Reporter
         end
       end
     end
+    yield
+  ensure
+    self.stop
   end
 
-  def report_installer_updates : Nil
+  def report_installer_updates(& : -> T) : T forall T
     @update_channel = Channel(Int32?).new
     Utils::Thread.worker do
       installing_header = header("💽", "Installing…", :magenta)
@@ -238,9 +241,12 @@ class Zap::Reporter::Interactive < Zap::Reporter
         end
       end
     end
+    yield
+  ensure
+    self.stop
   end
 
-  def report_builder_updates : Nil
+  def report_builder_updates(& : -> T) : T forall T
     @update_channel = Channel(Int32?).new
     building_header = header("🧱", "Building…", :light_red)
     Utils::Thread.worker do
@@ -259,6 +265,9 @@ class Zap::Reporter::Interactive < Zap::Reporter
         end
       end
     end
+    yield
+  ensure
+    self.stop
   end
 
   def report_done(realtime, memory, install_config, *, unmet_peers : Hash(String, Hash(String, Set(String)))? = nil) : Nil

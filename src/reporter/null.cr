@@ -91,16 +91,16 @@ class Zap::Reporter::Null < Zap::Reporter
     # noop
   end
 
-  def report_resolver_updates : Nil
-    # noop
+  def report_resolver_updates(& : -> T) : T forall T
+    yield # noop
   end
 
-  def report_installer_updates : Nil
-    # noop
+  def report_installer_updates(& : -> T) : T forall T
+    yield # noop
   end
 
-  def report_builder_updates : Nil
-    # noop
+  def report_builder_updates(& : -> T) : T forall T
+    yield # noop
   end
 
   def report_done(realtime, memory, install_config, *, unmet_peers : Hash(String, Hash(String, Set(String)))? = nil) : Nil
