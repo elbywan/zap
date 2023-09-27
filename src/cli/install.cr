@@ -24,11 +24,14 @@ class Zap::CLI
     parser.on("--prefer-offline", "Bypass staleness checks for package metadata cached from the registry. #{"[env: ZAP_INSTALL_PREFER_OFFLINE]".colorize.dim}") do
       @command_config = install_config.copy_with(prefer_offline: true)
     end
+    parser.on("--frozen-lockfile <true|false>", "If true, will fail if the lockfile is outdated. #{"[env: ZAP_INSTALL_FROZEN_LOCKFILE]".colorize.dim}") do |frozen_lockfile|
+      @command_config = install_config.copy_with(frozen_lockfile: Utils::Various.str_to_bool(frozen_lockfile))
+    end
 
     subSeparator("Strategies")
 
     parser.on(
-      "--install-strategy STRATEGY",
+      "--install-strategy <classic|classic_shallow|isolated>",
       <<-DESCRIPTION
       The strategy used to install packages. #{"[env: ZAP_INSTALL_STRATEGY]".colorize.dim}
       Possible values:
@@ -65,6 +68,14 @@ class Zap::CLI
       end
       parser.on("--no-save", "Prevents saving to dependencies. #{"[env: ZAP_INSTALL_SAVE=false]".colorize.dim}") do
         @command_config = install_config.copy_with(save: false)
+      end
+    end
+
+    parser.missing_option do |option|
+      if option == "--frozen-lockfile"
+        @command_config = install_config.copy_with(frozen_lockfile: true)
+      else
+        raise OptionParser::MissingOption.new(option)
       end
     end
 

@@ -40,6 +40,7 @@ module Zap::Commands::Install
       Log.debug { "Configuration: #{config.pretty_inspect}" }
 
       lockfile = Lockfile.new(config.prefix)
+
       # Merge zap config from package.json
       install_config = install_config.merge_pkg(inferred_context.main_package)
       Log.debug { "Install Configuration: #{install_config.pretty_inspect}" }
@@ -47,11 +48,21 @@ module Zap::Commands::Install
       npmrc = Npmrc.new(config.prefix)
       Log.debug { "Npmrc: #{npmrc.pretty_inspect}" }
 
+      # Raise if frozen lockfile is set and the lockfile is not found
+      if install_config.frozen_lockfile && !lockfile.read_status.from_disk?
+        raise "The --frozen-lockfile flag is on but the lockfile is missing. Run `zap i --frozen-lockfile=false` to generate the lockfile and try again."
+      end
+
       # Print info about the install
       self.print_info(config, inferred_context, install_config, lockfile, workspaces)
 
       # Force hoisting if the hoisting options have changed
       if lockfile.update_hoisting_shasum(inferred_context.main_package)
+        if install_config.frozen_lockfile
+          # If the lockfile is frozen, raise an error
+          raise "The --frozen-lockfile flag is on but hoisting settings have been modified since the last lockfile update. Run `zap i --frozen-lockfile=false` to regenerate the lockfile and try again."
+        end
+
         if lockfile.read_status.from_disk?
           Log.debug { "Detected a change in hoisting options in the package.json file" }
           reporter.info("Hoisting options were modified. The packages will be re-installed.")
@@ -60,6 +71,11 @@ module Zap::Commands::Install
       end
       # Force metadata retrieval if the package extensions options have changed
       if lockfile.update_package_extensions_shasum(inferred_context.main_package)
+        if install_config.frozen_lockfile
+          # If the lockfile is frozen, raise an error
+          raise "The --frozen-lockfile flag is on but package extensions have been modified since the last lockfile update. Run `zap i --frozen-lockfile=false` to regenerate the lockfile and try again."
+        end
+
         if lockfile.read_status.from_disk?
           Log.debug { "Detected a change in package extensions options in the package.json file" }
           reporter.info("Package extensions have been modified. Package metadata will forcefully be fetched from the registry and packages will be re-installed.")
@@ -94,6 +110,13 @@ module Zap::Commands::Install
 
       # Check for missing peer dependencies
       unmet_peers_hash = check_unmet_peer_dependencies(state) if state.install_config.check_peer_dependencies
+
+      if state.install_config.frozen_lockfile
+        # Raise if the lockfile has been updated
+        if (state.lockfile.to_yaml != File.read(state.lockfile.lockfile_path))
+          raise "The --frozen-lockfile flag is on but the lockfile has been updated during the resolution phase. Run `zap i --frozen-lockfile=false` to regenerate the lockfile and try again."
+        end
+      end
 
       # Do not edit lockfile or package.json files in global mode or if the save flag is false
       unless state.config.global || !state.install_config.save

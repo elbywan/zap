@@ -47,6 +47,12 @@ module Zap::Utils::Various
     yield
   end
 
+  FALSE_PATTERN = /^false$/i
+
+  def self.str_to_bool(value : String)
+    value !~ FALSE_PATTERN && value != "0"
+  end
+
   class STDOUTSync < IO
     def initialize
       @mutex = Mutex.new

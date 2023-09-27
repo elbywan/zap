@@ -56,7 +56,7 @@ module Zap::Utils::FromEnv
             {% if options[:converter] %}
               {{ options[:converter] }}.from_env(value)
             {% elsif options[:type].union_types.any?(&.== Bool) %}
-              value !~ /^false$/i && value != "0"
+              Utils::Various.str_to_bool(value)
             {% elsif enum_type = options[:type].union_types.find(&.< ::Enum) %}
               {{enum_type}}.parse(value)
             {% elsif options[:nilable] || options[:type].union_types.any?(&.== String) %}

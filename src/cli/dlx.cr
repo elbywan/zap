@@ -8,10 +8,10 @@ class Zap::CLI
 
     separator("Options")
 
-    parser.on("-c COMMAND", "--call COMMAND", "Runs the command inside of a shell.") do |command|
+    parser.on("-c <shell command>", "--call <shell command>", "Runs the command inside of a shell.") do |command|
       @command_config = dlx_config.copy_with(call: command)
     end
-    parser.on("-p PACKAGE", "--package PACKAGE", "The package or packages to install.") do |package|
+    parser.on("-p <package>", "--package <package>", "The package or packages to install.") do |package|
       dlx_config.packages << package
     end
     parser.on("-q", "--quiet", "Mute most of the output coming from zap. #{"[env: ZAP_DLX_QUIET]".colorize.dim}") do |package|

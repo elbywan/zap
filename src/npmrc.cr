@@ -51,7 +51,7 @@ struct Zap::Npmrc
     when "capath"
       @capath = value
     when "strict-ssl"
-      @strict_ssl = value !~ /^false$/i && value != "0"
+      @strict_ssl = Utils::Various.str_to_bool(value)
     when "_auth"
       unless scope.nil?
         get_registry_keys(scope).each { |key|

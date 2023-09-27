@@ -171,11 +171,11 @@ module Zap
     macro common_options(sub = false)
       {% if sub %}subSeparator{% else %}separator{% end %}("Common", early_line_break: false)
 
-      parser.on("-C PATH", "--dir PATH", "Use PATH as the root directory of the project. #{"[env: ZAP_PREFIX]".colorize.dim}") do |path|
+      parser.on("-C <path>", "--dir <path>", "Use PATH as the root directory of the project. #{"[env: ZAP_PREFIX]".colorize.dim}") do |path|
         @config = @config.copy_with(prefix: Path.new(path).expand.to_s, global: false)
       end
 
-      parser.on("--concurrency NB", "Set the maximum number of tasks that will be run in parallel. (default: 5) #{"[env: ZAP_CONCURRENCY]".colorize.dim}") do |concurrency|
+      parser.on("--concurrency <number>", "Set the maximum number of tasks that will be run in parallel. (default: 5) #{"[env: ZAP_CONCURRENCY]".colorize.dim}") do |concurrency|
         @config = @config.copy_with(concurrency: concurrency.to_i32)
       end
 
@@ -184,7 +184,7 @@ module Zap
       end
 
       parser.on(
-        "--file-backend BACKEND",
+        "--file-backend <clonefile|hardlink|copyfile|copy>",
         <<-DESCRIPTION
         The backend to use when linking packages on disk. #{"[env: ZAP_FILE_BACKEND]".colorize.dim}
         Possible values:
@@ -198,7 +198,7 @@ module Zap
       end
 
       parser.on(
-        "--flock-scope SCOPE",
+        "--flock-scope <global|package|none>",
         <<-DESCRIPTION
         Set the scope of the file lock mechanism used to prevent store corruption. #{"[env: ZAP_FLOCK_SCOPE]".colorize.dim}
         Possible values:
@@ -232,7 +232,7 @@ module Zap
     macro workspace_options(sub = false)
       {% if sub %}subSeparator{% else %}separator{% end %}("Workspace")
 
-      parser.on("-F FILTER", "--filter FILTER", "Filtering allows you to restrict commands to specific subsets of packages.") do |filter|
+      parser.on("-F FILTER", "--filter <pattern>", "Filtering allows you to restrict commands to specific subsets of packages.") do |filter|
         filters = @config.filters || Array(Utils::Filter).new
         filters << Utils::Filter.new(filter)
         @config = @config.copy_with(filters: filters)
