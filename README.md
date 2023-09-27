@@ -67,7 +67,7 @@ zap i --isolated
 
 _or:_
 
-```js
+```json
 "zap": {
   "strategy": "isolated",
   "hoist_patterns": [
@@ -82,7 +82,7 @@ _or:_
 
 - **[Workspaces](https://docs.npmjs.com/cli/v9/using-npm/workspaces?v=true#defining-workspaces)**
 
-```js
+```json
 "workspaces": [
   "core/*",
   "packages/*"
@@ -92,13 +92,15 @@ _or:_
 
 _or to prevent hoisting:_
 
-```js
+```json
 "workspaces": {
-  "packages": ["packages/**"],
+  "packages": [
+    "packages/**"
+  ],
   "nohoist": [
     "react",
     "react-dom",
-    "*babel*
+    "*babel*"
   ]
 }
 // package.json
@@ -147,7 +149,7 @@ cafile=/certs/rootCA.crt
 
 - **[Overrides](https://docs.npmjs.com/cli/v9/configuring-npm/package-json?v=true#overrides) / [Package Extensions](https://pnpm.io/package_json#pnpmpackageextensions)**
 
-```js
+```json
 "overrides": {
   "foo": {
     ".": "1.0.0",
@@ -178,17 +180,19 @@ zap i jquery3@npm:jquery@3
 
 **This is a legitimate question.** There are already a lot of package managers out there, and they all have their own pros and cons. So why another one?
 
-First, I thought that it would be a good and fun challenge to build a package manager from scratch. I also really like the [Crystal language](https://crystal-lang.org/) and I have been using it for a couple of years now. So I thought it would be a good opportunity to put my knowledge to the test.
+First, I thought that it would be a good and fun challenge to build a package manager from scratch. I also really like the [Crystal language](https://crystal-lang.org/) and I have been using it for a couple of years now. So it would be a good opportunity to put my knowledge to the test.
 
 I also experimented with a lot of package managers over the years, and I have a few praise and gripes with the existing ones:
 
-- [npm](https://www.npmjs.com/) is the de facto standard for JavaScript package management. It is reliable and has a huge community. But it is also slow and lack features introduced by other package managers over time.
+- [npm](https://www.npmjs.com/) is the de facto standard for JavaScript package management. It is reliable and has a huge community. But it is also super slow and lack features introduced by other package managers over time even though it is trying to catch up.
 
 - [yarn](https://yarnpkg.com/) is a great alternative to npm, it was a pioneer initially in terms of speed and it introduced many improvements and innovations along the years. Yarn is also impressively reliable which is paramount. I never used yarn berry in a significant project but the PnP approach is very interesting - unfortunately the downside is that does not seem to be compatible out of the box with a lot of packages from the ecosystem.
 
-- [pnpm](https://pnpm.io/) is an incredible package manager, and I have been using it for many years. It introduced me to the concept of _isolated installs_ and I have been a big fan ever since. I also really like the way it handles workspaces. The downside is the sheer speed when perform a lot of operations in a big workspace. It felt perfectly fine until I tried bun - which puts things into perspective.
+- [pnpm](https://pnpm.io/) is an impressive package manager which introduced the concept of isolated installs. It handles workspaces very well with a lot of options to customize the behavior. Speed is mostly fine even with big monorepos. I experienced some reliability issues using it over the years though (peer dependencies handling, lockfile inconsistencies, very high memory consumption, need to manually delete the node modules folder…).
 
-- [bun](https://bun.sh/) was a great source of inspiration for this project, but it comes with tradeoffs. While tremendously fast, it did not support some critical features when I started working on Zap and is not as flexible as I would like it to be.
+- [bun](https://bun.sh/) was a great source of inspiration for this project, but it comes with tradeoffs. While tremendously fast, it did not support some critical features when I started working on zap (and it still is very feature-limited), cannot be considered reliable as of today and is not as flexible as I would like it to be.
+
+- newer contenders ([orogene](https://github.com/orogene/orogene), [cotton](https://github.com/danielhuang/cotton), [ultra](https://github.com/nachoaldamav/ultra)…) are kind of interesting but they are clearly lacking in terms of features and/or reliability and/or speed.
 
 #### So I decided to build a package manager that would be fast, flexible and easy to use. For my own personal use, but also for the community (in the long run).
 
@@ -196,7 +200,9 @@ I also experimented with a lot of package managers over the years, and I have a 
 
 Zap is written in [Crystal](https://crystal-lang.org/) which is a compiled language, which means that it should be faster than JavaScript. It can easily tap into system calls and use the fastest ones depending on the platform (_for instance [clonefile](https://www.manpagez.com/man/2/clonefile/)_). It is also an excellent fit when dealing with concurrent tasks.
 
-Crystal also has _experimental_ support for parallelism and can dispatch fibers to a pool of worker threads, which means that Zap can take advantage of multiple cores. This is especially useful when dealing with CPU-bound tasks like parsing package manifests.
+Crystal also has _experimental_ support for parallelism and can dispatch fibers to a pool of worker threads, which means that zap can take advantage of multiple cores. This is especially useful when dealing with CPU-bound tasks.
+
+On top of that, zap will also try to cache package manifests in order to avoid unnecessary network calls in a performant way using [messagepack](https://msgpack.org/).
 
 ## Development
 
