@@ -82,7 +82,7 @@ module Zap::Resolver
   GH_URL_REGEX   = /^https:\/\/github.com\/(?P<owner>[a-zA-Z0-9\-_]+)\/(?P<package>[^#^\/]+)(?:#(?P<hash>[.*]))?/
   GH_SHORT_REGEX = /^[^@.].*\/.*$/
 
-  def self.make(
+  def self.instantiate(
     state : Commands::Install::State,
     name : String,
     version_field : String = "latest",
@@ -125,19 +125,11 @@ module Zap::Resolver
 
     # Special case for aliases
     # Extract the aliased name and the version field
-    aliased_name = nil
     if version_field.starts_with?("npm:")
       aliased_name = name
       stripped_version = version_field[4..]
-      stripped_version.split('@').tap do |parts|
-        if parts[0] == "@"
-          name = parts[0] + parts[1]
-          version_field = parts[2]? || "*"
-        else
-          name = parts[0]
-          version_field = parts[1]? || "*"
-        end
-      end
+      name, version = Utils::Various.parse_key(stripped_version)
+      version_field = version || "*"
     end
 
     case version_field
@@ -263,7 +255,7 @@ module Zap::Resolver
     state.pipeline.process do
       parent = package.try { |package| is_direct_dependency ? state.lockfile.get_root(package.name, package.version) : package }
       # Create the appropriate resolver depending on the version (git, tarball, registry, local folder…)
-      resolver = Resolver.make(state, name, version, parent, type)
+      resolver = Resolver.instantiate(state, name, version, parent, type)
       # Attempt to use the package data from the lockfile
       maybe_metadata = resolver.get_pinned_metadata(name) unless bust_pinned_cache
       # Check if the data from the lockfile is still valid (direct deps can be modified in the package.json file or through the cli)
@@ -473,7 +465,7 @@ module Zap::Resolver
         # Infer the package.json version from the CLI argument
         inferred_version, inferred_name = parse_new_package(new_dep, directory: directory)
         # Resolve the package
-        resolver = Resolver.make(state, inferred_name, inferred_version || "*", state.lockfile.get_root(package.name, package.version), skip_cache: true)
+        resolver = Resolver.instantiate(state, inferred_name, inferred_version || "*", state.lockfile.get_root(package.name, package.version), skip_cache: true)
         metadata = resolver.resolve
         name = inferred_name.empty? ? metadata.name : inferred_name
         # If the save flag is set

@@ -18,16 +18,15 @@ module Zap::Utils::Semver
     include Comparable(self)
 
     getter name : String
-    getter version : UInt128?
+    getter version : UInt128? = nil
 
     def initialize(prerelease_string : String)
       split_str = prerelease_string.split(".")
-      if split_str.size === 1
-        @name = split_str[0]
-        @version = nil
-      else
+      if split_str.size > 1 && (version_number = split_str.last.to_u128?)
         @name = split_str[...-1].join('.')
-        @version = split_str.last.to_u128?
+        @version = version_number
+      else
+        @name = prerelease_string
       end
     end
 
