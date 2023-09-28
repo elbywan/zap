@@ -1,4 +1,5 @@
-require "../backends/*"
+require "../backend/*"
+require "./writer/*"
 
 module Zap::Installer::Isolated
   # See: https://github.com/npm/rfcs/blob/main/accepted/0042-isolated-mode.md

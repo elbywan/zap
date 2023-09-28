@@ -1,5 +1,5 @@
-require "../backends/*"
-require "./writers"
+require "../backend/*"
+require "./writer"
 
 module Zap::Installer::Classic
   record DependencyItem,

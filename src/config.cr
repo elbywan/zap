@@ -1,6 +1,6 @@
 require "./utils/filter"
 require "./utils/from_env"
-require "./installer/backends/backend"
+require "./installer/backend"
 require "./package"
 
 module Zap
@@ -78,6 +78,14 @@ module Zap
       end
     end
 
+    getter plug_and_play_modules : String do
+      if global
+        raise "Global plug'n'play modules are not supported."
+      else
+        File.join(prefix, ".pnp")
+      end
+    end
+
     getter bin_path : String do
       if global
         {% if flag?(:windows) %}
@@ -98,20 +106,19 @@ module Zap
       end
     end
 
-    getter node_path : String do
-      nodejs = ENV["ZAP_NODE_PATH"]? || Process.find_executable("node").try { |node_path| File.realpath(node_path) }
-      unless nodejs
-        raise "❌ Couldn't find the node executable.\nPlease install node.js and ensure that your PATH environment variable is set correctly or use the ZAP_NODE_PATH environment variable to manually specify the path."
-      end
-      Path.new(nodejs).dirname
+    getter? nodejs_path : String? do
+      nodejs = ENV["ZAP_NODE_PATH"]? || Process.find_executable("node").try { |path| File.realpath(path) }
+      nodejs.try { |node_bin| Path.new(node_bin).dirname }
     end
 
     def deduce_global_prefix : String
-      {% if flag?(:windows) %}
-        node_path
-      {% else %}
-        Path.new(node_path).dirname
-      {% end %}
+      begin
+        {% if flag?(:windows) %}
+          nodejs_path?
+        {% else %}
+          nodejs_path?.try { |p| Path.new(p).dirname }
+        {% end %}
+      end || ::File.expand_path("~/.zap")
     end
 
     def copy_for_inner_consumption : Config
