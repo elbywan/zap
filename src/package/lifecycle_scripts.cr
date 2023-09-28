@@ -69,13 +69,13 @@ class Zap::Package
       }.compact
     end
 
-    def run_script(kind : Symbol, chdir : Path | String, config : Config, raise_on_error_code = true, output_io = nil, **args, &block : String, Symbol ->)
+    def run_script(kind : Symbol, chdir : Path | String, config : Config, raise_on_error_code : Bool = true, output_io : (IO | Process::Redirect)? = nil, **args, &block : String, Symbol ->)
       field(kind).try do |command|
         Utils::Scripts.run_script(command, chdir, config, raise_on_error_code, output_io, **args, &block)
       end
     end
 
-    def run_script(kind : Symbol, chdir : Path | String, config : Config, raise_on_error_code = true, output_io = nil, **args)
+    def run_script(kind : Symbol, chdir : Path | String, config : Config, raise_on_error_code : Bool = true, output_io : (IO | Process::Redirect)? = nil, **args)
       run_script(kind, chdir.to_s, config, raise_on_error_code, output_io, **args) { }
     end
   end

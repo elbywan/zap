@@ -230,7 +230,7 @@ module Zap::Utils::Scripts
     Log.debug {
       "Running script: #{command} #{Utils::Macros.args_str}"
     }
-    output = output_io || IO::Memory.new
+    output = (!config.silent ? output_io : nil) || IO::Memory.new
     # See: https://docs.npmjs.com/cli/v9/commands/npm-run-script
     paths = [] of Path | String
     paths << Path.new(chdir, "node_modules", ".bin")

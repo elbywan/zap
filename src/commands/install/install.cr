@@ -2,7 +2,8 @@ require "./config"
 require "../../config"
 require "../../npmrc"
 require "../../resolver"
-require "../../installer/**"
+require "../../installer/isolated"
+require "../../installer/classic"
 require "../../workspaces"
 
 module Zap::Commands::Install
@@ -333,13 +334,15 @@ module Zap::Commands::Install
             package.scripts.try do |scripts|
               state.pipeline.process do
                 state.reporter.on_building_package
-                scripts.run_script(:preinstall, path, state.config)
-                scripts.run_script(:install, path, state.config)
-                scripts.run_script(:postinstall, path, state.config)
+                output_io = state.config.silent ? File.open(File::NULL, "w") : nil
+                scripts.run_script(:preinstall, path, state.config, output_io: output_io)
+                scripts.run_script(:install, path, state.config, output_io: output_io)
+                scripts.run_script(:postinstall, path, state.config, output_io: output_io)
               rescue e
                 error_messages << {e, "Error while running install scripts for #{package.name}@#{package.version} at #{path}\n\n#{e.message}"}
                 # raise Exception.new("Error while running install scripts for #{package.name}@#{package.version} at #{path}\n\n#{e.message}", e)
               ensure
+                output_io.try &.close
                 state.reporter.on_package_built
               end
             end
@@ -379,7 +382,7 @@ module Zap::Commands::Install
         pipeline: state.pipeline
       )
 
-      puts NEW_LINE if scripts.size > 0
+      puts NEW_LINE if scripts.size > 0 unless state.config.silent
     end
   end
 
