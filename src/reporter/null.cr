@@ -103,7 +103,7 @@ class Zap::Reporter::Null < Zap::Reporter
     yield # noop
   end
 
-  def report_done(realtime, memory, install_config, *, unmet_peers : Hash(String, Hash(String, Set(String)))? = nil) : Nil
+  def report_done(realtime, memory, install_config, *, unmet_peers : Hash(String, Hash(Utils::Semver::Range, Set(String)))? = nil) : Nil
     # noop
   end
 

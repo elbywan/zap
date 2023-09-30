@@ -12,6 +12,8 @@ module Zap::Installer::Isolated
     @public_hoist_patterns : Array(Regex)
     @installed_packages : Set(String) = Set(String).new
 
+    alias Semver = Utils::Semver
+
     def initialize(
       state,
       *,
@@ -267,32 +269,43 @@ module Zap::Installer::Isolated
     # Resolve which peer dependencies should be available to a package given its ancestors
     private def resolve_peers(package : Package, ancestors : Ancestors) : Set(Package)?
       # Aggregate direct and transitive peer dependencies
-      peers = Hash(String, String).new
+      peers = Hash(String, Set(Semver::Range)).new
       if direct_peers = package.peer_dependencies
-        peers.merge!(direct_peers)
+        direct_peers.each do |direct_peer, peer_range|
+          peers[direct_peer] = Set(Semver::Range){Semver.parse(peer_range)}
+        end
       end
       if transitive_peers = package.transitive_peer_dependencies
-        transitive_peers.each { |peer| peers[peer] ||= "*" }
+        transitive_peers.each do |peer, ranges|
+          ranges_set = (peers[peer] ||= Set(Semver::Range).new)
+          ranges.each do |range|
+            ranges_set << range
+          end
+        end
       end
+
       # If there are any peers, resolve them
       if peers.size > 0
+        number_of_peers = peers.reduce(0) { |acc, (k, v)| acc + v.size }
         Set(Package).new.tap do |resolved_peers|
           # For each ancestor, check if it has a pinned dependency that matches the peer
           ancestors.each do |ancestor|
             ancestor.each_dependency do |name, version_or_alias|
               dependency = state.lockfile.get_package?(name, version_or_alias)
               next unless dependency
-              if peer_version = peers[dependency.name]?
-                # If the peer has a version range, check if the pinned version matches
+
+              if peer_ranges = peers[dependency.name]?
                 pinned_version = version_or_alias.is_a?(String) ? version_or_alias : version_or_alias.version
-                if peer_version && Utils::Semver.parse(peer_version).satisfies?(pinned_version)
-                  # If it does, add it to the resolved peers
-                  resolved_peers << dependency
+
+                peer_ranges.each do |range|
+                  if range.satisfies?(pinned_version)
+                    resolved_peers << dependency
+                  end
                 end
               end
             end
             # Stop if all peers have been resolved
-            break if resolved_peers.size == peers.size
+            break if resolved_peers.size == number_of_peers
           end
         end
       end

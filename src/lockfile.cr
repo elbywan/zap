@@ -194,18 +194,6 @@ class Zap::Lockfile
     end
   end
 
-  def crawl(*, roots = self.roots, &block : Package, DependencyType, Root, Deque({Package, DependencyType}) ->)
-    roots.each do |root_name, root|
-      root.each_dependency do |name, version, type|
-        if package = get_package?(name, version)
-          crawl_dependency(package, type, root) do |dependency, type, root, ancestors|
-            block.call(dependency, type, root, ancestors)
-          end
-        end
-      end
-    end
-  end
-
   def update_hoisting_shasum(main_package : Package) : Bool
     hexstr = Digest::MD5.digest do |ctx|
       (main_package.zap_config.try(&.public_hoist_patterns) || DEFAULT_PUBLIC_HOIST_PATTERNS).map(&.to_s).sort.each { |elt| ctx << elt }
@@ -225,7 +213,62 @@ class Zap::Lockfile
     diff
   end
 
-  private def crawl_dependency(
+  def mark_transitive_peers(*, roots = self.roots) : Array(Tuple(Zap::Lockfile::Root, Array(Tuple(String, Zap::Utils::Semver::Range, Zap::Package))))
+    unmet_peers_by_roots = reduce_roots(Tuple(String, Semver::Range, Package), roots: roots) do |package, type, root, ancestors, unresolved_peers|
+      # For each package, filter unresolved (transitive) peers after all its dependencies have been crawled.
+      # "Transitive peers" are inherited from children (it is the sum of all unresolved peers)
+      transitive_peers = unresolved_peers.reject do |(peer_name, peer_range)|
+        # The peer is resolved if the current package is the peer itself
+        if package.name == peer_name && peer_range.satisfies?(package.version)
+          next true
+        end
+
+        # The peer is resolved if the current package has the peer as a direct dependency
+        if specifier = package.dependency_specifier?(peer_name)
+          if peer_range.satisfies?(specifier.is_a?(Package::Alias) ? specifier.version : specifier)
+            next true
+          end
+        end
+      end
+
+      if transitive_peers.size > 0
+        # if this path to the package has transitive peers, append them to the transitive peer list
+        pkg_transitive_peers = (package.transitive_peer_dependencies ||= Hash(String, Set(Semver::Range)).new)
+        transitive_peers.each do |(peer_name, peer_range)|
+          (pkg_transitive_peers[peer_name] ||= Set(Semver::Range).new) << peer_range
+        end
+      end
+
+      if pkg_peers = package.peer_dependencies
+        pkg_peers = pkg_peers.reject do |peer|
+          package.has_dependency?(peer)
+        end
+        # Return the unresolved transitive peers + its own peers to the ancestor package
+        transitive_peers + pkg_peers.map do |peer_name, peer_range|
+          {peer_name, Semver.parse(peer_range), package}
+        end
+      else
+        # No own peer dependencies, return only the unresolved peers
+        transitive_peers
+      end
+    end
+  end
+
+  def crawl_roots(
+    *,
+    roots = self.roots,
+    &block : Package, DependencyType, Root, Deque({Package, DependencyType}) ->
+  )
+    roots.each do |root_name, root|
+      root.each_dependency do |name, version, type|
+        if package = get_package?(name, version)
+          crawl_package(package, type, root, &block)
+        end
+      end
+    end
+  end
+
+  private def crawl_package(
     package : Package,
     type : DependencyType,
     root : Root,
@@ -234,17 +277,54 @@ class Zap::Lockfile
   )
     return if ancestors.any? { |(ancestor, ancestor_type)| ancestor == package }
 
+    ancestors << {package, type}
+    package.each_dependency do |name, version, type|
+      if dependency = get_package?(name, version)
+        crawl_package(dependency, type, root, ancestors, &block)
+      end
+    end
+    ancestors.pop
+
     yield package, type, root, ancestors
+  end
+
+  def reduce_roots(
+    _type : T.class,
+    *,
+    roots = self.roots,
+    &block : Package, DependencyType, Root, Deque({Package, DependencyType}), Array(T) -> Array(T)
+  ) forall T
+    roots.map do |root_name, root|
+      results = [] of T
+      root.each_dependency do |name, version, type|
+        if package = get_package?(name, version)
+          results.concat(reduce_package(_type, package, type, root, &block))
+        end
+      end
+      {root, results}
+    end
+  end
+
+  private def reduce_package(
+    _type : T.class,
+    package : Package,
+    type : DependencyType,
+    root : Root,
+    ancestors : Deque({Package, DependencyType}) = Deque({Package, DependencyType}).new,
+    &block : Package, DependencyType, Root, Deque({Package, DependencyType}), Array(T) -> Array(T)
+  ) : Array(T) forall T
+    results = [] of T
+    return results if ancestors.any? { |(ancestor, ancestor_type)| ancestor == package }
 
     ancestors << {package, type}
     package.each_dependency do |name, version, type|
       if dependency = get_package?(name, version)
-        crawl_dependency(dependency, type, root, ancestors) do |dependency, type, root, ancestors|
-          block.call(dependency, type, root, ancestors)
-        end
+        results.concat(reduce_package(_type, dependency, type, root, ancestors, &block))
       end
     end
     ancestors.pop
+
+    yield package, type, root, ancestors, results
   end
 
   class Root
@@ -269,7 +349,7 @@ class Zap::Lockfile
       pinned_dependencies[name]?
     end
 
-    def set_dependency_specifier(name : String, specifier : String | Package::Alias, _type : _)
+    def dependency_specifier(name : String, specifier : String | Package::Alias, _type : _)
       pinned_dependencies[name] = specifier
     end
 

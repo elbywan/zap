@@ -27,7 +27,7 @@ abstract class Zap::Reporter
   abstract def report_resolver_updates(& : -> T) forall T
   abstract def report_installer_updates(& : -> T) forall T
   abstract def report_builder_updates(& : -> T) forall T
-  abstract def report_done(realtime, memory, install_config, *, unmet_peers : Hash(String, Hash(String, Set(String)))? = nil) : Nil
+  abstract def report_done(realtime, memory, install_config, *, unmet_peers : Hash(String, Hash(Utils::Semver::Range, Set(String)))? = nil) : Nil
   abstract def header(emoji : String, str : String, color = :default) : String
 
   class ReporterPrependPipe < IO

@@ -21,7 +21,7 @@ module Zap::Commands::Why
     # filter the roots in case the user provided a filter
     roots = lockfile.filter_roots(inferred_context.main_package, inferred_context.get_scope(:command))
 
-    lockfile.crawl(roots: roots) do |dependency, type, root, ancestors|
+    lockfile.crawl_roots(roots: roots) do |dependency, type, root, ancestors|
       # for each package in the lockfile, check if it matches the provided pattern
       next unless why_config.packages.any? { |name_pattern, version|
                     name_pattern =~ dependency.name && (!version || version.satisfies?(dependency.version))

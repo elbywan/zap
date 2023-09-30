@@ -270,7 +270,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
     self.stop
   end
 
-  def report_done(realtime, memory, install_config, *, unmet_peers : Hash(String, Hash(String, Set(String)))? = nil) : Nil
+  def report_done(realtime, memory, install_config, *, unmet_peers : Hash(String, Hash(Utils::Semver::Range, Set(String)))? = nil) : Nil
     @io_lock.synchronize do
       if install_config.print_logs && @logs.size > 0
         @out << header("📝", "Logs", :blue)
@@ -296,7 +296,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
         incompatible_versions = Array({String, String}).new
         install_versions = unmet_peers.to_a.map do |name, versions|
           install_version = versions.reduce(Utils::Semver::Range.new) do |acc, (version, peers)|
-            acc.try &.intersection?(Utils::Semver.parse(version))
+            acc.try &.intersection?(version)
           end
 
           if install_version
@@ -312,7 +312,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
         unless incompatible_versions.empty?
           @out << "   ⚠️ These packages have incompatible peer dependencies versions: \n".colorize.red.bold
           @out << separator
-          @out << incompatible_versions.map { |name, versions| "#{name.colorize.red}:\n#{versions}" }.join(separator)
+          @out << incompatible_versions.map { |name, versions| "#{name.colorize.red}\n#{versions}" }.join(separator)
           @out << "\n\n"
         end
 

@@ -109,8 +109,9 @@ module Zap::Commands::Install
       # Prune lockfile before installing to cleanup pinned dependencies
       pruned_direct_dependencies = clean_lockfile(state)
 
-      # Check for missing peer dependencies
-      unmet_peers_hash = check_unmet_peer_dependencies(state) if state.install_config.check_peer_dependencies
+      # Mark transtive and check for missing peer dependencies
+      unmet_peers_by_root = state.lockfile.mark_transitive_peers
+      unmet_peers_hash = check_unmet_peer_dependencies(unmet_peers_by_root) if state.install_config.check_peer_dependencies
 
       if state.install_config.frozen_lockfile
         # Raise if the lockfile has been updated
@@ -386,64 +387,20 @@ module Zap::Commands::Install
     end
   end
 
-  private def self.check_unmet_peer_dependencies(state : State)
-    Hash(String, Hash(String, Set(String))).new.tap do |unmet_peers_hash|
-      state.lockfile.crawl do |package, type, root, ancestors|
-        peer_dependencies = nil
+  private def self.check_unmet_peer_dependencies(unmet_peers_by_roots : Array(Tuple(Zap::Lockfile::Root, Array(Tuple(String, Zap::Utils::Semver::Range, Zap::Package))))) : Hash(String, Hash(Semver::Range, Set(String)))
+    # Hash(peer dependency name, Hash(peer dependency version, Set(dependent)))
+    Hash(String, Hash(Semver::Range, Set(String))).new.tap do |unmet_peers|
+      unmet_peers_by_roots.each do |root, unmet_peers_by_root|
+        unmet_peers_by_root.each do |peer_name, peer_range, package|
+          # If the peer dependency is optional, do not report it
+          unless package.peer_dependencies_meta.try(&.[peer_name]?.try(&.["optional"]?))
+            next if root.name == peer_name && peer_range.satisfies?(root.version)
+            specifier = root.dependency_specifier?(peer_name)
+            next if specifier && specifier.is_a?(String) && peer_range.satisfies?(specifier)
 
-        # If the package has peer dependencies…
-        if (peers = package.peer_dependencies) && peers.try(&.size.> 0)
-          # Remove the package itself and its dependencies from the peer dependencies
-          peer_dependencies = peers.reject do |peer_name, peer_range|
-            peer_name == package.name || package.has_dependency?(peer_name, include_dev: false)
-          end
-        end
-
-        if peer_dependencies && !peer_dependencies.empty?
-          unmet_peers = peer_dependencies.try &.dup
-
-          on_ancestor = ->(ancestor : Package | Lockfile::Root) do
-            unmet_peers.try &.select! do |peer_name, peer_range|
-              semver = Utils::Semver.parse(peer_range)
-
-              # If the ancestor itself is the peer dependency, check if the version satisfies the range
-              if ancestor.name == peer_name
-                next !semver.satisfies?(ancestor.version)
-              end
-
-              # Else, check if the ancestor has the peer dependency as a regular dependency
-              specifier = if ancestor.is_a?(Lockfile::Root)
-                            ancestor.dependency_specifier?(peer_name)
-                          else
-                            ancestor.dependency_specifier?(peer_name, include_dev: false)
-                          end
-
-              # Check if the specifier satisfies the range
-              if specifier && specifier.is_a?(String)
-                next !semver.satisfies?(specifier)
-              end
-
-              # If not, keep as unmet
-              true
-            end
-          end
-
-          # For each ancestor starting from the closest one, check if the peer dependency is satisfied
-          ancestors.reverse_each do |(ancestor, _)|
-            on_ancestor.call(ancestor)
-          end
-          on_ancestor.call(root)
-
-          # Format the unmet peer dependencies
-          if unmet_peers_hash && unmet_peers && !unmet_peers.empty?
-            unmet_peers.each do |peer_name, peer_version|
-              # If the peer dependency is optional, do not report it
-              if !(package.peer_dependencies_meta.try(&.[peer_name]?.try(&.["optional"]?)))
-                unmet_peers_by_name = (unmet_peers_hash[peer_name] ||= Hash(String, Set(String)).new)
-                unmet_peers_by_name_and_version = (unmet_peers_by_name[peer_version] ||= Set(String).new)
-                unmet_peers_by_name_and_version << "#{package.name}@#{package.version}"
-              end
-            end
+            unmet_peers_by_name = (unmet_peers[peer_name] ||= Hash(Semver::Range, Set(String)).new)
+            unmet_peers_by_name_and_version = (unmet_peers_by_name[peer_range] ||= Set(String).new)
+            unmet_peers_by_name_and_version << "#{package.name}@#{package.version}"
           end
         end
       end

@@ -49,7 +49,7 @@ module Zap::Package::Helpers
         (include_optional ? optional_dependencies.try(&.has_key?(name)) : false)
     end
 
-    def set_dependency_specifier(name : String, specifier : (String | Zap::Package::Alias), type : DependencyType? = nil) : Nil
+    def dependency_specifier(name : String, specifier : (String | Zap::Package::Alias), type : DependencyType? = nil) : Nil
       if type
         case type
         when .dependency?

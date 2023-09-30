@@ -48,10 +48,10 @@ abstract struct Zap::Resolver::Base
     pkg.has_prepare_script ||= pkg.scripts.try(&.has_prepare_script?)
     # Pin the dependency to the locked version
     if aliased_name
-      parent_package.try &.set_dependency_specifier(aliased_name, Package::Alias.new(name: pkg.name, version: locked_version), @dependency_type)
+      parent_package.try &.dependency_specifier(aliased_name, Package::Alias.new(name: pkg.name, version: locked_version), @dependency_type)
     else
       Log.debug { "Setting dependency specifier for #{pkg.name} to #{locked_version} in #{parent_package.key}" } if parent_package.is_a?(Package)
-      parent_package.try &.set_dependency_specifier(pkg.name, locked_version, @dependency_type)
+      parent_package.try &.dependency_specifier(pkg.name, locked_version, @dependency_type)
     end
   end
 
@@ -289,14 +289,13 @@ module Zap::Resolver
 
         # Apply package extensions unless the package is already in the lockfile
         apply_package_extensions(_metadata, state: state) if forced_retrieval || !lockfile_metadata
-        # Flag transitive dependencies and overrides
-        flag_transitive_dependencies(_metadata, ancestors, state)
+        # Flag transitive overrides
         flag_transitive_overrides(_metadata, ancestors, state)
-        # Mutate only if the package is not already in the lockfile
         # Mark the package and store its parents
         # Used to prevent packages being pruned in the lockfile
         _metadata.dependents << package if package
 
+        # Mutate only if the package is not already in the lockfile
         if !lockfile_metadata || forced_retrieval
           Log.debug { "(#{metadata_key}) Saving package metadata in the lockfile #{(package ? "[parent: #{package.key}]" : "")}" }
           # Remove dev dependencies
@@ -355,56 +354,6 @@ module Zap::Resolver
   end
 
   # # Private
-
-  private def self.flag_transitive_dependencies(package : Package, ancestors : Iterable(Package), state : Commands::Install::State)
-    peers_hash = nil
-    transitive_peers = package.transitive_peer_dependencies.try &.dup
-
-    # If the package has peer dependencies…
-    if (peers = package.peer_dependencies) && peers.try(&.size.> 0)
-      # Remove the package itself and its dependencies from the peer dependencies
-      peers_hash = peers.reject do |peer_name, peer_range|
-        peer_name == package.name || package.has_dependency?(peer_name, include_dev: false)
-      end
-    end
-
-    # If the package has regular or transitive peer dependencies…
-    if peers_hash || transitive_peers
-      # For each ancestor…
-      ancestors.reverse_each.each_with_index do |ancestor, index|
-        peers_hash.try &.select! do |peer_name, peer_range|
-          # If the ancestor is the package itself or if it has the peer dependency, remove it
-          if ancestor.name == peer_name || ancestor.has_dependency?(peer_name, include_dev: index == 0)
-            next false
-          end
-
-          # Otherwise add it to the transitive peer dependencies
-          if ancestor.is_a?(Package)
-            ancestor.transitive_peer_dependencies_init { SafeSet(String).new } << peer_name
-          end
-
-          true
-        end
-
-        transitive_peers = transitive_peers.try &.select do |peer_name|
-          # If the ancestor is the package itself or if it has the peer dependency, remove it
-          if ancestor.name == peer_name || ancestor.has_dependency?(peer_name, include_dev: index == ancestors.size - 1)
-            next false
-          end
-
-          # Otherwise add it to the transitive peer dependencies
-          if ancestor.is_a?(Package)
-            ancestor.transitive_peer_dependencies_init { SafeSet(String).new } << peer_name
-          end
-
-          true
-        end
-
-        # Stop if there are no more peer dependencies
-        break if (peers_hash.nil? || peers_hash.empty?) && (transitive_peers.nil? || transitive_peers.empty?)
-      end
-    end
-  end
 
   private def self.flag_transitive_overrides(package : Package, ancestors : Iterable(Package), state : Commands::Install::State)
     # Check if the package has overrides

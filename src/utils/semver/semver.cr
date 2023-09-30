@@ -19,6 +19,7 @@ module Zap::Utils::Semver
 
     getter name : String
     getter version : UInt128? = nil
+    def_clone
 
     def initialize(prerelease_string : String)
       split_str = prerelease_string.split(".")
@@ -53,6 +54,8 @@ module Zap::Utils::Semver
     build_metadata : String | Nil
   ) do
     include Comparable(self)
+
+    def_clone
 
     def initialize(@major : UInt128 = 0, @minor : UInt128 = 0, @patch : UInt128 = 0, prerelease = nil, @build_metadata = nil)
       @prerelease = prerelease.try { |prerelease_string| Prerelease.new(prerelease_string) }
@@ -133,6 +136,7 @@ module Zap::Utils::Semver
     getter operator : Operator
     getter version : Version
     delegate :major, :minor, :patch, :prerelease, :build_metadata, to: :version
+    def_clone
 
     def initialize(@operator : Operator, @version = Version.new)
     end
@@ -204,6 +208,7 @@ module Zap::Utils::Semver
 
       getter version : Version
       getter boundary : Boundary
+      def_clone
 
       def initialize(@version : Version, @boundary : Boundary)
       end
@@ -267,6 +272,8 @@ module Zap::Utils::Semver
   # Comparators can be joined by whitespace to form a comparator set, which is satisfied by the intersection of all of the comparators it includes.
   struct ComparatorSet
     @comparators = [] of Comparator
+    def_equals_and_hash @comparators
+    def_clone
 
     def <<(comparator : Comparator)
       @comparators << comparator
@@ -352,6 +359,8 @@ module Zap::Utils::Semver
   struct Range
     getter comparator_sets = [] of ComparatorSet
     forward_missing_to @comparator_sets
+    def_equals_and_hash comparator_sets
+    def_clone
 
     def satisfies?(version_str : String)
       partial = Partial.new(version_str)

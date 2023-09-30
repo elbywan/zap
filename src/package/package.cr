@@ -115,7 +115,7 @@ class Zap::Package
 
   @[JSON::Field(ignore: true)]
   @[YAML::Field(ignore: true)]
-  safe_property transitive_peer_dependencies : SafeSet(String)? = nil
+  property transitive_peer_dependencies : Hash(String, Set(Semver::Range))? = nil
 
   @[JSON::Field(ignore: true)]
   @[YAML::Field(converter: Zap::Utils::OrderedSetConverter(String))]
@@ -210,20 +210,22 @@ class Zap::Package
   __do_not_serialize__
   getter key : String do
     case dist = self.dist
-    when LinkDist
+    in LinkDist
       "#{name}@file:#{dist.link}"
-    when WorkspaceDist
+    in WorkspaceDist
       "#{name}@workspace:#{dist.workspace}"
-    when TarballDist
+    in TarballDist
       case kind
       when .tarball_file?
         "#{name}@file:#{dist.tarball}"
       else
         "#{name}@#{dist.tarball}"
       end
-    when GitDist
+    in GitDist
       "#{name}@#{dist.key}"
-    else
+    in RegistryDist
+      "#{name}@#{version}"
+    in Nil
       "#{name}@#{version}"
     end
   end
@@ -294,11 +296,7 @@ class Zap::Package
   # Public #
   ##########
 
-  def ==(other : self)
-    self.key == other.key
-  end
-
-  def_hash @name, @version
+  def_equals_and_hash key
 
   __do_not_serialize__
   getter lock = Mutex.new
