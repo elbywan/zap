@@ -1,4 +1,4 @@
-module Zap::Installer::Classic
+class Zap::Installer::Classic
   struct Writer::Tarball < Writer
     def install : InstallResult
       install_folder = aliased_name || dependency.name

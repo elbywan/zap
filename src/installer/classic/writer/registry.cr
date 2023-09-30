@@ -1,4 +1,4 @@
-module Zap::Installer::Classic
+class Zap::Installer::Classic
   struct Writer::Registry < Writer
     def hoist : self?
       if skip_hoisting?

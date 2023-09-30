@@ -1,4 +1,4 @@
-module Zap::Installer::Classic
+class Zap::Installer::Classic
   struct Writer::File < Writer
     def install : InstallResult
       case dist = @dependency.dist

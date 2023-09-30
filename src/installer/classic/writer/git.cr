@@ -1,4 +1,4 @@
-module Zap::Installer::Classic
+class Zap::Installer::Classic
   struct Writer::Git < Writer
     def install : InstallResult
       unless packed_tarball_path = dependency.dist.try &.as(Package::GitDist).cache_key.try { |key| state.store.package_path(dependency.name, key + ".tgz") }

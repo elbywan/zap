@@ -1,10 +1,14 @@
 module Zap::Installer
+  METADATA_FILE_NAME = ".zap.metadata"
+
   Log = Zap::Log.for(self)
 
   abstract class Base
     getter state : Commands::Install::State
     getter main_package : Package
     getter installed_packages_with_hooks = [] of {Package, Path}
+
+    alias Ancestors = Deque(Package | Lockfile::Root)
 
     def initialize(state : Commands::Install::State)
       @state = state
@@ -96,9 +100,66 @@ module Zap::Installer
         end
       end
     end
-  end
 
-  METADATA_FILE_NAME = ".zap.metadata"
+    # Resolve which peer dependencies should be available to a package given its ancestors
+    protected def resolve_peers(package : Package, ancestors : Ancestors) : Set(Package)?
+      # Aggregate direct and transitive peer dependencies
+      peers = Hash(String, Set(Semver::Range)).new
+      if direct_peers = package.peer_dependencies
+        direct_peers.each do |direct_peer, peer_range|
+          peers[direct_peer] = Set(Semver::Range){Semver.parse(peer_range)}
+        end
+      end
+      if transitive_peers = package.transitive_peer_dependencies
+        transitive_peers.each do |peer, ranges|
+          ranges_set = (peers[peer] ||= Set(Semver::Range).new)
+          ranges.each do |range|
+            ranges_set << range
+          end
+        end
+      end
+
+      # If there are any peers, resolve them
+      if peers.size > 0
+        number_of_peers = peers.reduce(0) { |acc, (k, v)| acc + v.size }
+        Set(Package).new.tap do |resolved_peers|
+          # For each ancestor, check if it has a pinned dependency that matches the peer
+          ancestors.each do |ancestor|
+            ancestor.each_dependency do |name, version_or_alias|
+              dependency = state.lockfile.get_package?(name, version_or_alias)
+              next unless dependency
+
+              if peer_ranges = peers[dependency.name]?
+                pinned_version = version_or_alias.is_a?(String) ? version_or_alias : version_or_alias.version
+
+                peer_ranges.each do |range|
+                  if range.satisfies?(pinned_version)
+                    resolved_peers << dependency
+                  end
+                end
+              end
+            end
+            # Stop if all peers have been resolved
+            break if resolved_peers.size == number_of_peers
+          end
+        end
+      end
+    end
+
+    protected def resolve_transitive_overrides(package : Package, ancestors : Ancestors) : Set(Package::Overrides::Parent)?
+      result = Set(Package::Overrides::Parent).new
+      if transitive_overrides = package.transitive_overrides
+        reversed_ancestors = ancestors.to_a.reverse
+        transitive_overrides.each do |override|
+          if parents = override.parents
+            matched_parents = override.matched_parents(reversed_ancestors)
+            result.concat(matched_parents)
+          end
+        end
+      end
+      result
+    end
+  end
 
   def self.package_already_installed?(dependency : Package, path : Path)
     if exists = Dir.exists?(path)

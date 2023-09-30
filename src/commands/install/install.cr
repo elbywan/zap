@@ -307,9 +307,9 @@ module Zap::Commands::Install
     state.reporter.report_installer_updates do
       installer = case state.install_config.strategy
                   when .isolated?
-                    Installer::Isolated::Installer.new(state)
+                    Installer::Isolated.new(state)
                   when .classic?, .classic_shallow?
-                    Installer::Classic::Installer.new(state)
+                    Installer::Classic.new(state)
                   else
                     raise "Unsupported install strategy: #{state.install_config.strategy}"
                   end

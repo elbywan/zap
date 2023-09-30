@@ -1,4 +1,4 @@
-module Zap::Installer::Classic
+class Zap::Installer::Classic
   struct Writer::Workspace < Writer
     def install : InstallResult
       dist = dependency.dist.as(Package::WorkspaceDist)

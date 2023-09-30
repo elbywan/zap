@@ -1,6 +1,6 @@
 abstract struct Zap::Installer::Classic::Writer
   getter dependency : Package
-  getter installer : Zap::Installer::Classic::Installer
+  getter installer : Zap::Installer::Classic
   getter location : LocationNode
   getter state : Commands::Install::State
   getter ancestors : Array(Package)
@@ -9,7 +9,7 @@ abstract struct Zap::Installer::Classic::Writer
   def initialize(
     @dependency : Package,
     *,
-    @installer : Zap::Installer::Classic::Installer,
+    @installer : Zap::Installer::Classic,
     @location : LocationNode,
     @state : Commands::Install::State,
     @ancestors : Array(Package),
