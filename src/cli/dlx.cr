@@ -8,7 +8,7 @@ class Zap::CLI
 
     separator("Options")
 
-    parser.on("-c <shell command>", "--call <shell command>", "Runs the command inside of a shell.") do |command|
+    parser.on("-c <shell_command>", "--call <shell_command>", "Runs the command inside of a shell.") do |command|
       @command_config = dlx_config.copy_with(call: command)
     end
     parser.on("-p <package>", "--package <package>", "The package or packages to install.") do |package|
