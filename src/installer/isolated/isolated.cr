@@ -105,8 +105,8 @@ class Zap::Installer::Isolated < Zap::Installer::Base
       end
 
       # If the package folder exists, we assume that the package dependencies were already installed too
+      package_path = install_path / package.name
       if File.directory?(install_path)
-        package_path = install_path / package.name
         # If there is no need to perform a full pass, we can just return the package path and skip the dependencies
         unless state.install_config.refresh_install
           Log.debug { "(#{package.name}) Already installed to folder '#{install_path}', skipping…" }
@@ -125,13 +125,13 @@ class Zap::Installer::Isolated < Zap::Installer::Base
         Utils::Directories.mkdir_p(install_path)
         case package.kind
         when .tarball_file?
-          Writer::File.install(package, install_path, installer: self, state: state)
+          Writer::File.install(package, package_path, installer: self, state: state)
         when .tarball_url?
-          Writer::Tarball.install(package, install_path, installer: self, state: state)
+          Writer::Tarball.install(package, package_path, installer: self, state: state)
         when .git?
-          Writer::Git.install(package, install_path, installer: self, state: state)
+          Writer::Git.install(package, package_path, installer: self, state: state)
         when .registry?
-          Writer::Registry.install(package, install_path, installer: self, state: state)
+          Writer::Registry.install(package, package_path, installer: self, state: state)
         end
       end
     else
@@ -154,7 +154,11 @@ class Zap::Installer::Isolated < Zap::Installer::Base
     end
 
     # For each resolved peer and pinned dependency, install the dependency in the .store folder if it's not already installed
-    (resolved_peers.try(&.map { |p| {p.name, p, Package::DependencyType::Dependency} }.+ pinned_packages) || pinned_packages).each do |(name, dependency, type)|
+    if resolved_peers
+      pinned_packages + resolved_peers.map { |p| {p.name, p, Package::DependencyType::Dependency} }
+    else
+      pinned_packages
+    end.each do |(name, dependency, type)|
       Log.debug { "(#{package.is_a?(Package) ? package.key : package.name}) Processing dependency: #{dependency.key}" }
       # Add to the ancestors
       ancestors.unshift(package)

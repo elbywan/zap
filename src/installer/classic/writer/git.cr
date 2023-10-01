@@ -8,7 +8,7 @@ class Zap::Installer::Classic
       install_folder = aliased_name || dependency.name
       target_path = location.value.node_modules / install_folder
       exists = Zap::Installer.package_already_installed?(dependency, target_path)
-      install_location = self.class.init_location(dependency, target_path, location, aliased_name)
+      install_location = self.class.init_location(dependency, target_path, location)
 
       if exists
         {install_location, false}

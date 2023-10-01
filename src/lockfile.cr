@@ -240,9 +240,9 @@ class Zap::Lockfile
       end
 
       if pkg_peers = package.peer_dependencies
-        pkg_peers = pkg_peers.reject do |peer|
-          package.has_dependency?(peer)
-        end
+        # pkg_peers = pkg_peers.reject do |peer|
+        #   package.has_dependency?(peer)
+        # end
         # Return the unresolved transitive peers + its own peers to the ancestor package
         transitive_peers + pkg_peers.map do |peer_name, peer_range|
           {peer_name, Semver.parse(peer_range), package}

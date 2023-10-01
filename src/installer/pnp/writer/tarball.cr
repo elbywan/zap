@@ -1,4 +1,4 @@
-module Zap::Installer::Isolated::Writer::File
+module Zap::Installer::PnP::Writer::Tarball
   def self.install(dependency : Package, install_path : Path, *, installer : Zap::Installer::Base, state : Commands::Install::State)
     case dist = dependency.dist
     when Package::TarballDist

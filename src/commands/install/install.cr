@@ -4,6 +4,7 @@ require "../../npmrc"
 require "../../resolver"
 require "../../installer/isolated"
 require "../../installer/classic"
+require "../../installer/pnp"
 require "../../workspaces"
 
 module Zap::Commands::Install
@@ -310,6 +311,8 @@ module Zap::Commands::Install
                     Installer::Isolated.new(state)
                   when .classic?, .classic_shallow?
                     Installer::Classic.new(state)
+                  when .pnp?
+                    Installer::PnP.new(state)
                   else
                     raise "Unsupported install strategy: #{state.install_config.strategy}"
                   end

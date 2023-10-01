@@ -14,6 +14,7 @@ struct Zap::Commands::Install::Config < Zap::Commands::Config
     Classic
     Classic_Shallow
     Isolated
+    Pnp
   end
 
   # Configuration specific for the install command

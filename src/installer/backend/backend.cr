@@ -9,26 +9,26 @@ module Zap::Backend
     Symlink
   end
 
-  def self.install(*, dependency : Package, target : Path | String, backend : Backends, store : Store, aliased_name : String? = nil, &on_installing) : Bool
+  def self.install(*, dependency : Package, target : Path | String, backend : Backends, store : Store, &on_installing) : Bool
     case backend
     in .clone_file?
       {% if flag?(:darwin) %}
-        Backend::CloneFile.install(dependency, target, store: store, aliased_name: aliased_name, &on_installing)
+        Backend::CloneFile.install(dependency, target, store: store, &on_installing)
       {% else %}
         raise "The clonefile backend is not supported on this platform"
       {% end %}
     in .copy_file?
       {% if flag?(:darwin) %}
-        Backend::CopyFile.install(dependency, target, store: store, aliased_name: aliased_name, &on_installing)
+        Backend::CopyFile.install(dependency, target, store: store, &on_installing)
       {% else %}
         raise "The copyfile backend is not supported on this platform"
       {% end %}
     in .hardlink?
-      Backend::Hardlink.install(dependency, target, store: store, aliased_name: aliased_name, &on_installing)
+      Backend::Hardlink.install(dependency, target, store: store, &on_installing)
     in .copy?
-      Backend::Copy.install(dependency, target, store: store, aliased_name: aliased_name, &on_installing)
+      Backend::Copy.install(dependency, target, store: store, &on_installing)
     in .symlink?
-      Backend::Symlink.install(dependency, target, store: store, aliased_name: aliased_name, &on_installing)
+      Backend::Symlink.install(dependency, target, store: store, &on_installing)
     end
   end
 
@@ -116,9 +116,8 @@ module Zap::Backend
   #   end
   # end
 
-  protected def self.prepare(dependency : Package, node_modules : Path | String, *, store : Store, mkdir_parent = false, aliased_name : String? = nil) : {Path, Path, Bool}
+  protected def self.prepare(dependency : Package, dest_path : Path | String, *, store : Store, mkdir_parent = false) : {Path, Path, Bool}
     src_path = store.package_path(dependency.name, dependency.version)
-    dest_path = node_modules / (aliased_name || dependency.name)
     already_installed = Installer.package_already_installed?(dependency, dest_path)
     Utils::Directories.mkdir_p(mkdir_parent ? dest_path.dirname : dest_path) unless already_installed
     {src_path, dest_path, already_installed}

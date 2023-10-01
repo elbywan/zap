@@ -1,4 +1,4 @@
-module Zap::Installer::Isolated::Writer::Registry
+module Zap::Installer::PnP::Writer::Registry
   def self.install(dependency : Package, install_path : Path, *, installer : Zap::Installer::Base, state : Commands::Install::State)
     installed = begin
       Backend.install(dependency: dependency, target: install_path, store: state.store, backend: state.config.file_backend) {

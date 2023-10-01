@@ -56,13 +56,15 @@ zap --help
 
 Here is a non exhaustive list of features that are currently implemented:
 
-- **Classic (npm-like) or isolated (pnpm-like) install strategies**
+- **Classic (~npm), isolated (~pnpm) or plug'n'play (~yarn) install strategies**
 
 ```bash
 # Classic install by default
 zap i # or zap i --classic
 # Isolated install
 zap i --isolated
+# Plug'n'play (experimental - no zero-installs yet)
+zap i --pnp
 ```
 
 _or:_

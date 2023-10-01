@@ -111,6 +111,15 @@ module Zap
       nodejs.try { |node_bin| Path.new(node_bin).dirname }
     end
 
+    def pnp_runtime? : Path?
+      runtime_path = Path.new(prefix, ".pnp.cjs")
+      if ::File.exists?(runtime_path)
+        runtime_path
+      else
+        nil
+      end
+    end
+
     def deduce_global_prefix : String
       begin
         {% if flag?(:windows) %}

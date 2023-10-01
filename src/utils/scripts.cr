@@ -243,6 +243,9 @@ module Zap::Utils::Scripts
       "PATH"         => (paths << config.bin_path << ENV["PATH"]).join(Process::PATH_DELIMITER),
       "npm_execpath" => "zap",
     }
+    if pnp_runtime = config.pnp_runtime?
+      env["NODE_OPTIONS"] ||= "--require #{pnp_runtime}"
+    end
     yield command, :before
     status = Process.run(command, **args, shell: true, env: env, chdir: chdir.to_s, output: output, input: stdin, error: output)
     if !status.success? && raise_on_error_code

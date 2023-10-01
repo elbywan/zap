@@ -37,6 +37,7 @@ class Zap::CLI
       Possible values:
         - classic (default) : mimics the behavior of npm and yarn: install non-duplicated in top-level, and duplicated as necessary within directory structure.
         - isolated : mimics the behavior of pnpm: dependencies are symlinked from a virtual store at node_modules/.zap.
+        - pnp : a limited plug'n'play approach similar to yarn
         - classic_shallow : like classic but will only install direct dependencies at top-level.
       DESCRIPTION
     ) do |strategy|
@@ -49,6 +50,10 @@ class Zap::CLI
 
     parser.on("--isolated", "Shorthand for: --install-strategy isolated") do
       @command_config = install_config.copy_with(strategy: InstallConfig::InstallStrategy::Isolated)
+    end
+
+    parser.on("--pnp", "Shorthand for: --install-strategy pnp") do
+      @command_config = install_config.copy_with(strategy: InstallConfig::InstallStrategy::Pnp)
     end
 
     subSeparator("Save")

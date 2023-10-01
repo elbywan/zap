@@ -21,7 +21,7 @@ abstract struct Zap::Installer::Classic::Writer
 
   abstract def install : InstallResult
 
-  def self.init_location(dependency : Package, target_path : Path, location : LocationNode, aliased_name : String? = nil) : LocationNode
+  def self.init_location(dependency : Package, target_path : Path, location : LocationNode) : LocationNode
     LocationNode.new(
       node_modules: target_path / "node_modules",
       package: dependency,
