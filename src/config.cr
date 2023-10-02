@@ -46,13 +46,7 @@ module Zap
     @[Env]
     getter deferred_output : Bool = !!ENV["CI"]?
     @[Env]
-    getter flock_scope : FLockScope = (
-      {% if flag?(:windows) %}
-        Config::FLockScope::None
-      {% else %}
-        Config::FLockScope::Global
-      {% end %}
-    )
+    getter flock_scope : FLockScope = Config::FLockScope::Global
     @[Env]
     getter file_backend : Backend::Backends = (
       {% if flag?(:darwin) %}

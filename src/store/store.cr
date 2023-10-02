@@ -73,16 +73,17 @@ struct Zap::Store
           @@global_flock_counter += 1
           if @@global_flock.nil?
             # Open once once to avoid hitting the "too many open files" limit
-            @@global_flock = File.open(Path.new(@global_locks_store_path, "global.lock"), "w")
+            global_fd = File.open(Path.new(@global_locks_store_path, "global.lock"), "w")
+            global_fd.flock_exclusive
+            @@global_flock = global_fd
           end
         end
-        Utils::File.with_flock("", file: @@global_flock, close_fd: false, unlock_flock: false) do
-          yield
-        end
+        yield
       ensure
         @@global_flock_lock.synchronize do
           @@global_flock_counter -= 1
           if @@global_flock_counter == 0
+            @@global_flock.try &.flock_unlock
             @@global_flock.try &.close
             @@global_flock = nil
           end
