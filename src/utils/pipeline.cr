@@ -1,28 +1,23 @@
+require "./data_structures/safe_array"
+
 class Zap::Pipeline
-  getter counter = 0
-  getter progress = 0
-  getter max = 0
-  @mutex = Mutex.new
-  @errors : Array(Exception)? = nil
-  @end_channel : Channel(Array(Exception)?) = Channel(Array(Exception)?).new
+  getter counter = Atomic(Int32).new(0)
+  getter max = Atomic(Int32).new(0)
+  @errors = SafeArray(Exception).new
+  @end_channel = Channel(SafeArray(Exception)?).new
   @sync_channel : Channel(Nil)? = nil
 
   def initialize
   end
 
   def reset
-    @mutex.synchronize do
-      @counter = 0
-      @progress = 0
-      @max = 0
-      @errors = nil
-      @end_channel.close unless @end_channel.closed?
-      @end_channel = Channel(Array(Exception)?).new
-      @sync_channel.try { |c| c.close unless c.closed? }
-      @sync_channel = nil
-    rescue
-      # ignore
-    end
+    @counter = Atomic(Int32).new(0)
+    @max = Atomic(Int32).new(0)
+    @errors = SafeArray(Exception).new
+    @end_channel.close unless @end_channel.closed?
+    @end_channel = Channel(SafeArray(Exception)?).new
+    @sync_channel.try { |c| c.close unless c.closed? }
+    @sync_channel = nil
   end
 
   def set_concurrency(max_fibers : Int32 | Nil)
@@ -50,47 +45,40 @@ class Zap::Pipeline
   end
 
   def process(&block)
-    return if @errors
-    @mutex.synchronize do
-      @counter += 1
-      @max += 1
-    end
+    return if @errors.size > 0
+    @counter.add(1)
+    @max.add(1)
     spawn do
       wait_for_sync do
-        next if @errors
+        next if @errors.size > 0
         block.call
       rescue Channel::ClosedError
         # Ignore
       rescue ex
-        @mutex.synchronize do
-          @errors ||= Array(Exception).new
-          @errors.not_nil! << ex
-        end
+        @errors << ex
       ensure
-        @mutex.synchronize do
-          @counter -= 1
-          if @counter == 0 && !@end_channel.closed?
-            if @errors
-              select
-              when @end_channel.send(@errors)
-              end
+        counter = @counter.sub(1)
+        if counter <= 1 && !@end_channel.closed?
+          if @errors.size > 0
+            select
+            when @end_channel.send(@errors)
             end
-            @end_channel.close
           end
+          @end_channel.close
         end
       end
     end
   end
 
   class PipelineException < Exception
-    def initialize(@exceptions : Array(Exception))
+    def initialize(@exceptions : SafeArray(Exception))
       super(exceptions.map(&.message).join("\n  • "))
     end
   end
 
   def await(*, force_wait = false)
     Fiber.yield
-    maybe_exceptions = @end_channel.receive? if force_wait || @counter > 0
+    maybe_exceptions = @end_channel.receive? if force_wait || @counter.get > 0
     raise PipelineException.new(maybe_exceptions) if maybe_exceptions
   end
 
