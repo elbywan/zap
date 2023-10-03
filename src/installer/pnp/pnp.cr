@@ -184,7 +184,8 @@ class Zap::Installer::PnP < Zap::Installer::Base
     }
     package_data = Manifest::Data.new(
       package_location: package_location,
-      package_dependencies: package_dependencies
+      package_dependencies: package_dependencies,
+      package_peers: package_or_root.peer_dependencies.try(&.keys)
     )
 
     @manifest.package_registry_data.add_package_data(
@@ -203,6 +204,8 @@ class Zap::Installer::PnP < Zap::Installer::Base
         type,
       }
     end
+
+    dependencies_names = Set(String).new
 
     # For each resolved peer and pinned dependency, install the dependency in the .store folder if it's not already installed
     if resolved_peers
@@ -243,6 +246,17 @@ class Zap::Installer::PnP < Zap::Installer::Base
         name: name,
         reference: name != dependency.name ? {dependency.name, dependency_reference} : dependency_reference
       )
+      dependencies_names << name
+    end
+
+    # mark unresolved peer dependencies
+    package_or_root.peer_dependencies.try &.each_key do |peer_name|
+      unless peer_name.in?(dependencies_names)
+        package_dependencies << Manifest::Data::PackageDependency.new(
+          name: peer_name,
+          reference: nil
+        )
+      end
     end
 
     reference
