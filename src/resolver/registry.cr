@@ -1,24 +1,23 @@
 require "uri"
-require "../../utils/fetch"
 require "digest"
 require "compress/gzip"
 require "base64"
-require "../../package"
-require "../../utils/semver"
-require "./manifest"
-
-# See: https://github.com/npm/registry/blob/master/docs/responses/package-metadata.md#package-metadata
-ACCEPT_HEADER = "application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*"
-HEADERS       = HTTP::Headers{"Accept" => ACCEPT_HEADER}
+require "./resolver"
+require "../registry_clients"
+require "../utils/fetch"
+require "../package"
+require "../utils/semver"
+require "../manifest"
 
 module Zap::Resolver
   struct Registry < Base
-    @@client_pool_by_registry : Hash(String, Utils::Fetch(Manifest)) = Hash(String, Utils::Fetch(Manifest)).new
-    @@client_pool_by_registry_lock = Mutex.new
+    # See: https://github.com/npm/registry/blob/master/docs/responses/package-metadata.md#package-metadata
+    ACCEPT_HEADER = "application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*"
+    HEADERS       = HTTP::Headers{"Accept" => ACCEPT_HEADER}
 
+    @clients : RegistryClients
     @client_pool : Utils::Fetch(Manifest)
     getter base_url : URI
-    @base_url_str : String
 
     def initialize(
       @state,
@@ -31,18 +30,17 @@ module Zap::Resolver
     )
       super
 
+      # Initialize the client pool
+      @clients = state.registry_clients
       # Get the registry url from the npmrc file
-      @base_url = URI.parse(@state.npmrc.registry)
+      @base_url = URI.parse(state.npmrc.registry)
       if @package_name.starts_with?('@')
         scope = @package_name.split('/')[0]
-        if scoped_registry = @state.npmrc.scoped_registries[scope]?
+        if scoped_registry = state.npmrc.scoped_registries[scope]?
           @base_url = URI.parse(scoped_registry)
         end
       end
-      @base_url_str = @base_url.to_s
-      @client_pool = @@client_pool_by_registry_lock.synchronize {
-        @@client_pool_by_registry[@base_url_str] ||= init_client_pool(@base_url_str)
-      }
+      @client_pool = @clients.get_or_init_pool(@base_url.to_s)
     end
 
     def resolve(*, pinned_version : String? = nil) : Package
@@ -88,7 +86,7 @@ module Zap::Resolver
 
         # the tarball_url is absolute and can point to an entirely different domain
         # so we need to find the right client pool for it
-        pool_key, pool = find_matching_client_pool(tarball_url)
+        pool_key, pool = @clients.find_or_init_pool(tarball_url)
         pool.client do |client|
           # we also need to relativize the tarball url to the pool base url
           # otherwise some registries (verdaccio for instance) will return a 404
@@ -129,75 +127,6 @@ module Zap::Resolver
     end
 
     # # PRIVATE ##########################
-
-    private def find_matching_client_pool(url : String) : {String, Utils::Fetch(Manifest)}
-      @@client_pool_by_registry_lock.synchronize do
-        # Find if an existing pool matches the url
-        @@client_pool_by_registry.find do |registry_url, _|
-          url.starts_with?(registry_url)
-        end || begin
-          # Otherwise create a new pool for the url hostname
-          uri = URI.parse(url)
-          # Remove the path - because it is impossible to infer based on the tarball url
-          uri.path = "/"
-          uri_str = uri.to_s
-          pool = init_client_pool(uri.to_s).tap { |pool|
-            @@client_pool_by_registry[pool.base_url] = pool
-          }
-          {uri_str, pool}
-        end
-      end
-    end
-
-    private def init_client_pool(base_url : String) : Utils::Fetch(Manifest)
-      # Cache the metadata in the store
-
-      filesystem_cache = Utils::Fetch::Cache::InStore(Manifest).new(
-        @state.config.store_path,
-        bypass_staleness_checks: @state.install_config.prefer_offline,
-        serializer: Utils::Fetch::Cache::InStore::MessagePackSerializer(Manifest).new
-      )
-      # memory_cache = Utils::Fetch::Cache::InMemory(Manifest).new(fallback: filesystem_cache)
-
-      authentication = @state.npmrc.registries_auth[@base_url_str]?
-
-      Utils::Fetch.new(
-        base_url,
-        pool_max_size: @state.config.network_concurrency,
-        # cache: memory_cache
-        cache: filesystem_cache
-      ) { |client|
-        client.read_timeout = 10.seconds
-        client.write_timeout = 1.seconds
-        client.connect_timeout = 1.second
-
-        # TLS options
-        if tls_context = client.tls?
-          if cafile = @state.npmrc.cafile
-            tls_context.ca_certificates = cafile
-          end
-          if capath = @state.npmrc.capath
-            tls_context.ca_certificates_path = capath
-          end
-          if (certfile = authentication.try &.certfile) && (keyfile = authentication.try &.keyfile)
-            tls_context.certificate_chain = certfile
-            tls_context.private_key = keyfile
-          end
-          unless @state.npmrc.strict_ssl
-            tls_context.verify_mode = OpenSSL::SSL::VerifyMode::NONE
-          end
-        end
-
-        client.before_request do |request|
-          # Authorization header
-          if auth = authentication.try &.auth
-            request.headers["Authorization"] = "Basic #{auth}"
-          elsif authToken = authentication.try &.authToken
-            request.headers["Authorization"] = "Bearer #{authToken}"
-          end
-        end
-      }
-    end
 
     private def fetch_metadata(*, pinned_version : String? = nil) : Package?
       Log.debug { "(#{package_name}@#{version}) Fetching metadata… #{@skip_cache ? "(skipping cache)" : ""} #{pinned_version ? "[pinned_version #{pinned_version}]" : ""}" }

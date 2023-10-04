@@ -16,6 +16,7 @@ module Zap::Commands::Install
     lockfile : Lockfile,
     context : Zap::Config::InferredContext,
     npmrc : Npmrc,
+    registry_clients : RegistryClients,
     pipeline : Pipeline = Pipeline.new,
     reporter : Reporter = Reporter::Interactive.new
 
@@ -96,7 +97,13 @@ module Zap::Commands::Install
         npmrc: npmrc,
         lockfile: lockfile,
         reporter: reporter,
-        context: inferred_context
+        context: inferred_context,
+        registry_clients: RegistryClients.new(
+          config.store_path,
+          npmrc,
+          pool_max_size: config.network_concurrency,
+          bypass_staleness_checks: install_config.prefer_offline
+        )
       )
 
       Log.debug { "Install configuration: #{state.install_config.pretty_inspect}" }
