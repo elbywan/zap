@@ -1,7 +1,7 @@
 class Zap::Installer::Classic
   struct Writer::Workspace < Writer
     def install : InstallResult
-      dist = dependency.dist.as(Package::WorkspaceDist)
+      dist = dependency.dist.as(Package::Dist::Workspace)
       workspace = state.context.workspaces.not_nil!.find! { |w| w.package.name == dist.workspace }
       link_source = workspace.path
       install_folder = aliased_name || dependency.name

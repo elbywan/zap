@@ -1,7 +1,7 @@
 module Zap::Installer::Isolated::Writer::Tarball
   def self.install(dependency : Package, install_path : Path, *, installer : Zap::Installer::Base, state : Commands::Install::State)
     case dist = dependency.dist
-    when Package::TarballDist
+    when Package::Dist::Tarball
       exists = Zap::Installer.package_already_installed?(dependency, install_path)
       unless exists
         extracted_folder = Path.new(dist.path)

@@ -2,16 +2,16 @@ class Zap::Installer::Classic
   struct Writer::File < Writer
     def install : InstallResult
       case dist = @dependency.dist
-      when Package::LinkDist
+      when Package::Dist::Link
         install_link(dist)
-      when Package::TarballDist
+      when Package::Dist::Tarball
         install_tarball(dist)
       else
         raise "Unknown dist type: #{dist}"
       end
     end
 
-    def install_link(dist : Package::LinkDist) : InstallResult
+    def install_link(dist : Package::Dist::Link) : InstallResult
       relative_path = dist.link
       parent = ancestors[0]
       base_path = state.context.workspaces.try(&.find { |w| w.package == parent }.try &.path) || state.config.prefix
@@ -31,7 +31,7 @@ class Zap::Installer::Classic
       end
     end
 
-    def install_tarball(dist : Package::TarballDist) : InstallResult
+    def install_tarball(dist : Package::Dist::Tarball) : InstallResult
       install_folder = aliased_name || dependency.name
       target_path = location.value.node_modules / install_folder
       exists = Zap::Installer.package_already_installed?(dependency, target_path)

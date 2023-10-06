@@ -12,34 +12,43 @@ struct Zap::Store
     Utils::Directories.mkdir_p(@global_locks_store_path)
   end
 
-  def package_path(name : String, version : String)
-    Path.new(@global_package_store_path, normalize_path "#{name}@#{version}")
+  def package_path(package : Package)
+    Path.new(@global_package_store_path, package_key(package))
   end
 
-  def package_metadata_path(name : String, version : String)
-    Path.new(@global_package_store_path, normalize_path "#{name}@#{version}.metadata")
+  def package_metadata_path(package : Package)
+    Path.new(@global_package_store_path, "#{package_key(package)}.metadata")
   end
 
-  def package_is_cached?(name : String, version : String)
-    File.exists?(package_metadata_path(name, version)) &&
-      Dir.exists?(package_path(name, version))
+  def package_is_cached?(package : Package)
+    File.exists?(package_metadata_path(package)) &&
+      Dir.exists?(package_path(package))
   end
 
-  def remove_package(name : String, version : String)
-    File.delete?(package_metadata_path(name, version))
-    FileUtils.rm_rf(package_path(name, version))
+  def remove_package(package : Package)
+    File.delete?(package_metadata_path(package))
+    FileUtils.rm_rf(package_path(package))
   end
 
-  def store_unpacked_tarball(name : String, version : String, io : IO)
-    init_package(name, version)
+  def file_path(filename : String)
+    Path.new(@global_package_store_path, filename)
+  end
+
+  def store_file(filename : String, contents : IO | String)
+    Utils::Directories.mkdir_p(::File.dirname(filename))
+    ::File.write(file_path(filename), contents)
+  end
+
+  def unpack_and_store_tarball(package : Package, io : IO)
+    init_package(package)
     Utils::TarGzip.unpack(io) do |entry, file_path, io|
       if (entry.flag === Crystar::DIR)
-        store_package_dir(name, version, file_path)
+        store_package_dir(package, file_path)
       elsif (entry.flag === Crystar::REG)
-        store_package_file(name, version, file_path, entry.io, permissions: entry.mode)
+        store_package_file(package, file_path, entry.io, permissions: entry.mode)
       end
     end
-    seal_package(name, version)
+    seal_package(package)
   end
 
   def store_temp_tarball(tarball_url : String) : Path
@@ -53,8 +62,8 @@ struct Zap::Store
     temp_path
   end
 
-  def with_lock(name : String, version : String, config : Config, &block)
-    with_lock(normalize_path("#{name}@#{version}"), config) do
+  def with_lock(package : Package, config : Config, &block)
+    with_lock(normalize_path(package.hashed_key), config) do
       yield
     end
   end
@@ -97,31 +106,35 @@ struct Zap::Store
     end
   end
 
+  private def package_key(package : Package)
+    normalize_path(package.hashed_key)
+  end
+
   private def normalize_path(path : String | Path) : Path
     Path.new(path.to_s.gsub("/", "+"))
   end
 
-  private def init_package(name : String, version : String)
-    path = package_path(name, version)
+  private def init_package(package : Package)
+    path = package_path(package)
     FileUtils.rm_rf(path) if Dir.exists?(path)
-    File.delete?(package_metadata_path(name, version))
+    File.delete?(package_metadata_path(package))
     Utils::Directories.mkdir_p(path)
   end
 
-  private def seal_package(name : String, version : String)
-    File.touch(package_metadata_path(name, version))
+  private def seal_package(package : Package)
+    File.touch(package_metadata_path(package))
   end
 
-  private def store_package_file(package_name : String, package_version : String, relative_file_path : String | Path, file_io : IO, permissions : Int64 = DEFAULT_CREATE_PERMISSIONS)
-    file_path = package_path(package_name, package_version) / relative_file_path
+  private def store_package_file(package : Package, relative_file_path : String | Path, file_io : IO, permissions : Int64 = DEFAULT_CREATE_PERMISSIONS)
+    file_path = package_path(package) / relative_file_path
     Utils::Directories.mkdir_p(file_path.dirname)
     File.open(file_path, "w", perm: permissions.to_i32) do |file|
       IO.copy file_io, file
     end
   end
 
-  private def store_package_dir(package_name : String, package_version : String, relative_dir_path : String | Path)
-    file_path = package_path(package_name, package_version) / relative_dir_path
+  private def store_package_dir(package : Package, relative_dir_path : String | Path)
+    file_path = package_path(package) / relative_dir_path
     Utils::Directories.mkdir_p(file_path)
   end
 end

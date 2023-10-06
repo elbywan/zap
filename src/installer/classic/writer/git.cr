@@ -1,7 +1,7 @@
 class Zap::Installer::Classic
   struct Writer::Git < Writer
     def install : InstallResult
-      unless packed_tarball_path = dependency.dist.try &.as(Package::GitDist).cache_key.try { |key| state.store.package_path(dependency.name, key + ".tgz") }
+      unless packed_tarball_path = dependency.dist.try &.as(Package::Dist::Git).cache_key.try { |key| state.store.package_path(dependency).to_s + ".tgz" }
         raise "Cannot install git dependency #{dependency.name} because the dist.cache_key field is missing."
       end
 

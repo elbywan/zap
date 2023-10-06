@@ -53,12 +53,12 @@ module Zap::Resolver
     end
 
     def store(metadata : Package, &on_downloading) : Bool
-      state.store.with_lock(metadata.name, metadata.version, state.config) do
-        next false if state.store.package_is_cached?(metadata.name, metadata.version)
+      state.store.with_lock(metadata, state.config) do
+        next false if state.store.package_is_cached?(metadata)
 
         yield
 
-        dist = metadata.dist.not_nil!.as(Package::RegistryDist)
+        dist = metadata.dist.not_nil!.as(Package::Dist::Registry)
         tarball_url = dist.tarball
         integrity = dist.integrity.try &.split(" ")[0]
         shasum = dist.shasum
@@ -95,7 +95,7 @@ module Zap::Resolver
             raise "Invalid status code from #{tarball_url} (#{response.status_code})" unless response.status_code == 200
 
             IO::Digest.new(response.body_io, algorithm_instance).tap do |io|
-              state.store.store_unpacked_tarball(package_name, version, io)
+              state.store.unpack_and_store_tarball(metadata, io)
 
               io.skip_to_end
               computed_hash = io.final
@@ -109,7 +109,7 @@ module Zap::Resolver
                 end
               end
             rescue e
-              state.store.remove_package(package_name, version)
+              state.store.remove_package(metadata)
               raise e
             end
             true

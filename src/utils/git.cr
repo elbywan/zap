@@ -75,16 +75,12 @@ module Zap::Utils
       end
     end
 
-    def clone(dest : (String | Path)? = nil, &) : Nil
-      # Get the commit hash
-      dest ||= yield commitish_hash
-
-      self.class.run("git clone --quiet --filter=tree:0 #{@base_url} #{dest}", @reporter)
-      self.class.run("git checkout --quiet #{resolved_commitish}", @reporter, chdir: dest.to_s)
-    end
-
-    def clone(dest : (String | Path)? = nil) : Nil
-      clone(dest) { }
+    def clone(dest : (String | Path) = nil) : Nil
+      temp_dest = dest.to_s + ".tmp"
+      FileUtils.rm_rf(temp_dest) if ::File.exists?(temp_dest)
+      self.class.run("git clone --quiet --filter=tree:0 #{@base_url} #{temp_dest}", @reporter)
+      self.class.run("git checkout --quiet #{resolved_commitish}", @reporter, chdir: temp_dest.to_s)
+      ::File.rename(temp_dest, dest)
     end
 
     def self.head_commit_hash(dest : Path | String) : String

@@ -13,7 +13,7 @@ module Zap::Resolver
       absolute_path = path.expand(base_path)
       if Dir.exists? absolute_path
         Package.init(absolute_path).tap { |pkg|
-          pkg.dist = Package::LinkDist.new(path.to_s)
+          pkg.dist = Package::Dist::Link.new(path.to_s)
           on_resolve(pkg, version.to_s)
         }
       elsif ::File.exists? absolute_path
@@ -22,7 +22,7 @@ module Zap::Resolver
         temp_path = Path.new(Dir.tempdir, store_hash)
         extract_tarball_to_temp(absolute_path, temp_path)
         Package.init(temp_path).tap { |pkg|
-          pkg.dist = Package::TarballDist.new(tarball_path.to_s, temp_path.to_s)
+          pkg.dist = Package::Dist::Tarball.new(tarball_path.to_s, temp_path.to_s)
           on_resolve(pkg, version.to_s)
         }
       else
@@ -31,7 +31,7 @@ module Zap::Resolver
     end
 
     def store(metadata : Package, &on_downloading) : Bool
-      if (dist = metadata.dist).is_a?(Package::TarballDist)
+      if (dist = metadata.dist).is_a?(Package::Dist::Tarball)
         extract_tarball_to_temp(dist.tarball, Path.new(dist.path))
       end
       false

@@ -75,7 +75,7 @@ class Zap::Installer::Isolated < Zap::Installer::Base
       if package.kind.link?
         root = ancestors.last
         base_path = state.context.workspaces.try(&.find { |w| w.package.name == root.name }.try &.path) || state.config.prefix
-        return Path.new(package.dist.as(Package::LinkDist).link).expand(base_path)
+        return Path.new(package.dist.as(Package::Dist::Link).link).expand(base_path)
       elsif package.kind.workspace?
         workspace = state.context.workspaces.not_nil!.find! { |w| w.package.name == package.name }
         return Path.new(workspace.path)
@@ -85,7 +85,7 @@ class Zap::Installer::Isolated < Zap::Installer::Base
       resolved_transitive_overrides = resolve_transitive_overrides(package, ancestors)
 
       package_folder = String.build do |str|
-        str << package.key
+        str << package.hashed_key
         if resolved_peers && resolved_peers.size > 0
           peers_hash = Package.hash_dependencies(resolved_peers)
           str << "+#{peers_hash}"

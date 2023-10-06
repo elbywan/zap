@@ -13,14 +13,14 @@ module Zap::Resolver
 
     def resolve(*, pinned_version : String? = nil) : Package
       fetch_metadata.tap do |pkg|
-        on_resolve(pkg, pkg.dist.as(Package::GitDist).key)
+        on_resolve(pkg, pkg.dist.as(Package::Dist::Git).key)
       end
     end
 
     def store(metadata : Package, &on_downloading) : Bool
-      cache_key = metadata.dist.as(Package::GitDist).cache_key
+      cache_key = metadata.dist.as(Package::Dist::Git).cache_key
       cloned_folder_path = Path.new(Dir.tempdir, cache_key)
-      tarball_path = @state.store.package_path(metadata.name, cache_key + ".tgz")
+      tarball_path = Path.new(@state.store.package_path(metadata).to_s + ".tgz")
       packed = ::File.exists?(tarball_path)
       did_store = false
       # If the tarball is there, early return
@@ -55,27 +55,24 @@ module Zap::Resolver
     end
 
     def is_pinned_metadata_valid?(cached_package : Package) : Bool
-      !!cached_package.dist.as?(Package::GitDist).try(&.version.== version.to_s)
+      !!cached_package.dist.as?(Package::Dist::Git).try(&.version.== version.to_s)
     end
 
     def fetch_metadata : Package
       commit_hash = @git_url.commitish_hash
       cache_key = Digest::SHA1.hexdigest("#{@git_url.short_key}")
+      metadata_cache_key = "#{@package_name}__git:#{cache_key}.package.json"
       cloned_repo_path = Path.new(Dir.tempdir, cache_key)
 
       GitBase.dedupe_clone(cache_key) do
         state.store.with_lock(cache_key, state.config) do
           cloned = ::File.directory?(cloned_repo_path)
-          metadata_path = @package_name.empty? ? nil : @state.store.package_path(@package_name, cache_key + ".package.json")
+          metadata_path = @package_name.empty? ? nil : @state.store.file_path(metadata_cache_key)
           metadata_cached = metadata_path && ::File.exists?(metadata_path)
           clone_to(cloned_repo_path) unless cloned || metadata_cached
-          Package.init(metadata_cached ? metadata_path.not_nil! : cloned_repo_path, append_filename: !metadata_cached).tap do |pkg|
-            unless metadata_cached
-              metadata_path ||= @state.store.package_path(pkg.name, cache_key + ".package.json")
-              Utils::Directories.mkdir_p(::File.dirname(metadata_path))
-              ::File.write(metadata_path, pkg.to_json)
-            end
-            pkg.dist = Package::GitDist.new(commit_hash, version.to_s, @git_url.key, cache_key)
+          Package.init(metadata_cached && metadata_path ? metadata_path : cloned_repo_path, append_filename: !metadata_cached).tap do |pkg|
+            @state.store.store_file(metadata_cache_key, pkg.to_json) unless metadata_cached
+            pkg.dist = Package::Dist::Git.new(commit_hash, version.to_s, @git_url.key, cache_key)
           end
         end
       end
@@ -129,7 +126,7 @@ module Zap::Resolver
 
     def resolve(*, pinned_version : String? = nil) : Package
       fetch_metadata.tap do |pkg|
-        on_resolve(pkg, pkg.dist.as(Package::GitDist).key)
+        on_resolve(pkg, pkg.dist.as(Package::Dist::Git).key)
       end
     end
 

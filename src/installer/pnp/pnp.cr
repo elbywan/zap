@@ -77,7 +77,7 @@ class Zap::Installer::PnP < Zap::Installer::Base
 
       # Shortcut for links, no need to check its dependencies
       if package.kind.link?
-        location = "./#{Path.posix(package.dist.as(Package::LinkDist).link).relative_to(state.config.prefix)}/"
+        location = "./#{Path.posix(package.dist.as(Package::Dist::Link).link).relative_to(state.config.prefix)}/"
         @manifest.package_registry_data.add_package_data(
           name,
           reference,
@@ -105,8 +105,8 @@ class Zap::Installer::PnP < Zap::Installer::Base
       end
       is_virtualized = !maybe_virtualized_hashes.empty?
 
-      install_path = @modules_store / "#{name}@#{Digest::SHA1.hexdigest(package.key)}"
-      package_subpath = "#{name}@#{Digest::SHA1.hexdigest(package.key)}"
+      install_path = @modules_store / package.hashed_key
+      package_subpath = package.hashed_key
       package_location =
         if is_virtualized
           reference = "virtual:#{package.key}+#{maybe_virtualized_hashes}"

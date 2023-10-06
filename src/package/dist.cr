@@ -1,57 +1,59 @@
 class Zap::Package
-  struct RegistryDist
-    include JSON::Serializable
-    include YAML::Serializable
+  module Dist
+    struct Registry
+      include JSON::Serializable
+      include YAML::Serializable
 
-    property tarball : String
-    property shasum : String
-    property integrity : String?
+      property tarball : String
+      property shasum : String
+      property integrity : String?
 
-    def initialize(@tarball, @shasum, @integrity = nil)
+      def initialize(@tarball, @shasum, @integrity = nil)
+      end
     end
-  end
 
-  struct LinkDist
-    include JSON::Serializable
-    include YAML::Serializable
+    struct Link
+      include JSON::Serializable
+      include YAML::Serializable
 
-    property link : String
+      property link : String
 
-    def initialize(@link)
+      def initialize(@link)
+      end
     end
-  end
 
-  struct WorkspaceDist
-    include JSON::Serializable
-    include YAML::Serializable
+    struct Workspace
+      include JSON::Serializable
+      include YAML::Serializable
 
-    property workspace : String
+      property workspace : String
 
-    def initialize(@workspace)
+      def initialize(@workspace)
+      end
     end
-  end
 
-  struct TarballDist
-    include JSON::Serializable
-    include YAML::Serializable
+    struct Tarball
+      include JSON::Serializable
+      include YAML::Serializable
 
-    property tarball : String
-    property path : String
+      property tarball : String
+      property path : String
 
-    def initialize(@tarball, @path)
+      def initialize(@tarball, @path)
+      end
     end
-  end
 
-  struct GitDist
-    include JSON::Serializable
-    include YAML::Serializable
+    struct Git
+      include JSON::Serializable
+      include YAML::Serializable
 
-    property commit_hash : String
-    property version : String
-    property key : String
-    property cache_key : String
+      property commit_hash : String
+      property version : String
+      property key : String
+      property cache_key : String
 
-    def initialize(@commit_hash, @version, @key, @cache_key)
+      def initialize(@commit_hash, @version, @key, @cache_key)
+      end
     end
   end
 end

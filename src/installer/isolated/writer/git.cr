@@ -1,6 +1,6 @@
 module Zap::Installer::Isolated::Writer::Git
   def self.install(dependency : Package, install_path : Path, *, installer : Zap::Installer::Base, state : Commands::Install::State)
-    unless packed_tarball_path = dependency.dist.try &.as(Package::GitDist).cache_key.try { |key| state.store.package_path(dependency.name, key + ".tgz") }
+    unless packed_tarball_path = dependency.dist.try &.as(Package::Dist::Git).cache_key.try { |key| state.store.package_path(dependency).to_s + ".tgz" }
       raise "Cannot install git dependency #{dependency.name} because the dist.cache_key field is missing."
     end
 

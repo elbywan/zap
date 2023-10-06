@@ -117,7 +117,7 @@ module Zap::Backend
   # end
 
   protected def self.prepare(dependency : Package, dest_path : Path | String, *, store : Store, mkdir_parent = false) : {Path, Path, Bool}
-    src_path = store.package_path(dependency.name, dependency.version)
+    src_path = store.package_path(dependency)
     already_installed = Installer.package_already_installed?(dependency, dest_path)
     Utils::Directories.mkdir_p(mkdir_parent ? dest_path.dirname : dest_path) unless already_installed
     {src_path, dest_path, already_installed}

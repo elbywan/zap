@@ -63,7 +63,7 @@ class Zap::Package
   # Npm specific fields #
   #######################
 
-  property dist : RegistryDist | LinkDist | TarballDist | GitDist | WorkspaceDist | Nil = nil
+  property dist : Dist::Registry | Dist::Link | Dist::Tarball | Dist::Git | Dist::Workspace | Nil = nil
   getter deprecated : String? = nil
   @[JSON::Field(key: "hasInstallScript")]
   property has_install_script : Bool? = nil
@@ -189,17 +189,17 @@ class Zap::Package
   __do_not_serialize__
   getter kind : Kind do
     case dist = self.dist
-    when TarballDist
+    when Dist::Tarball
       if dist.tarball.starts_with?("http://") || dist.tarball.starts_with?("https://")
         Kind::TarballUrl
       else
         Kind::TarballFile
       end
-    when LinkDist
+    when Dist::Link
       Kind::Link
-    when WorkspaceDist
+    when Dist::Workspace
       Kind::Workspace
-    when GitDist
+    when Dist::Git
       Kind::Git
     else
       Kind::Registry
@@ -210,24 +210,30 @@ class Zap::Package
   __do_not_serialize__
   getter key : String do
     case dist = self.dist
-    in LinkDist
+    in Dist::Link
       "#{name}@file:#{dist.link}"
-    in WorkspaceDist
+    in Dist::Workspace
       "#{name}@workspace:#{dist.workspace}"
-    in TarballDist
+    in Dist::Tarball
       case kind
       when .tarball_file?
         "#{name}@file:#{dist.tarball}"
       else
         "#{name}@#{dist.tarball}"
       end
-    in GitDist
-      "#{name}@#{dist.key}"
-    in RegistryDist
+    in Dist::Git
+      "#{name}@#{dist.cache_key}"
+    in Dist::Registry
       "#{name}@#{version}"
     in Nil
       "#{name}@#{version}"
     end
+  end
+
+  # A more path-friendly key.
+  __do_not_serialize__
+  getter hashed_key : String do
+    "#{name}@#{version}__#{dist.class.to_s.split("::").last.downcase}:#{Digest::SHA1.hexdigest(key)}"
   end
 
   __do_not_serialize__

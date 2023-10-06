@@ -10,7 +10,7 @@ class Zap::Installer::Classic
         {install_location, false}
       else
         Utils::Directories.mkdir_p(target_path.dirname)
-        extracted_folder = Path.new(dependency.dist.as(Package::TarballDist).path)
+        extracted_folder = Path.new(dependency.dist.as(Package::Dist::Tarball).path)
         state.reporter.on_installing_package
 
         FileUtils.cp_r(extracted_folder, target_path)
