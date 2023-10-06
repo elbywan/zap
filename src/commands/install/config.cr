@@ -65,9 +65,13 @@ struct Zap::Commands::Install::Config < Zap::Commands::Config
     omit.includes?(Omit::Peer)
   end
 
+  def merge_lockfile(lockfile : Lockfile)
+    self.copy_with(strategy: @strategy || lockfile.strategy || InstallStrategy::Classic)
+  end
+
   def merge_pkg(package : Package)
     self.copy_with(
-      strategy: @strategy || package.zap_config.try(&.strategy) || InstallStrategy::Classic,
+      strategy: @strategy || package.zap_config.try(&.strategy) || nil,
       check_peer_dependencies: @check_peer_dependencies || package.zap_config.try(&.check_peer_dependencies) || false,
     )
   end

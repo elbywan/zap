@@ -11,7 +11,7 @@ class Zap::Installer::PnP < Zap::Installer::Base
   def initialize(state : Commands::Install::State)
     super(state)
     @node_modules = Path.new(state.config.node_modules)
-    @modules_store = @node_modules / ".pnp"
+    @modules_store = Path.new(state.config.plug_and_play_modules)
     @relative_modules_store = Path.posix(@modules_store).relative_to(state.config.prefix)
     Utils::Directories.mkdir_p(@modules_store)
   end

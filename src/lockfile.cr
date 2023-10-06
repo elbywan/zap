@@ -25,6 +25,7 @@ class Zap::Lockfile
   property overrides : Package::Overrides? = nil
   @hoisting_shasum : String? = nil
   @package_extensions_shasum : String? = nil
+  property strategy : Commands::Install::Config::InstallStrategy? = nil
   @[YAML::Field(converter: Zap::Utils::OrderedHashConverter(String, Zap::Package))]
   getter packages : Hash(String, Package) do
     Hash(String, Package).new

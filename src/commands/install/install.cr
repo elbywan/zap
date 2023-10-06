@@ -44,9 +44,13 @@ module Zap::Commands::Install
 
       lockfile = Lockfile.new(config.prefix)
 
-      # Merge zap config from package.json
-      install_config = install_config.merge_pkg(inferred_context.main_package)
+      # Merge zap config from package.json and lockfile
+      install_config = install_config
+        .merge_pkg(inferred_context.main_package)
+        .merge_lockfile(lockfile)
+
       Log.debug { "Install Configuration: #{install_config.pretty_inspect}" }
+
       # Load .npmrc file
       npmrc = Npmrc.new(config.prefix)
       Log.debug { "Npmrc: #{npmrc.pretty_inspect}" }
@@ -59,32 +63,14 @@ module Zap::Commands::Install
       # Print info about the install
       self.print_info(config, inferred_context, install_config, lockfile, workspaces)
 
+      # Remove node_modules / .pnp folder if the install strategy has changed
+      self.strategy_check(config, install_config, lockfile, reporter)
+
       # Force hoisting if the hoisting options have changed
-      if lockfile.update_hoisting_shasum(inferred_context.main_package)
-        if install_config.frozen_lockfile
-          # If the lockfile is frozen, raise an error
-          raise "The --frozen-lockfile flag is on but hoisting settings have been modified since the last lockfile update. Run `zap i --frozen-lockfile=false` to regenerate the lockfile and try again."
-        end
+      self.hoisting_check(install_config, lockfile, inferred_context, reporter)
 
-        if lockfile.read_status.from_disk?
-          Log.debug { "Detected a change in hoisting options in the package.json file" }
-          reporter.info("Hoisting options were modified. The packages will be re-installed.")
-          install_config = install_config.copy_with(refresh_install: true)
-        end
-      end
       # Force metadata retrieval if the package extensions options have changed
-      if lockfile.update_package_extensions_shasum(inferred_context.main_package)
-        if install_config.frozen_lockfile
-          # If the lockfile is frozen, raise an error
-          raise "The --frozen-lockfile flag is on but package extensions have been modified since the last lockfile update. Run `zap i --frozen-lockfile=false` to regenerate the lockfile and try again."
-        end
-
-        if lockfile.read_status.from_disk?
-          Log.debug { "Detected a change in package extensions options in the package.json file" }
-          reporter.info("Package extensions have been modified. Package metadata will forcefully be fetched from the registry and packages will be re-installed.")
-          install_config = install_config.copy_with(force_metadata_retrieval: true, refresh_install: true)
-        end
-      end
+      self.package_extensions_check(install_config, lockfile, inferred_context, reporter)
 
       # Init state struct
       state = State.new(
@@ -205,6 +191,58 @@ module Zap::Commands::Install
         TERM
       end
       puts
+    end
+  end
+
+  private def self.strategy_check(config : Zap::Config, install_config : Install::Config, lockfile : Lockfile, reporter : Reporter)
+    if !config.global && lockfile.strategy && lockfile.strategy != install_config.strategy
+      Log.debug { "Install strategy changed from #{lockfile.strategy} to #{install_config.strategy}" if lockfile.strategy}
+      reporter.info "Install strategy changed from #{lockfile.strategy} to #{install_config.strategy}." if lockfile.strategy
+      if ::File.exists?(config.node_modules)
+        reporter.info "Removing the existing `node_modules` folder…"
+        FileUtils.rm_rf(config.node_modules)
+      end
+      if ::File.exists?(config.plug_and_play_modules)
+        reporter.info "Removing the existing plug'n'play `.pnp` folder…"
+        FileUtils.rm_rf(config.plug_and_play_modules)
+      end
+      if ::File.exists?(Path.new(config.prefix, ".pnp.data.json"))
+        reporter.info "Removing the plug'n'play runtime files…"
+        FileUtils.rm_rf(Path.new(config.prefix, ".pnp.data.json"))
+        FileUtils.rm_rf(Path.new(config.prefix, ".pnp.cjs"))
+        FileUtils.rm_rf(Path.new(config.prefix, ".pnp.loader.mjs"))
+      end
+    end
+    lockfile.strategy = install_config.strategy
+  end
+
+  private def self.hoisting_check(install_config : Install::Config, lockfile : Lockfile, inferred_context : Zap::Config::InferredContext, reporter : Reporter)
+    if lockfile.update_hoisting_shasum(inferred_context.main_package)
+      if install_config.frozen_lockfile
+        # If the lockfile is frozen, raise an error
+        raise "The --frozen-lockfile flag is on but hoisting settings have been modified since the last lockfile update. Run `zap i --frozen-lockfile=false` to regenerate the lockfile and try again."
+      end
+
+      if lockfile.read_status.from_disk?
+        Log.debug { "Detected a change in hoisting options in the package.json file" }
+        reporter.info("Hoisting options were modified. The packages will be re-installed.")
+        install_config = install_config.copy_with(refresh_install: true)
+      end
+    end
+  end
+
+  private def self.package_extensions_check(install_config : Install::Config, lockfile : Lockfile, inferred_context : Zap::Config::InferredContext, reporter : Reporter)
+    if lockfile.update_package_extensions_shasum(inferred_context.main_package)
+      if install_config.frozen_lockfile
+        # If the lockfile is frozen, raise an error
+        raise "The --frozen-lockfile flag is on but package extensions have been modified since the last lockfile update. Run `zap i --frozen-lockfile=false` to regenerate the lockfile and try again."
+      end
+
+      if lockfile.read_status.from_disk?
+        Log.debug { "Detected a change in package extensions options in the package.json file" }
+        reporter.info("Package extensions have been modified. Package metadata will forcefully be fetched from the registry and packages will be re-installed.")
+        install_config = install_config.copy_with(force_metadata_retrieval: true, refresh_install: true)
+      end
     end
   end
 
