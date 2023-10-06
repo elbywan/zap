@@ -114,6 +114,15 @@ module Zap
       end
     end
 
+    def pnp_runtime_esm? : Path?
+      runtime_path = Path.new(prefix, ".pnp.loader.mjs")
+      if ::File.exists?(runtime_path)
+        runtime_path
+      else
+        nil
+      end
+    end
+
     def deduce_global_prefix : String
       begin
         {% if flag?(:windows) %}

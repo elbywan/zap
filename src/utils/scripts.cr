@@ -243,8 +243,11 @@ module Zap::Utils::Scripts
       "PATH"         => (paths << config.bin_path << ENV["PATH"]).join(Process::PATH_DELIMITER),
       "npm_execpath" => "zap",
     }
-    if pnp_runtime = config.pnp_runtime?
-      env["NODE_OPTIONS"] ||= "--require #{pnp_runtime}"
+    pnp_runtime_cjs = config.pnp_runtime?
+    pnp_runtime_esm = config.pnp_runtime_esm?
+    node_options = (pnp_runtime_cjs ? "--require #{pnp_runtime_cjs} " : "") + (pnp_runtime_esm ? "--loader #{pnp_runtime_esm} " : "")
+    unless node_options.empty?
+      env["NODE_OPTIONS"] ||= node_options
     end
     yield command, :before
     status = Process.run(command, **args, shell: true, env: env, chdir: chdir.to_s, output: output, input: stdin, error: output)
