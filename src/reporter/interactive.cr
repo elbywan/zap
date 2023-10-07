@@ -178,7 +178,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
 
   def report_resolver_updates(& : -> T) : T forall T
     @update_channel = Channel(Int32?).new
-    Utils::Thread.worker do
+    Utils::Concurrent::Thread.worker do
       @lines.set(1)
       resolving_header = header("🔍", "Resolving…", :yellow)
       downloading_header = header("📡", "Downloading…", :cyan)
@@ -223,7 +223,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
 
   def report_installer_updates(& : -> T) : T forall T
     @update_channel = Channel(Int32?).new
-    Utils::Thread.worker do
+    Utils::Concurrent::Thread.worker do
       installing_header = header("💽", "Installing…", :magenta)
       loop do
         msg = @update_channel.receive?
@@ -249,7 +249,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
   def report_builder_updates(& : -> T) : T forall T
     @update_channel = Channel(Int32?).new
     building_header = header("🧱", "Building…", :light_red)
-    Utils::Thread.worker do
+    Utils::Concurrent::Thread.worker do
       loop do
         msg = @update_channel.receive?
         if msg.nil?

@@ -1,10 +1,12 @@
 require "./spec_helper"
-require "../src/utils/parallel"
+require "../src/utils/concurrent/parallel"
 
-describe Zap::Utils::Parallel do
+alias Parallel = ::Zap::Utils::Concurrent::Parallel
+
+describe Parallel do
   it("should parallelize computations (index)") do
     10.times do
-      results = Zap::Utils::Parallel.parallelize(10) { |i|
+      results = Parallel.parallelize(10) { |i|
         # Shuffle the fibers
         sleep(Random.rand(10).milliseconds)
         # Perform the computation
@@ -17,7 +19,7 @@ describe Zap::Utils::Parallel do
 
   it("should parallelize computations (iterable)") do
     10.times do
-      results = Zap::Utils::Parallel.parallelize(1..10) { |i|
+      results = Parallel.parallelize(1..10) { |i|
         # Shuffle the fibers
         sleep(Random.rand(10).milliseconds)
         # Perform the computation
@@ -29,7 +31,7 @@ describe Zap::Utils::Parallel do
   end
 
   it("should raise when one of the computation throws an exception") do
-    parallel = Zap::Utils::Parallel(Int32).new(1..10) { |i|
+    parallel = Parallel(Int32).new(1..10) { |i|
       raise "error" if i == 5
       raise "unraised error" if i == 7
       i

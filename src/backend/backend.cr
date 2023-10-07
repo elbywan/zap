@@ -1,6 +1,9 @@
 require "file_utils"
+require "../utils/concurrent/pipeline"
 
 module Zap::Backend
+  alias Pipeline = ::Zap::Utils::Concurrent::Pipeline
+
   enum Backends
     CloneFile
     CopyFile

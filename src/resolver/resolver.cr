@@ -1,11 +1,14 @@
 require "../utils/semver"
-require "../utils/keyed_lock"
+require "../utils/data_structures/safe_set"
+require "../utils/concurrent/keyed_lock"
+require "../utils/concurrent/dedupe_lock"
 require "../store"
 
 module Zap::Resolver
   Log = Zap::Log.for(self)
 
   alias UnmetPeersHash = SafeHash(String, SafeHash(String, SafeSet(String)))
+  alias Pipeline = ::Zap::Utils::Concurrent::Pipeline
 end
 
 abstract struct Zap::Resolver::Base
@@ -76,8 +79,8 @@ abstract struct Zap::Resolver::Base
 end
 
 module Zap::Resolver
-  Utils::DedupeLock::Global.setup(:store, Bool)
-  Utils::KeyedLock::Global.setup(Package)
+  Utils::Concurrent::DedupeLock::Global.setup(:store, Bool)
+  Utils::Concurrent::KeyedLock::Global.setup(Package)
 
   GH_URL_REGEX   = /^https:\/\/github.com\/(?P<owner>[a-zA-Z0-9\-_]+)\/(?P<package>[^#^\/]+)(?:#(?P<hash>[.*]))?/
   GH_SHORT_REGEX = /^[^@.].*\/.*$/

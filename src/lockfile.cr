@@ -2,7 +2,7 @@ require "yaml"
 require "digest"
 require "./utils/**"
 
-alias DependencyType = Zap::Package::DependencyType
+alias DependencyType = ::Zap::Package::DependencyType
 
 class Zap::Lockfile
   include YAML::Serializable

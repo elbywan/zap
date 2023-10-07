@@ -1,9 +1,9 @@
 require "./spec_helper"
 require "../src/workspaces"
 
-alias Workspaces = Zap::Workspaces
-alias Workspace = Zap::Workspaces::Workspace
-alias Package = Zap::Package
+alias Workspaces = ::Zap::Workspaces
+alias Workspace = ::Zap::Workspaces::Workspace
+alias Package = ::Zap::Package
 
 WORKSPACE_A = Workspace.new(
   package: Package.from_json(%({

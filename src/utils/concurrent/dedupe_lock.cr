@@ -1,6 +1,6 @@
-require "./data_structures/safe_hash"
+require "../data_structures/safe_hash"
 
-module Zap::Utils::DedupeLock(T)
+module Zap::Utils::Concurrent::DedupeLock(T)
   @lock = Mutex.new(:unchecked)
   @channels = {} of String => Channel(T)
 
@@ -40,7 +40,7 @@ module Zap::Utils::DedupeLock(T)
   end
 end
 
-module Zap::Utils::DedupeLock::Global
+module Zap::Utils::Concurrent::DedupeLock::Global
   macro setup(name_arg, type = Nil)
     {% name = name_arg.id %}
     @@%sync_channel : SafeHash(String, Channel({{type}})) = SafeHash(String, Channel({{type}})).new

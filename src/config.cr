@@ -1,6 +1,6 @@
 require "./utils/filter"
 require "./utils/from_env"
-require "./installer/backend"
+require "./backend"
 require "./package"
 
 module Zap

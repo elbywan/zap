@@ -1,4 +1,4 @@
-struct Zap::Utils::Parallel(T)
+struct Zap::Utils::Concurrent::Parallel(T)
   def initialize(@size : Int32, &block : Int32 -> T)
     @channel = Channel({Int32, T} | Exception).new
     @size.times do |i|

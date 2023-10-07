@@ -1,6 +1,6 @@
-require "./data_structures/safe_array"
+require "../data_structures/safe_array"
 
-class Zap::Pipeline
+class Zap::Utils::Concurrent::Pipeline
   getter counter = Atomic(Int32).new(0)
   getter max = Atomic(Int32).new(0)
   @errors = SafeArray(Exception).new

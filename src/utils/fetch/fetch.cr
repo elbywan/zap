@@ -1,13 +1,13 @@
 require "http/client"
 require "json"
 require "../data_structures/safe_hash"
-require "../dedupe_lock"
+require "../concurrent/dedupe_lock"
 require "../macros"
 require "../pool"
 require "./cache"
 
 class Zap::Utils::Fetch(T)
-  include Zap::Utils::DedupeLock(T)
+  include Concurrent::DedupeLock(T)
   include Utils::Macros
 
   Log       = Zap::Log.for(self)

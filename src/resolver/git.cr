@@ -2,7 +2,9 @@ module Zap::Resolver
   @git_url : Utils::GitUrl
 
   private abstract struct GitBase < Base
-    Utils::DedupeLock::Global.setup(:clone, Package)
+    alias DedupeLock = ::Zap::Utils::Concurrent::DedupeLock
+
+    DedupeLock::Global.setup(:clone, Package)
 
     getter git_url : Utils::GitUrl
 

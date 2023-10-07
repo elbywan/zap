@@ -1,4 +1,4 @@
-module Zap::Utils::KeyedLock::Global
+module Zap::Utils::Concurrent::KeyedLock::Global
   macro setup(type = Nil)
     @@%lock = Mutex.new
     @@%keyed_locks : Hash(String, Mutex) = Hash(String, Mutex).new

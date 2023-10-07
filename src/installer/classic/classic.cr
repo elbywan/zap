@@ -1,5 +1,5 @@
 require "../installer"
-require "../backend/*"
+require "../../backend/*"
 
 class Zap::Installer::Classic < Zap::Installer::Base
   record DependencyItem,
@@ -92,14 +92,7 @@ class Zap::Installer::Classic < Zap::Installer::Base
         Log.debug { "(#{dependency.key}) Installing package…" }
 
         # Raise if the architecture is not supported
-        begin
-          dependency.match_os_and_cpu!
-        rescue e
-          # If the package is optional, skip it
-          next if dependency_item.optional
-          # Else, raise the error
-          raise e
-        end
+        check_os_and_cpu!(dependency, early: :next, optional: dependency_item.optional)
 
         # Install a dependency and get the new cache to pass to the subdeps
         install_location, did_install = install_dependency(
@@ -125,21 +118,10 @@ class Zap::Installer::Classic < Zap::Installer::Base
         ancestors = dependency_item.ancestors.dup.push(dependency)
         # Process each child dependency
         dependency.each_dependency(include_dev: false) do |name, version_or_alias, type|
-          # Apply overrides
+          # Apply override
           pkg = state.lockfile.get_package?(name, version_or_alias)
           next unless pkg
-          if overrides = state.lockfile.overrides
-            if override = overrides.override?(pkg, ancestors)
-              # maybe enable logging with a verbose flag?
-              # ancestors_str = ancestors.map { |a| "#{a.name}@#{a.version}" }.join(" > ")
-              # state.reporter.log("#{"Overriden:".colorize.bold.yellow} #{"#{override.name}@"}#{override.specifier.colorize.blue} (was: #{pkg.version}) #{"(#{ancestors_str})".colorize.dim}")
-              pkg = state.lockfile.packages["#{override.name}@#{override.specifier}"]
-              Log.debug {
-                ancestors_str = ancestors.map { |a| "#{a.name}@#{a.version}" }.join(" > ")
-                "(#{pkg.key}) Overriden dependency: #{"#{override.name}@"}#{override.specifier} (was: #{pkg.version}) (#{ancestors_str})"
-              }
-            end
-          end
+          pkg = apply_override(state, pkg, ancestors)
           # Queue child dependency
           dependency_queue << DependencyItem.new(
             dependency: pkg,

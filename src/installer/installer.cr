@@ -3,6 +3,24 @@ module Zap::Installer
 
   Log = Zap::Log.for(self)
 
+  # Check if a package is already installed on the filesystem
+  def self.package_already_installed?(dependency : Package, path : Path)
+    if exists = Dir.exists?(path)
+      metadata_path = path / METADATA_FILE_NAME
+      unless File.readable?(metadata_path)
+        FileUtils.rm_rf(path)
+        exists = false
+      else
+        key = File.read(metadata_path)
+        if key != dependency.key
+          FileUtils.rm_rf(path)
+          exists = false
+        end
+      end
+    end
+    exists
+  end
+
   abstract class Base
     getter state : Commands::Install::State
     getter main_package : Package
@@ -17,6 +35,7 @@ module Zap::Installer
 
     abstract def install : Nil
 
+    # Remove a set of direct dependencies from the filesystem
     def remove(dependencies : Set({String, String | Package::Alias, String})) : Nil
       dependencies.each do |(name, version_or_alias, root_name)|
         workspace = state.context.workspaces.try &.find { |w| w.package.name == root_name }
@@ -33,6 +52,7 @@ module Zap::Installer
       end
     end
 
+    # Prune unused dependencies from the filesystem
     def prune_orphan_modules
       prune_workspace_orphans(Path.new(state.config.node_modules))
       state.context.workspaces.try &.each do |workspace|
@@ -159,22 +179,42 @@ module Zap::Installer
       end
       result
     end
-  end
 
-  def self.package_already_installed?(dependency : Package, path : Path)
-    if exists = Dir.exists?(path)
-      metadata_path = path / METADATA_FILE_NAME
-      unless File.readable?(metadata_path)
-        FileUtils.rm_rf(path)
-        exists = false
-      else
-        key = File.read(metadata_path)
-        if key != dependency.key
-          FileUtils.rm_rf(path)
-          exists = false
+    # Check if a package is overriden and return the override as a Package if any.
+    # Otherwise return the original package.
+    protected def apply_override(
+      state : Commands::Install::State,
+      package : Package,
+      ancestors : Enumerable(Package | Lockfile::Root),
+      *,
+      reverse_ancestors? : Bool = false
+    ) : Package
+      if overrides = state.lockfile.overrides
+        ancestors = ancestors.to_a.reverse if reverse_ancestors?
+        if override = overrides.override?(package, ancestors)
+          # maybe enable logging with a verbose flag?
+          # ancestors_str = ancestors.map { |a| "#{a.name}@#{a.version}" }.join(" > ")
+          # state.reporter.log("#{"Overriden:".colorize.bold.yellow} #{"#{override.name}@"}#{override.specifier.colorize.blue} (was: #{package.version}) #{"(#{ancestors_str})".colorize.dim}")
+          Log.debug {
+            ancestors_str = ancestors.select(&.is_a?(Package)).map { |a| "#{a.as(Package).name}@#{a.as(Package).version}" }.join(" > ")
+            "(#{package.key}) Overriden dependency: #{"#{override.name}@"}#{override.specifier} (was: #{package.version}) (#{ancestors_str})"
+          }
+          return state.lockfile.packages["#{override.name}@#{override.specifier}"]
         end
       end
+      package
     end
-    exists
+
+    # Raise if the architecture is not supported. If the package is optional, skip it.
+    macro check_os_and_cpu!(package, *, early, optional = nil)
+      begin
+        {{package}}.match_os_and_cpu!
+      rescue e
+        # If the package is optional, skip it
+        {{early.id}} if {{optional}}
+        # Raise the error unless the package is an optional dependency
+        raise e
+      end
+    end
   end
 end

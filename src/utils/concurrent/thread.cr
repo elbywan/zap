@@ -1,4 +1,4 @@
-module Zap::Utils::Thread
+module Zap::Utils::Concurrent::Thread
   {% if flag?(:preview_mt) %}
     def self.worker(&block)
       ::Thread.new do

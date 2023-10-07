@@ -1,15 +1,17 @@
 require "./spec_helper"
-require "../src/utils/dedupe_lock"
+require "../src/utils/concurrent/dedupe_lock"
+
+alias DedupeLock = ::Zap::Utils::Concurrent::DedupeLock
 
 class Deduped
-  include Zap::Utils::DedupeLock(Int32)
+  include DedupeLock(Int32)
 end
 
 module GloballyDeduped
-  Zap::Utils::DedupeLock::Global.setup(:global, Int32)
+  DedupeLock::Global.setup(:global, Int32)
 end
 
-describe Zap::Utils::DedupeLock do
+describe DedupeLock do
   it "should lock and memoize a block" do
     s = Deduped.new
 
@@ -67,7 +69,7 @@ describe Zap::Utils::DedupeLock do
   end
 end
 
-describe Zap::Utils::DedupeLock::Global do
+describe DedupeLock::Global do
   it "should lock and memoize a block" do
     check = Atomic(Int32).new(0)
     results = Array(Int32).new(10, 0)

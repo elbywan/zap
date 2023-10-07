@@ -1,5 +1,5 @@
 require "../installer"
-require "../backend/*"
+require "../../backend/*"
 
 class Zap::Installer::Isolated < Zap::Installer::Base
   # See: https://github.com/npm/rfcs/blob/main/accepted/0042-isolated-mode.md
@@ -57,19 +57,15 @@ class Zap::Installer::Isolated < Zap::Installer::Base
     ancestors : Ancestors,
     root_path : Path? = nil,
     optional : Bool = false
-  ) : Path
+  ) : Path?
     resolved_peers = nil
     overrides = nil
 
     if package.is_a?(Package)
       Log.debug { "(#{package.key}) Installing package…" }
-      # Raise if the architecture is not supported
-      begin
-        package.match_os_and_cpu!
-      rescue e
-        # Raise the error unless the package is an optional dependency
-        raise e unless optional
-      end
+
+      # Raise if the architecture is not supported - unless the package is optional
+      check_os_and_cpu!(package, early: :return, optional: optional)
 
       # Links/Workspaces are easy, we just need to return the target path
       if package.kind.link?
@@ -163,20 +159,8 @@ class Zap::Installer::Isolated < Zap::Installer::Base
       # Add to the ancestors
       ancestors.unshift(package)
 
-      # Apply overrides
-      if overrides = state.lockfile.overrides
-        reversed_ancestors = ancestors.to_a.reverse
-        if override = overrides.override?(dependency, reversed_ancestors)
-          # maybe enable logging with a verbose flag?
-          # ancestors_str = reversed_ancestors.select(&.is_a?(Package)).map { |a| "#{a.as(Package).name}@#{a.as(Package).version}" }.join(" > ")
-          # state.reporter.log("#{"Overriden:".colorize.bold.yellow} #{"#{override.name}@"}#{override.specifier.colorize.blue} (was: #{dependency.version}) #{"(#{ancestors_str})".colorize.dim}")
-          dependency = state.lockfile.packages["#{override.name}@#{override.specifier}"]
-          Log.debug {
-            ancestors_str = reversed_ancestors.select(&.is_a?(Package)).map { |a| "#{a.as(Package).name}@#{a.as(Package).version}" }.join(" > ")
-            "(#{dependency.key}) Overriden dependency: #{"#{override.name}@"}#{override.specifier} (was: #{dependency.version}) (#{ancestors_str})"
-          }
-        end
-      end
+      # Apply override
+      dependency = apply_override(state, dependency, ancestors, reverse_ancestors?: true)
 
       # Install the dependency to its own folder
       source = install_package(
@@ -185,6 +169,9 @@ class Zap::Installer::Isolated < Zap::Installer::Base
         optional: type.optional_dependency?
       )
       ancestors.shift
+
+      # Skip if the dependency is optional and was not installed
+      next unless source
 
       # Link it to the parent package
       target = install_path / name

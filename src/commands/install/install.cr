@@ -8,6 +8,8 @@ require "../../installer/pnp"
 require "../../workspaces"
 
 module Zap::Commands::Install
+  alias Pipeline = Utils::Concurrent::Pipeline
+
   record State,
     config : Zap::Config,
     install_config : Install::Config,
@@ -196,7 +198,7 @@ module Zap::Commands::Install
 
   private def self.strategy_check(config : Zap::Config, install_config : Install::Config, lockfile : Lockfile, reporter : Reporter)
     if !config.global && lockfile.strategy && lockfile.strategy != install_config.strategy
-      Log.debug { "Install strategy changed from #{lockfile.strategy} to #{install_config.strategy}" if lockfile.strategy}
+      Log.debug { "Install strategy changed from #{lockfile.strategy} to #{install_config.strategy}" if lockfile.strategy }
       reporter.info "Install strategy changed from #{lockfile.strategy} to #{install_config.strategy}." if lockfile.strategy
       if ::File.exists?(config.node_modules)
         reporter.info "Removing the existing `node_modules` folder…"
