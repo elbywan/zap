@@ -27,7 +27,8 @@ module Zap::Commands::Install
     install_config : Install::Config,
     *,
     reporter : Reporter? = nil,
-    store : Zap::Store? = nil
+    store : Zap::Store? = nil,
+    raise_on_failure : Bool = false
   )
     state = uninitialized State
     reporter ||= config.silent ? Reporter::Null.new : Reporter::Interactive.new
@@ -138,6 +139,7 @@ module Zap::Commands::Install
     # Print the report
     state.reporter.report_done(realtime, memory, state.install_config, unmet_peers: unmet_peers_hash)
   rescue e
+    raise e if raise_on_failure
     reporter.try &.error(e)
     exit ErrorCodes::INSTALL_COMMAND_FAILED.to_i32
   end

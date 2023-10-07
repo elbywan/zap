@@ -8,7 +8,7 @@ module Zap::Resolver
       if Dir.exists?(@workspace.path)
         Package.init(@workspace.path).tap { |pkg|
           pkg.dist = Package::Dist::Workspace.new(@workspace.package.name)
-          on_resolve(pkg, "workspace:" + @workspace.package.name)
+          on_resolve(pkg)
         }
       else
         raise "Cannot find package #{package_name} in the current workspace."

@@ -15,7 +15,7 @@ module Zap::Resolver
 
     def resolve(*, pinned_version : String? = nil) : Package
       fetch_metadata.tap do |pkg|
-        on_resolve(pkg, pkg.dist.as(Package::Dist::Git).key)
+        on_resolve(pkg)
       end
     end
 
@@ -91,7 +91,8 @@ module Zap::Resolver
       Commands::Install.run(
         config,
         Commands::Install::Config.new(save: false),
-        store: state.store
+        store: state.store,
+        raise_on_failure: true
       )
     end
 
@@ -128,7 +129,7 @@ module Zap::Resolver
 
     def resolve(*, pinned_version : String? = nil) : Package
       fetch_metadata.tap do |pkg|
-        on_resolve(pkg, pkg.dist.as(Package::Dist::Git).key)
+        on_resolve(pkg)
       end
     end
 

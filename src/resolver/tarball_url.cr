@@ -6,7 +6,7 @@ module Zap::Resolver
         temp_path = @state.store.store_temp_tarball(tarball_url)
         Package.init(temp_path).tap { |pkg|
           pkg.dist = Package::Dist::Tarball.new(tarball_url, temp_path.to_s)
-          on_resolve(pkg, tarball_url)
+          on_resolve(pkg)
         }
       end
     end

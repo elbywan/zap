@@ -30,15 +30,15 @@ abstract struct Zap::Resolver::Base
   )
   end
 
-  def on_resolve(pkg : Package, locked_version : String)
+  def on_resolve(pkg : Package)
     aliased_name = @aliased_name
     parent_package = parent
     if parent_package.is_a?(Lockfile::Root)
       # For direct dependencies: check if the package is freshly added since the last install and report accordingly
-      if version = parent_package.dependency_specifier?(aliased_name || pkg.name)
-        if locked_version != version
+      if parent_specifier = parent_package.dependency_specifier?(aliased_name || pkg.name)
+        if pkg.specifier != parent_specifier
           state.reporter.on_package_added("#{aliased_name.try(&.+("@npm:"))}#{pkg.key}")
-          state.reporter.on_package_removed("#{aliased_name || pkg.name}@#{version}")
+          state.reporter.on_package_removed("#{aliased_name || pkg.name}@#{parent_specifier}")
         end
       else
         state.reporter.on_package_added(pkg.key)
@@ -51,10 +51,10 @@ abstract struct Zap::Resolver::Base
     pkg.has_prepare_script ||= pkg.scripts.try(&.has_prepare_script?)
     # Pin the dependency to the locked version
     if aliased_name
-      parent_package.try &.dependency_specifier(aliased_name, Package::Alias.new(name: pkg.name, version: locked_version), @dependency_type)
+      parent_package.try &.dependency_specifier(aliased_name, Package::Alias.new(name: pkg.name, version: pkg.specifier), @dependency_type)
     else
-      Log.debug { "Setting dependency specifier for #{pkg.name} to #{locked_version} in #{parent_package.key}" } if parent_package.is_a?(Package)
-      parent_package.try &.dependency_specifier(pkg.name, locked_version, @dependency_type)
+      Log.debug { "Setting dependency specifier for #{pkg.name} to #{pkg.specifier} in #{parent_package.specifier}" } if parent_package.is_a?(Package)
+      parent_package.try &.dependency_specifier(pkg.name, pkg.specifier, @dependency_type)
     end
   end
 

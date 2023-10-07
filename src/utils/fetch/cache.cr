@@ -2,9 +2,9 @@ require "msgpack"
 
 class Zap::Utils::Fetch(T)
   abstract class Cache(T)
-    abstract def get(key : String, etag : String?) : T?
-    abstract def get(key : String, &etag : -> String?) : T?
-    abstract def set(key : String, value : T, expiry : Time::Span?, etag : String?) : Nil
+    abstract def get(key_str : String, etag : String?) : T?
+    abstract def get(key_str : String, &etag : -> String?) : T?
+    abstract def set(key_str : String, value : T, expiry : Time::Span?, etag : String?) : Nil
 
     def self.hash(str)
       Digest::SHA1.hexdigest(str)
@@ -15,8 +15,8 @@ class Zap::Utils::Fetch(T)
         @cache = SafeHash(String, T).new
       end
 
-      def get(key : String, etag : String? = nil, *, fallback = true) : T?
-        key = self.class.hash(key)
+      def get(key_str : String, etag : String? = nil, *, fallback = true) : T?
+        key = self.class.hash(key_str)
         own = @cache[key]?
         return own if own
         if fallback
@@ -28,8 +28,8 @@ class Zap::Utils::Fetch(T)
         # cache miss
       end
 
-      def get(key : String, *, fallback = true, &etag : -> String?) : T?
-        key = self.class.hash(key)
+      def get(key_str : String, *, fallback = true, &etag : -> String?) : T?
+        key = self.class.hash(key_str)
         own = @cache[key]?
         return own if own
         if fallback
@@ -41,8 +41,8 @@ class Zap::Utils::Fetch(T)
         # cache miss
       end
 
-      def set(key : String, value : T, expiry : Time::Span? = nil, etag : String? = nil, *, fallback = true) : Nil
-        key = self.class.hash(key)
+      def set(key_str : String, value : T, expiry : Time::Span? = nil, etag : String? = nil, *, fallback = true) : Nil
+        key = self.class.hash(key_str)
         @cache[key] = value
         @fallback.try &.set(key, value, expiry, etag) if fallback
         value
@@ -105,8 +105,8 @@ class Zap::Utils::Fetch(T)
         Utils::Directories.mkdir_p(@path)
       end
 
-      def get(key : String, etag : String? = nil) : T?
-        key = self.class.hash(key)
+      def get(key_str : String, etag : String? = nil) : T?
+        key = self.class.hash(key_str)
         path = @path / key / BODY_FILE_NAME
         Utils::Various.block {
           next nil unless ::File.readable?(path)
@@ -121,14 +121,14 @@ class Zap::Utils::Fetch(T)
 
           if expiry = meta.try(&.expiry)
             if expiry > Time.utc.to_unix
-              Log.debug { "(#{key}) Cache hit - serving metadata from #{path}" }
+              Log.debug { "(#{key_str}) Cache hit - serving metadata from #{path}" }
               next path
             end
           end
 
           meta_etag = meta.try(&.etag)
           if etag && meta_etag && meta_etag == etag
-            Log.debug { "(#{key}) Cache hit (etag) - serving metadata from #{path}" }
+            Log.debug { "(#{key_str}) Cache hit (etag) - serving metadata from #{path}" }
             next path
           end
         }.try do |path|
@@ -139,8 +139,8 @@ class Zap::Utils::Fetch(T)
         end
       end
 
-      def get(key : String, &get_etag : -> String?) : T?
-        key = self.class.hash(key)
+      def get(key_str : String, &get_etag : -> String?) : T?
+        key = self.class.hash(key_str)
         path = @path / key / BODY_FILE_NAME
         Utils::Various.block {
           next nil unless ::File.readable?(path)
@@ -155,7 +155,7 @@ class Zap::Utils::Fetch(T)
 
           if expiry = meta.try(&.expiry)
             if expiry > Time.utc.to_unix
-              Log.debug { "(#{key}) Cache hit - serving metadata from #{path}" }
+              Log.debug { "(#{key_str}) Cache hit - serving metadata from #{path}" }
               next path
             end
           end
@@ -163,7 +163,7 @@ class Zap::Utils::Fetch(T)
           if meta_etag = meta.try(&.etag)
             etag = get_etag.call
             if etag && meta_etag == etag
-              Log.debug { "(#{key}) Cache hit (etag) - serving metadata from #{path}" }
+              Log.debug { "(#{key_str}) Cache hit (etag) - serving metadata from #{path}" }
               next path
             end
           end
@@ -175,14 +175,14 @@ class Zap::Utils::Fetch(T)
         end
       end
 
-      def set(key : String, value : T, expiry : Time::Span? = nil, etag : String? = nil) : Nil
-        key = self.class.hash(key)
+      def set(key_str : String, value : T, expiry : Time::Span? = nil, etag : String? = nil) : Nil
+        key = self.class.hash(key_str)
         root_path = @path / key
         body_file_path = root_path / BODY_FILE_NAME
         body_file_path_temp = root_path / BODY_FILE_NAME_TEMP
         meta_file_path = root_path / META_FILE_NAME
         meta_file_path_temp = root_path / META_FILE_NAME_TEMP
-        Log.debug { "(#{key}) Storing metadata at #{root_path}" }
+        Log.debug { "(#{key_str}) Storing metadata at #{root_path}" }
         Utils::Directories.mkdir_p(root_path)
         ::File.write(body_file_path_temp, @serializer.serialize(value))
         ::File.rename(body_file_path_temp, body_file_path)

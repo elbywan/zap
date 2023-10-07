@@ -209,24 +209,30 @@ class Zap::Package
   # A unique key depending on the package's kind.
   __do_not_serialize__
   getter key : String do
+    "#{name}@#{specifier}"
+  end
+
+  # A specifier for the resolved package.
+  __do_not_serialize__
+  getter specifier : String do
     case dist = self.dist
     in Dist::Link
-      "#{name}@file:#{dist.link}"
+      "file:#{dist.link}"
     in Dist::Workspace
-      "#{name}@workspace:#{dist.workspace}"
+      "workspace:#{dist.workspace}"
     in Dist::Tarball
       case kind
       when .tarball_file?
-        "#{name}@file:#{dist.tarball}"
+        "file:#{dist.tarball}"
       else
-        "#{name}@#{dist.tarball}"
+        "#{dist.tarball}"
       end
     in Dist::Git
-      "#{name}@#{dist.cache_key}"
+      "#{dist.cache_key}"
     in Dist::Registry
-      "#{name}@#{version}"
+      version
     in Nil
-      "#{name}@#{version}"
+      version
     end
   end
 

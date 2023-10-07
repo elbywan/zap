@@ -147,7 +147,7 @@ module Zap::Utils::Scripts
     Log.debug {
       "Running script: #{command} #{Utils::Macros.args_str}"
     }
-    output = (!config.silent ? output_io : nil) || IO::Memory.new
+    output = (config.silent ? nil : output_io) || IO::Memory.new
     # See: https://docs.npmjs.com/cli/v9/commands/npm-run-script
     paths = [] of Path | String
     paths << Path.new(chdir, "node_modules", ".bin")
@@ -163,13 +163,13 @@ module Zap::Utils::Scripts
     pnp_runtime_cjs = config.pnp_runtime?
     pnp_runtime_esm = config.pnp_runtime_esm?
     node_options = (pnp_runtime_cjs ? "--require #{pnp_runtime_cjs} " : "") + (pnp_runtime_esm ? "--loader #{pnp_runtime_esm} " : "")
-    unless node_options.empty?
-      env["NODE_OPTIONS"] ||= node_options
+    unless node_options.empty? || ENV["NODE_OPTIONS"]?
+      env["NODE_OPTIONS"] = node_options
     end
     yield command, :before
     status = Process.run(command, **args, shell: true, env: env, chdir: chdir.to_s, output: output, input: stdin, error: output)
     if !status.success? && raise_on_error_code
-      raise "#{output.is_a?(IO::Memory) && output_io.nil? ? output.to_s + NEW_LINE : ""}Command failed: #{command} (#{status.exit_status})"
+      raise "#{output.is_a?(IO::Memory) ? output.to_s + NEW_LINE : ""}Command failed: #{command} (#{status.exit_status})"
     end
     yield command, :after
   end

@@ -60,12 +60,12 @@ class Zap::Lockfile
     instance
   end
 
-  def get_package(name : String, version_or_alias : String | Package::Alias)
-    packages[version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key]
+  def get_package(name : String, specifier : String | Package::Alias)
+    packages[specifier.is_a?(String) ? "#{name}@#{specifier}" : specifier.key]
   end
 
-  def get_package?(name : String, version_or_alias : String | Package::Alias)
-    packages[version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key]?
+  def get_package?(name : String, specifier : String | Package::Alias)
+    packages[specifier.is_a?(String) ? "#{name}@#{specifier}" : specifier.key]?
   end
 
   def prune(scope : Set(String)) : Set({String, String | Package::Alias, String})

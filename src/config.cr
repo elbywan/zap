@@ -105,7 +105,7 @@ module Zap
       nodejs.try { |node_bin| Path.new(node_bin).dirname }
     end
 
-    def pnp_runtime? : Path?
+    getter? pnp_runtime : Path? do
       runtime_path = Path.new(prefix, ".pnp.cjs")
       if ::File.exists?(runtime_path)
         runtime_path
@@ -114,7 +114,7 @@ module Zap
       end
     end
 
-    def pnp_runtime_esm? : Path?
+    getter? pnp_runtime_esm : Path? do
       runtime_path = Path.new(prefix, ".pnp.loader.mjs")
       if ::File.exists?(runtime_path)
         runtime_path
@@ -183,21 +183,27 @@ module Zap
       end
 
       def scope_names(type : ScopeType)
-        get_scope(type).map { |pkg|
-          pkg.is_a?(Package) ? pkg.name : pkg.package.name
+        get_scope(type).map { |pkg_or_workspace|
+          pkg_or_workspace.is_a?(Package) ? pkg_or_workspace.name : pkg_or_workspace.package.name
         }
       end
 
       def scope_packages(type : ScopeType)
-        get_scope(type).map { |pkg|
-          pkg.is_a?(Package) ? pkg : pkg.package
+        get_scope(type).map { |pkg_or_workspace|
+          pkg_or_workspace.is_a?(Package) ? pkg_or_workspace : pkg_or_workspace.package
         }
       end
 
       def scope_packages_and_paths(type : ScopeType)
-        get_scope(type).map { |pkg|
-          pkg.is_a?(Package) ? {pkg, config.prefix} : {pkg.package, pkg.path}
-        }
+        get_scope(type).map do |pkg_or_workspace|
+          if pkg_or_workspace.is_a?(Package)
+            pkg = pkg_or_workspace
+            {pkg, config.prefix}
+          else
+            workspace = pkg_or_workspace
+            {workspace.package, workspace.path}
+          end
+        end
       end
     end
 
@@ -262,7 +268,12 @@ module Zap
 
       raise "Could not find a package.json file in #{config.prefix} and parent folders." unless main_package
 
+      # Format overrides/package extensions fields
       main_package = main_package.tap(&.prepare)
+
+      # Check pnp runtimes
+      config.pnp_runtime?
+      config.pnp_runtime_esm?
 
       InferredContext.new(main_package, config, workspaces, install_scope, command_scope)
     end
