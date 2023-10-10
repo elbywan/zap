@@ -18,7 +18,10 @@ module Zap::Resolver
         }
       elsif ::File.exists? absolute_path
         tarball_path = path
-        store_hash = Digest::SHA1.hexdigest("zap--tarball-#{tarball_path}")
+        checksum = ::File.open(absolute_path) do |file|
+          Digest::CRC32.hexdigest(file)
+        end
+        store_hash = Digest::SHA1.hexdigest("#{tarball_path}") + "-#{checksum}"
         temp_path = Path.new(Dir.tempdir, store_hash)
         extract_tarball_to_temp(absolute_path, temp_path)
         Package.init(temp_path).tap { |pkg|
