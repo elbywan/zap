@@ -76,7 +76,7 @@ module Zap
       if global
         raise "Global plug'n'play modules are not supported."
       else
-        File.join(prefix, ".pnp")
+        File.join(node_modules, ".pnp")
       end
     end
 

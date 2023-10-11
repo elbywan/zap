@@ -199,9 +199,9 @@ class Zap::Installer::Isolated < Zap::Installer::Base
 
     # Copy the scripts from the package.json
     if dependency.has_install_script
-      Package.init?(install_folder).try { |pkg|
+      Package.init?(install_folder).try do |pkg|
         dependency.scripts = pkg.scripts
-      }
+      end
     end
 
     # "If there is a binding.gyp file in the root of your package and you haven't defined your own install or preinstall scripts…

@@ -148,29 +148,17 @@ module Zap::Utils::Scripts
       "Running script: #{command} #{Utils::Macros.args_str}"
     }
     output = (config.silent ? nil : output_io) || IO::Memory.new
-    # See: https://docs.npmjs.com/cli/v9/commands/npm-run-script
-    paths = [] of Path | String
-    paths << Path.new(chdir, "node_modules", ".bin")
-    Path.new(chdir).each_parent { |parent|
-      if parent.basename == "node_modules" && ::File.directory?(parent / ".bin")
-        paths << parent / ".bin"
-      end
-    }
-    env = {
-      "PATH"         => (paths << config.bin_path << ENV["PATH"]).join(Process::PATH_DELIMITER),
-      "npm_execpath" => "zap",
-    }
-    pnp_runtime_cjs = config.pnp_runtime?
-    pnp_runtime_esm = config.pnp_runtime_esm?
-    node_options = (pnp_runtime_cjs ? "--require #{pnp_runtime_cjs} " : "") + (pnp_runtime_esm ? "--loader #{pnp_runtime_esm} " : "")
-    unless node_options.empty? || ENV["NODE_OPTIONS"]?
-      env["NODE_OPTIONS"] = node_options
-    end
+    # See: https://docs.npmjs.com/cli/commands/npm-run-script
+    env = make_env(chdir, config)
     yield command, :before
     status = Process.run(command, **args, shell: true, env: env, chdir: chdir.to_s, output: output, input: stdin, error: output)
     if !status.success? && raise_on_error_code
       raise "#{output.is_a?(IO::Memory) ? output.to_s + NEW_LINE : ""}Command failed: #{command} (#{status.exit_status})"
     end
+    Log.debug { %(
+      Command "#{command}" ended with status: #{status.exit_status}
+      Output: #{output.is_a?(IO::Memory) ? output.to_s + NEW_LINE : "<n/a>"}
+    ) }
     yield command, :after
   end
 
@@ -238,6 +226,34 @@ module Zap::Utils::Scripts
       total_time = Time.monotonic - time
       printer.on_error(ex, total_time)
       raise "Error while running script #{package.name.colorize(color).bold} #{script_name.colorize.cyan} #{"(at: #{script_data.path})".colorize.dim}\n#{ex.message}"
+    end
+  end
+
+  private def self.make_env(chdir : String, config : Config)
+    # Crawls up the directory tree looking for node_modules/.bin
+    paths = [] of Path | String
+    paths << Path.new(chdir, "node_modules", ".bin")
+    Path.new(chdir).each_parent { |parent|
+      if parent.basename == "node_modules" && ::File.directory?(parent / ".bin")
+        paths << parent / ".bin"
+      end
+    }
+
+    # Construct the environment variables passed to the script
+    {
+      # Add node_modules/.bin folders to PATH
+      "PATH" => (paths << config.bin_path << ENV["PATH"]).join(Process::PATH_DELIMITER),
+      # Set zap as the npm executable path
+      "npm_execpath" => "zap",
+    }.tap do |env|
+      # Check if we are using PnP
+      if (pnp_runtime_cjs = config.pnp_runtime?) || (pnp_runtime_esm = config.pnp_runtime_esm?)
+        # Add PnP runtime to NODE_OPTIONS
+        node_options = (pnp_runtime_cjs ? "--require #{pnp_runtime_cjs} " : "") + (pnp_runtime_esm ? "--loader #{pnp_runtime_esm} " : "")
+        unless node_options.empty? || ENV["NODE_OPTIONS"]?
+          env["NODE_OPTIONS"] = node_options
+        end
+      end
     end
   end
 end

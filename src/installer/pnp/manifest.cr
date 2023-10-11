@@ -71,7 +71,7 @@ struct Zap::Installer::PnP::Manifest
   end
 
   struct PackageRegistryData
-    getter data : Hash(String?, Hash(String?, Data)) = Hash(String?, Hash(String?, Data)).new
+    getter data : Hash(String?, Array({String?, Data})) = Hash(String?, Array({String?, Data})).new
 
     def initialize
     end
@@ -81,23 +81,23 @@ struct Zap::Installer::PnP::Manifest
 
     def self.new(pull : ::JSON::PullParser)
       self.new(
-        Array({String?, Array({String?, Data})}).new(pull).map { |k, v|
-          {k, v.to_h}
-        }.to_h
+        Array({String?, Array({String?, Data})}).new(pull).to_h
       )
     end
 
     def to_json(json : JSON::Builder)
-      data.to_a.map { |k, v| {k, v.to_a} }.to_json(json)
+      data.to_a.map { |k, v| {k, v} }.sort { |a, b|
+        cmp = a[0].to_s <=> b[0].to_s
+        next cmp if cmp != 0
+        a[1].map { |(k, v)| k.to_s } <=> b[1].map { |(k, v)| k.to_s }
+      }.to_json(json)
     end
 
-    def add_package_data(name : String?, reference : String?, data : Data, *, overwrite = true)
-      references = @data[name] ||= Hash(String?, Data).new
-      if overwrite
-        references[reference] = data
-      else
-        references[reference] ||= data
-      end
+    def add_package_data(name : String?, reference : String?, data : Data, *, overwrite : Bool = true)
+      element = {reference, data}
+      references = @data[name] ||= Array({String?, Data}).new
+      references.reject! { |(ref, _)| ref == reference } if overwrite
+      references << element
     end
   end
 end

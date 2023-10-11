@@ -55,7 +55,7 @@ class Zap::Installer::PnP < Zap::Installer::Base
     ancestors : Ancestors,
     optional : Bool = false,
     workspace_or_main_package : (Workspaces::Workspace | Package)? = nil
-  ) : PackageReference?
+  ) : {reference: PackageReference, path: (Path | String)?}?
     resolved_peers = nil
     overrides = nil
     root = ancestors.last?
@@ -83,12 +83,13 @@ class Zap::Installer::PnP < Zap::Installer::Base
             discard_from_lookup: true,
           )
         )
-        return reference
+        return {reference: reference, path: nil}
       end
 
       resolved_peers = resolve_peers(package, ancestors)
       resolved_transitive_overrides = resolve_transitive_overrides(package, ancestors)
 
+      # Check the satisfied peer dependencies + overrides then derive a unique hash to identify the virtualized package
       maybe_virtualized_hashes = String.build do |str|
         if resolved_peers && resolved_peers.size > 0
           peers_hash = Package.hash_dependencies(resolved_peers)
@@ -99,39 +100,39 @@ class Zap::Installer::PnP < Zap::Installer::Base
           str << "#{overrides_hash}"
         end
       end
-      is_virtualized = !maybe_virtualized_hashes.empty?
 
-      install_path = @modules_store / package.hashed_key
-      package_subpath = package.hashed_key
+      is_virtual = !maybe_virtualized_hashes.empty?
+
+      # The package path on disk
+      package_subpath =
+        if is_virtual && package.has_install_script
+          # If the package has an install script, we need to install it in a 'forked' virtualized folder
+          "#{package.hashed_key}__virtual:#{maybe_virtualized_hashes}"
+        else
+          package.hashed_key
+        end
+      install_path = @modules_store / package_subpath
+      # The pnp resolver package location
       package_location =
-        if is_virtualized
+        if is_virtual
           reference = "virtual:#{package.key}+#{maybe_virtualized_hashes}"
           "./#{@relative_modules_store}/__virtual__/#{maybe_virtualized_hashes}/0/#{package_subpath}/"
         else
           "./#{@relative_modules_store}/#{package_subpath}/"
         end
 
-      if is_virtualized
-        @manifest.package_registry_data.add_package_data(
+      # Add a non-virtualized entry to the manifest if it does not exist
+      if is_virtual
+        register_package_location_ownership(
           package.name,
-          package.key,
-          overwrite: false,
-          data: Manifest::Data.new(
-            package_location: "./#{@relative_modules_store}/#{package_subpath}/",
-            package_dependencies: Array(Manifest::Data::PackageDependency){
-              Manifest::Data::PackageDependency.new(
-                name: package.name,
-                reference: package.key
-              ),
-            },
-            link_type: "SOFT"
-          )
+          # If the package has an install script, we need to use the virtualized reference
+          is_virtual && package.has_install_script ? reference : package.key,
+          "./#{@relative_modules_store}/#{package_subpath}/"
         )
       end
 
-      # If the package folder exists, we assume that the package dependencies were already installed too
+      # If the package folder does not exist, we install it
       unless File.directory?(install_path)
-        # Install package
         Utils::Directories.mkdir_p(install_path)
         case package.kind
         when .tarball_file?
@@ -143,14 +144,11 @@ class Zap::Installer::PnP < Zap::Installer::Base
         when .registry?
           Writer::Registry.install(package, install_path, installer: self, state: state)
         end
-
-        # Link binaries for direct dependencies
-        link_binaries(package, install_path) if ancestors.size == 1 && package.bin
       else
         # Prevents infinite loops and duplicate checks
         if @installed_packages.includes?(package_location)
           Log.debug { "(#{package.name}) Already installed to folder '#{install_path}' during this run, skipping…" }
-          return reference
+          return {reference: reference, path: install_path}
         end
       end
     else
@@ -161,10 +159,12 @@ class Zap::Installer::PnP < Zap::Installer::Base
         name = workspace.package.name
         reference = "workspace:#{workspace.relative_path}"
         package_location = "./#{workspace.relative_path}/"
+        install_path = workspace.path
       elsif workspace_or_main_package
         name = workspace_or_main_package.name
         reference = "workspace:."
         package_location = "./"
+        install_path = state.config.prefix
       else
         raise "Root provided without workspace or main package argument."
       end
@@ -172,22 +172,23 @@ class Zap::Installer::PnP < Zap::Installer::Base
 
     @installed_packages << package_location
 
+    # Add the package data to the manifest and keep a reference to its dependencies for further additions
     package_dependencies = Array(Manifest::Data::PackageDependency){
       Manifest::Data::PackageDependency.new(
         name: name,
-        reference: reference,
+        reference: reference
       ),
     }
-    package_data = Manifest::Data.new(
-      package_location: package_location,
-      package_dependencies: package_dependencies,
-      package_peers: package_or_root.peer_dependencies.try(&.keys)
-    )
-
     @manifest.package_registry_data.add_package_data(
       main_package ? nil : name,
       main_package ? nil : reference,
-      data: package_data
+      overwrite: !is_virtual,
+      data: Manifest::Data.new(
+        package_location: package_location,
+        package_dependencies: package_dependencies,
+        package_peers: package_or_root.peer_dependencies.try(&.keys),
+        link_type: package ? "HARD" : "SOFT"
+      )
     )
 
     # Extract data from the lockfile
@@ -203,7 +204,7 @@ class Zap::Installer::PnP < Zap::Installer::Base
 
     dependencies_names = Set(String).new
 
-    # For each resolved peer and pinned dependency, install the dependency in the .store folder if it's not already installed
+    # For each resolved peer and pinned dependency, install the dependency and link it to the parent package through the manifest data
     if resolved_peers
       pinned_packages + resolved_peers.map { |p| {p.name, p, Package::DependencyType::Dependency} }
     else
@@ -217,7 +218,7 @@ class Zap::Installer::PnP < Zap::Installer::Base
       dependency = apply_override(state, dependency, ancestors, reverse_ancestors?: true)
 
       # Install the dependency to its own folder
-      dependency_reference = install_package(
+      install_data = install_package(
         dependency,
         ancestors: ancestors,
         optional: type.optional_dependency?
@@ -225,15 +226,25 @@ class Zap::Installer::PnP < Zap::Installer::Base
       ancestors.shift
 
       # Skip if the dependency is optional and was not installed
-      next unless dependency_reference
+      next unless install_data
+      dep_reference = install_data[:reference]
+      dep_path = install_data[:path]
 
       # Link it to the parent package
-      Log.debug { "(#{package_or_root.is_a?(Package) ? package_or_root.key : package_or_root.name}) Linking #{dependency.key}: #{dependency_reference} -> #{reference}" }
+      Log.debug { "(#{package_or_root.is_a?(Package) ? package_or_root.key : package_or_root.name}) Linking #{dependency.key}: #{dep_reference} -> #{reference}" }
       package_dependencies << Manifest::Data::PackageDependency.new(
         name: name,
-        reference: name != dependency.name ? {dependency.name, dependency_reference} : dependency_reference
+        reference: name != dependency.name ? {dependency.name, dep_reference} : dep_reference
       )
       dependencies_names << name
+
+      if dependency.bin && dep_path && install_path
+        # Either the package is a root - or it is installed in a separate "virtual" folder
+        # In both cases we need to link the binary to the node_modules/.bin folder
+        if ancestors.size == 0 || (is_virtual && package.try &.has_install_script)
+          link_binaries(dependency, Path.new(dep_path), Path.new(install_path))
+        end
+      end
     end
 
     # mark unresolved peer dependencies
@@ -246,7 +257,7 @@ class Zap::Installer::PnP < Zap::Installer::Base
       end
     end
 
-    reference
+    {reference: reference, path: install_path}
   end
 
   def on_install(dependency : Package, install_folder : Path, *, state : Commands::Install::State)
@@ -259,9 +270,9 @@ class Zap::Installer::PnP < Zap::Installer::Base
 
     # Copy the scripts from the package.json
     if dependency.has_install_script
-      Package.init?(install_folder).try { |pkg|
+      Package.init?(install_folder).try do |pkg|
         dependency.scripts = pkg.scripts
-      }
+      end
     end
 
     # "If there is a binding.gyp file in the root of your package and you haven't defined your own install or preinstall scripts…
@@ -285,26 +296,44 @@ class Zap::Installer::PnP < Zap::Installer::Base
     prune_workspace_orphans(@modules_store, unlink_binaries?: true)
   end
 
-  protected def link_binaries(package : Package, package_path : Path)
+  protected def link_binaries(package : Package, package_path : Path, target : Path)
     if bin = package.bin
-      base_bin_path = @node_modules / ".bin"
-      Utils::Directories.mkdir_p(base_bin_path)
+      target_bin_path = target / "node_modules" / ".bin"
+      Utils::Directories.mkdir_p(target_bin_path)
       if bin.is_a?(Hash)
         bin.each do |name, path|
           bin_name = name.split("/").last
-          bin_path = Utils::File.join(base_bin_path, bin_name)
+          bin_path = Utils::File.join(target_bin_path, bin_name)
           File.delete?(bin_path)
           File.symlink(Path.new(path).expand(package_path), bin_path)
           File.chmod(bin_path, 0o755)
         end
       else
         bin_name = package.name.split("/").last
-        bin_path = Utils::File.join(base_bin_path, bin_name)
+        bin_path = Utils::File.join(target_bin_path, bin_name)
         File.delete?(bin_path)
         File.symlink(Path.new(bin).expand(package_path), bin_path)
         File.chmod(bin_path, 0o755)
       end
     end
+  end
+
+  private def register_package_location_ownership(name : String, reference : String, location : String)
+    @manifest.package_registry_data.add_package_data(
+      name,
+      reference,
+      overwrite: false,
+      data: Manifest::Data.new(
+        package_location: location,
+        package_dependencies: Array(Manifest::Data::PackageDependency){
+          Manifest::Data::PackageDependency.new(
+            name: name,
+            reference: reference
+          ),
+        },
+        link_type: "SOFT"
+      )
+    )
   end
 end
 
