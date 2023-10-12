@@ -1,6 +1,6 @@
 {
   "name": "@zap.org/darwin-x64",
-  "version": "0.0.52",
+  "version": "0.0.53",
   "description": "Mac binaries for the zap package manager",
   "main": "index.js",
   "scripts": {
