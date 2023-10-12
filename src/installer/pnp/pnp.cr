@@ -192,12 +192,19 @@ class Zap::Installer::PnP < Zap::Installer::Base
     )
 
     # Extract data from the lockfile
-    pinned_packages = package_or_root.map_dependencies do |name, version_or_alias, type|
-      _key = version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key
-      _pkg = state.lockfile.packages[_key]
+    pinned_packages_origin =
+      if package && package.kind.workspace?
+        # We need to retrieve the root because the pinned dependencies are stored there for workspaces.
+        state.lockfile.roots[package.name]
+      else
+        package_or_root
+      end
+    pinned_packages = pinned_packages_origin.map_dependencies do |name, version_or_alias, type|
+      key = version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key
+      pkg = state.lockfile.packages[key]
       {
-        version_or_alias.is_a?(String) ? _pkg.name : name,
-        state.lockfile.packages[_key],
+        version_or_alias.is_a?(String) ? pkg.name : name,
+        pkg,
         type,
       }
     end
