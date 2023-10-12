@@ -67,7 +67,7 @@ module Zap::Commands::Install
       self.print_info(config, inferred_context, install_config, lockfile, workspaces)
 
       # Remove node_modules / .pnp folder if the install strategy has changed
-      self.strategy_check(config, install_config, lockfile, reporter)
+      config = self.strategy_check(config, install_config, lockfile, inferred_context, reporter)
 
       # Force hoisting if the hoisting options have changed
       self.hoisting_check(install_config, lockfile, inferred_context, reporter)
@@ -198,26 +198,40 @@ module Zap::Commands::Install
     end
   end
 
-  private def self.strategy_check(config : Zap::Config, install_config : Install::Config, lockfile : Lockfile, reporter : Reporter)
+  private def self.strategy_check(
+    config : Zap::Config,
+    install_config : Install::Config,
+    lockfile : Lockfile,
+    context : Zap::Config::InferredContext,
+    reporter : Reporter
+  ) : Zap::Config
     if !config.global && lockfile.strategy && lockfile.strategy != install_config.strategy
       Log.debug { "Install strategy changed from #{lockfile.strategy} to #{install_config.strategy}" if lockfile.strategy }
       reporter.info "Install strategy changed from #{lockfile.strategy} to #{install_config.strategy}." if lockfile.strategy
-      if ::File.exists?(config.node_modules)
-        reporter.info "Removing the existing `node_modules` folder…"
-        FileUtils.rm_rf(config.node_modules)
-      end
-      if ::File.exists?(config.plug_and_play_modules)
-        reporter.info "Removing the existing plug'n'play `.pnp` folder…"
-        FileUtils.rm_rf(config.plug_and_play_modules)
+
+      context.get_scope(:install).each do |workspace_or_main_package|
+        node_modules_path =
+          if workspace_or_main_package.is_a?(Workspaces::Workspace)
+            workspace_or_main_package.path / "node_modules"
+          else
+            config.node_modules
+          end
+        if ::File.exists?(node_modules_path)
+          reporter.output.puts "   · Removing the `#{node_modules_path}` folder…".colorize.dim
+          FileUtils.rm_rf(node_modules_path)
+        end
       end
       if ::File.exists?(Path.new(config.prefix, ".pnp.data.json"))
-        reporter.info "Removing the plug'n'play runtime files…"
+        reporter.output.puts "   · Removing the plug'n'play runtime files…".colorize.dim
         FileUtils.rm_rf(Path.new(config.prefix, ".pnp.data.json"))
         FileUtils.rm_rf(Path.new(config.prefix, ".pnp.cjs"))
         FileUtils.rm_rf(Path.new(config.prefix, ".pnp.loader.mjs"))
       end
+      config.pnp_runtime = nil
+      config.pnp_runtime_esm = nil
     end
     lockfile.strategy = install_config.strategy
+    config
   end
 
   private def self.hoisting_check(install_config : Install::Config, lockfile : Lockfile, inferred_context : Zap::Config::InferredContext, reporter : Reporter)

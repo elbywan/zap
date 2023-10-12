@@ -105,7 +105,7 @@ module Zap
       nodejs.try { |node_bin| Path.new(node_bin).dirname }
     end
 
-    getter? pnp_runtime : Path? do
+    property? pnp_runtime : Path? do
       runtime_path = Path.new(prefix, ".pnp.cjs")
       if ::File.exists?(runtime_path)
         runtime_path
@@ -114,7 +114,7 @@ module Zap
       end
     end
 
-    getter? pnp_runtime_esm : Path? do
+    property? pnp_runtime_esm : Path? do
       runtime_path = Path.new(prefix, ".pnp.loader.mjs")
       if ::File.exists?(runtime_path)
         runtime_path
