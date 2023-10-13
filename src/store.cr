@@ -31,12 +31,13 @@ struct Zap::Store
   end
 
   def file_path(filename : String)
-    Path.new(@global_package_store_path, filename)
+    Path.new(@global_package_store_path, filename.gsub("/", "+"))
   end
 
   def store_file(filename : String, contents : IO | String)
-    Utils::Directories.mkdir_p(::File.dirname(filename))
-    ::File.write(file_path(filename), contents)
+    target_path = file_path(filename)
+    Utils::Directories.mkdir_p(::File.dirname(target_path))
+    File.write(target_path, contents)
   end
 
   def unpack_and_store_tarball(package : Package, io : IO)
