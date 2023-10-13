@@ -209,6 +209,7 @@ module Zap::Commands::Install
       Log.debug { "Install strategy changed from #{lockfile.strategy} to #{install_config.strategy}" if lockfile.strategy }
       reporter.info "Install strategy changed from #{lockfile.strategy} to #{install_config.strategy}." if lockfile.strategy
 
+      # For each workspace, remove the node_modules folder
       context.get_scope(:install).each do |workspace_or_main_package|
         node_modules_path =
           if workspace_or_main_package.is_a?(Workspaces::Workspace)
@@ -221,6 +222,8 @@ module Zap::Commands::Install
           FileUtils.rm_rf(node_modules_path)
         end
       end
+
+      # Remove the plug'n'play runtime and manifest
       if ::File.exists?(Path.new(config.prefix, ".pnp.data.json"))
         reporter.output.puts "   · Removing the plug'n'play runtime files…".colorize.dim
         FileUtils.rm_rf(Path.new(config.prefix, ".pnp.data.json"))

@@ -247,11 +247,15 @@ module Zap::Utils::Scripts
       "npm_execpath" => "zap",
     }.tap do |env|
       # Check if we are using PnP
-      if (pnp_runtime_cjs = config.pnp_runtime?) || (pnp_runtime_esm = config.pnp_runtime_esm?)
+      pnp_runtime_cjs = config.pnp_runtime?
+      pnp_runtime_esm = config.pnp_runtime_esm?
+      if pnp_runtime_cjs || pnp_runtime_esm
         # Add PnP runtime to NODE_OPTIONS
-        node_options = (pnp_runtime_cjs ? "--require #{pnp_runtime_cjs} " : "") + (pnp_runtime_esm ? "--loader #{pnp_runtime_esm} " : "")
-        unless node_options.empty? || ENV["NODE_OPTIONS"]?
-          env["NODE_OPTIONS"] = node_options
+        node_options =
+          pnp_runtime_cjs.try { |r| "--require #{r} " }.to_s +
+            pnp_runtime_esm.try { |r| "--experimental-loader #{r} " }.to_s
+        unless node_options.empty?
+          env["NODE_OPTIONS"] = "#{ENV["NODE_OPTIONS"]?} #{node_options}"
         end
       end
     end
