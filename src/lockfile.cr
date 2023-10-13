@@ -1,4 +1,6 @@
+require "json"
 require "yaml"
+require "msgpack"
 require "digest"
 require "./utils/**"
 
@@ -6,6 +8,7 @@ alias DependencyType = ::Zap::Package::DependencyType
 
 class Zap::Lockfile
   include YAML::Serializable
+  include MessagePack::Serializable
   include Utils::Macros
 
   enum ReadStatus
@@ -14,11 +17,17 @@ class Zap::Lockfile
     NotFound
   end
 
-  NAME = ".zap-lock.yml"
+  enum Format
+    MessagePack
+    YAML
+  end
+
+  NAME = "zap.lock"
   Log  = Zap::Log.for(self)
 
   # Serialized
   @[YAML::Field(converter: Zap::Utils::OrderedHashConverter(String, Zap::Lockfile::Root))]
+  @[MessagePack::Field(converter: Zap::Utils::OrderedHashConverter(String, Zap::Lockfile::Root))]
   getter roots : Hash(String, Root) do
     Hash(String, Root).new
   end
@@ -27,33 +36,53 @@ class Zap::Lockfile
   @package_extensions_shasum : String? = nil
   property strategy : Commands::Install::Config::InstallStrategy? = nil
   @[YAML::Field(converter: Zap::Utils::OrderedHashConverter(String, Zap::Package))]
+  @[MessagePack::Field(converter: Zap::Utils::OrderedHashConverter(String, Zap::Package))]
   getter packages : Hash(String, Package) do
     Hash(String, Package).new
   end
 
   # Not serialized
   @[YAML::Field(ignore: true)]
+  @[MessagePack::Field(ignore: true)]
   @roots_lock = Mutex.new
   @[YAML::Field(ignore: true)]
+  @[MessagePack::Field(ignore: true)]
   getter packages_lock = Mutex.new
   @[YAML::Field(ignore: true)]
+  @[MessagePack::Field(ignore: true)]
   property read_status : ReadStatus = ReadStatus::NotFound
   @[YAML::Field(ignore: true)]
+  @[MessagePack::Field(ignore: true)]
+  property format : Format = Format::YAML
+  @[YAML::Field(ignore: true)]
+  @[MessagePack::Field(ignore: true)]
   property! lockfile_path : Path
 
-  def self.new(project_path : Path | String)
+  def self.new(project_path : Path | String, *, default_format : Format? = nil)
+    default_format ||= Format::YAML
     lockfile_path = Path.new(project_path) / NAME
     instance = uninitialized self
+
+    # Try to read the lockfile in message pack format
     if File.readable? lockfile_path
       begin
-        instance = self.from_yaml(File.read(lockfile_path))
+        instance = self.from_msgpack(File.read(lockfile_path))
         instance.read_status = ReadStatus::FromDisk
+        instance.format = Format::MessagePack
       rescue
-        instance = self.allocate
-        instance.read_status = ReadStatus::Error
+        begin
+          instance = self.from_yaml(File.read(lockfile_path))
+          instance.read_status = ReadStatus::FromDisk
+          instance.format = Format::YAML
+        rescue
+          instance = self.allocate
+          instance.read_status = ReadStatus::Error
+          instance.format = default_format
+        end
       end
     else
       instance = self.allocate
+      instance.format = default_format
     end
     instance.lockfile_path = lockfile_path
 
@@ -131,8 +160,17 @@ class Zap::Lockfile
     pruned_direct_dependencies
   end
 
-  def write
-    File.write(@lockfile_path.to_s, self.to_yaml)
+  def write(format : Format? = nil)
+    format ||= @format
+    File.write(@lockfile_path.to_s, self.serialize(format))
+  end
+
+  def serialize(format = @format)
+    if format.message_pack?
+      self.to_msgpack
+    else
+      self.to_yaml
+    end
   end
 
   def get_root(name : String, version : String)
@@ -330,6 +368,7 @@ class Zap::Lockfile
 
   class Root
     include YAML::Serializable
+    include MessagePack::Serializable
 
     getter name : String
     getter version : String
@@ -339,6 +378,7 @@ class Zap::Lockfile
     property optional_dependencies : Hash(String, String)? = nil
     property peer_dependencies : Hash(String, String)? = nil
     @[YAML::Field(converter: Zap::Utils::OrderedSafeHashConverter(String, String | Zap::Package::Alias))]
+    @[MessagePack::Field(converter: Zap::Utils::OrderedSafeHashConverter(String, String | Zap::Package::Alias))]
     property pinned_dependencies : SafeHash(String, String | Package::Alias)? do
       SafeHash(String, String | Package::Alias).new
     end

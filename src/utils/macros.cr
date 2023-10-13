@@ -5,6 +5,7 @@ module Zap::Utils::Macros
 
     @[JSON::Field(ignore: true)]
     @[YAML::Field(ignore: true)]
+    @[MessagePack::Field(ignore: true)]
     @_{{name.var.id}}_lock = Mutex.new
 
     def {{name.var.id}} : {{name.type}}
@@ -30,6 +31,7 @@ module Zap::Utils::Macros
 
     @[JSON::Field(ignore: true)]
     @[YAML::Field(ignore: true)]
+    @[MessagePack::Field(ignore: true)]
     @_{{name.var.id}}_lock = Mutex.new
 
     def {{name.var.id}} : {{name.type}}

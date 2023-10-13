@@ -1,4 +1,6 @@
 {% if flag?(:preview_mt) %}
+  require "msgpack"
+
   struct SafeHash(K, V)
     getter inner : Hash(K, V)
     getter lock = Mutex.new(:reentrant)
@@ -15,6 +17,10 @@
       @lock.synchronize do
         yield @inner
       end
+    end
+
+    def to_msgpack(packer : MessagePack::Packer)
+      @inner.to_msgpack(packer)
     end
 
     macro method_missing(call)

@@ -1,5 +1,6 @@
 require "json"
 require "yaml"
+require "msgpack"
 require "colorize"
 require "../utils/macros"
 require "../utils/data_structures/*"
@@ -17,12 +18,14 @@ require "./*"
 class Zap::Package
   include JSON::Serializable
   include YAML::Serializable
+  include MessagePack::Serializable
   include Utils::Macros
   include Helpers::Dependencies
 
   macro __do_not_serialize__
     @[JSON::Field(ignore: true)]
     @[YAML::Field(ignore: true)]
+    @[MessagePack::Field(ignore: true)]
   end
 
   #######################
@@ -41,22 +44,26 @@ class Zap::Package
   property optional_dependencies : Hash(String, String | Zap::Package::Alias)? = nil
   @[JSON::Field(key: "bundleDependencies")]
   @[YAML::Field(ignore: true)]
+  @[MessagePack::Field(ignore: true)]
   getter bundle_dependencies : (Hash(String, String) | Bool)? = nil
   @[JSON::Field(key: "peerDependencies")]
   property peer_dependencies : Hash(String, String)? = nil
   @[JSON::Field(key: "peerDependenciesMeta")]
   property peer_dependencies_meta : Hash(String, {optional: Bool?})? = nil
   @[YAML::Field(ignore: true)]
+  @[MessagePack::Field(ignore: true)]
   property scripts : LifecycleScripts? = nil
   getter os : Array(String)? = nil
   getter cpu : Array(String)? = nil
   # See: https://github.com/npm/rfcs/blob/main/implemented/0026-workspaces.md
   @[YAML::Field(ignore: true)]
+  @[MessagePack::Field(ignore: true)]
   getter workspaces : Array(String)? | {packages: Array(String)?, nohoist: Array(String)?} = nil
   # See:
   # - https://github.com/npm/rfcs/blob/main/accepted/0036-overrides.md
   # - https://docs.npmjs.com/cli/v8/configuring-npm/package-json#overrides
   @[YAML::Field(ignore: true)]
+  @[MessagePack::Field(ignore: true)]
   property overrides : Overrides?
 
   #######################
@@ -75,6 +82,7 @@ class Zap::Package
   record Alias, name : String, version : String do
     include JSON::Serializable
     include YAML::Serializable
+    include MessagePack::Serializable
     getter name : String
     getter version : String
 
@@ -115,9 +123,11 @@ class Zap::Package
 
   @[JSON::Field(ignore: true)]
   @[YAML::Field(ignore: true)]
+  @[MessagePack::Field(ignore: true)]
   property transitive_peer_dependencies : Hash(String, Set(Semver::Range))? = nil
 
   @[JSON::Field(ignore: true)]
+  @[YAML::Field(converter: Zap::Utils::OrderedSetConverter(String))]
   @[YAML::Field(converter: Zap::Utils::OrderedSetConverter(String))]
   property roots : Set(String) do
     Set(String).new
@@ -138,10 +148,12 @@ class Zap::Package
     check_peer_dependencies : Bool? = nil do
     include JSON::Serializable
     include YAML::Serializable
+    include MessagePack::Serializable
   end
 
   @[JSON::Field(key: "zap")]
   @[YAML::Field(ignore: true)]
+  @[MessagePack::Field(ignore: true)]
   property zap_config : ZapConfig? = nil
 
   ##################

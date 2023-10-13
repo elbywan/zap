@@ -12,7 +12,7 @@ module Zap::Commands::Why
     # Infer context like the nearest package.json file and workspaces
     inferred_context = config.infer_context
     workspaces, config = inferred_context.workspaces, inferred_context.config
-    lockfile = Lockfile.new(config.prefix)
+    lockfile = Lockfile.new(config.prefix, default_format: config.lockfile_format)
 
     Log.debug { "Lockfile read status: #{lockfile.read_status}" }
 

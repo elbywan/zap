@@ -227,6 +227,10 @@ module Zap
         puts "v#{VERSION}"
         exit
       end
+
+      parser.on("--lockfile-format <yaml|message_pack>", "The serialization to use when saving the lockfile to the disk. (Default: the current lockfile format, or YAML) #{"[env: ZAP_LOCKFILE_FORMAT]".colorize.dim}") do |format|
+        @config = @config.copy_with(lockfile_format: Lockfile::Format.parse(format))
+      end
     end
 
     macro workspace_options(sub = false)

@@ -1,8 +1,13 @@
+require "json"
+require "yaml"
+require "msgpack"
+
 class Zap::Package
   module Dist
     struct Registry
       include JSON::Serializable
       include YAML::Serializable
+      include MessagePack::Serializable
 
       property tarball : String
       property shasum : String
@@ -15,6 +20,7 @@ class Zap::Package
     struct Link
       include JSON::Serializable
       include YAML::Serializable
+      include MessagePack::Serializable
 
       property link : String
 
@@ -25,6 +31,7 @@ class Zap::Package
     struct Workspace
       include JSON::Serializable
       include YAML::Serializable
+      include MessagePack::Serializable
 
       property workspace : String
 
@@ -35,6 +42,7 @@ class Zap::Package
     struct Tarball
       include JSON::Serializable
       include YAML::Serializable
+      include MessagePack::Serializable
 
       property tarball : String
       property path : String
@@ -46,6 +54,7 @@ class Zap::Package
     struct Git
       include JSON::Serializable
       include YAML::Serializable
+      include MessagePack::Serializable
 
       property commit_hash : String
       property version : String

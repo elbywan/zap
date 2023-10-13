@@ -2,6 +2,7 @@ require "./utils/filter"
 require "./utils/from_env"
 require "./backend"
 require "./package"
+require "./lockfile"
 
 module Zap
   DEFAULT_HOIST_PATTERNS        = ["*"]
@@ -57,6 +58,8 @@ module Zap
     )
     @[Env]
     getter network_concurrency : Int32 = 50
+    @[Env]
+    getter lockfile_format : Lockfile::Format? = nil
 
     #############################
 

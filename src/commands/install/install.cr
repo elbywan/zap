@@ -45,7 +45,7 @@ module Zap::Commands::Install
 
       Log.debug { "Configuration: #{config.pretty_inspect}" }
 
-      lockfile = Lockfile.new(config.prefix)
+      lockfile = Lockfile.new(config.prefix, default_format: config.lockfile_format)
 
       # Merge zap config from package.json and lockfile
       install_config = install_config
@@ -112,7 +112,7 @@ module Zap::Commands::Install
 
       if state.install_config.frozen_lockfile
         # Raise if the lockfile has been updated
-        if (state.lockfile.to_yaml != File.read(state.lockfile.lockfile_path))
+        if (state.lockfile.serialize != File.read(state.lockfile.lockfile_path))
           raise "The --frozen-lockfile flag is on but the lockfile has been updated during the resolution phase. Run `zap i --frozen-lockfile=false` to regenerate the lockfile and try again."
         end
       end
@@ -120,7 +120,7 @@ module Zap::Commands::Install
       # Do not edit lockfile or package.json files in global mode or if the save flag is false
       unless state.config.global || !state.install_config.save
         # Write lockfile
-        state.lockfile.write
+        state.lockfile.write(format: config.lockfile_format)
 
         # Edit and write the package.json files if the flags have been set in the config
         write_package_json_files(state)
@@ -173,7 +173,7 @@ module Zap::Commands::Install
       end
       puts <<-TERM
          #{"project:".colorize.blue} #{config.prefix} • #{"store:".colorize.blue} #{config.store_path}#{workers_info}
-         #{"lockfile:".colorize.blue} #{lockfile.read_status.from_disk? ? "ok".colorize.green : lockfile.read_status.error? ? "read error".colorize.red : "not found".colorize.red} • #{"install strategy:".colorize.blue} #{install_config.strategy.to_s.downcase}
+         #{"lockfile:".colorize.blue} #{lockfile.read_status.from_disk? ? "ok".colorize.green : lockfile.read_status.error? ? "read error".colorize.red : "not found".colorize.red} #{"[#{lockfile.format}]".colorize.italic.dim} • #{"install strategy:".colorize.blue} #{install_config.strategy.to_s.downcase}
       TERM
 
       if workspaces

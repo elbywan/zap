@@ -1,7 +1,12 @@
+require "json"
+require "yaml"
+require "msgpack"
+
 class Zap::Package
   class LifecycleScripts
     include JSON::Serializable
     include YAML::Serializable
+    include MessagePack::Serializable
 
     Utils::Macros.define_field_accessors
 

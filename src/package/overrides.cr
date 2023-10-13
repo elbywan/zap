@@ -1,3 +1,5 @@
+require "yaml"
+require "msgpack"
 require "../utils/various"
 
 class Zap::Package
@@ -6,6 +8,7 @@ class Zap::Package
       name : String,
       version : String do
       include YAML::Serializable
+      include MessagePack::Serializable
     end
 
     record Override,
@@ -14,6 +17,7 @@ class Zap::Package
       specifier : String,
       parents : Array(Parent)? = nil do
       include YAML::Serializable
+      include MessagePack::Serializable
 
       def matches_package?(metadata : Package) : Bool
         (
@@ -95,6 +99,18 @@ class Zap::Package
 
     def self.from_yaml(ctx : YAML::ParseContext, node : YAML::Nodes::Node) : Array
       new(ctx, node)
+    end
+
+    def initialize(pull : MessagePack::Unpacker)
+      @override_entries = Hash(String, Array(Override)).new(pull)
+    end
+
+    def self.from_msgpack(pull : MessagePack::Unpacker) : Array
+      new(pull)
+    end
+
+    def to_msgpack(packer : MessagePack::Packer)
+      @override_entries.to_msgpack(packer)
     end
 
     def self.merge(a : self?, b : self?) : self?
