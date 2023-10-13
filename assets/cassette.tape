@@ -25,7 +25,7 @@ Sleep 10s
 Type "clear"
 Enter
 
-Type "rm .zap-lock.yml"
+Type "rm zap.lock"
 Enter
 Sleep 3s
 Type "zap i # with node modules and without lockfile"
