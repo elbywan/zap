@@ -186,7 +186,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
       loop do
         msg = @update_channel.receive?
         if msg.nil?
-          @io_lock.synchronize { @out << NEW_LINE }
+          @io_lock.synchronize { @out << NEW_LINE } if @written
           @stop_channel.send nil
           break
         end
@@ -228,7 +228,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
       loop do
         msg = @update_channel.receive?
         if msg.nil?
-          @io_lock.synchronize { @out << NEW_LINE }
+          @io_lock.synchronize { @out << NEW_LINE } if @written
           @stop_channel.send nil
           break
         end
@@ -253,7 +253,7 @@ class Zap::Reporter::Interactive < Zap::Reporter
       loop do
         msg = @update_channel.receive?
         if msg.nil?
-          @io_lock.synchronize { @out << NEW_LINE }
+          @io_lock.synchronize { @out << NEW_LINE } if @written
           @stop_channel.send nil
           break
         end
