@@ -273,7 +273,7 @@ module Zap
 
     private macro subSeparator(text, *, early_line_break = true)
       prefix = "#{ {% if early_line_break %}NEW_LINE{% else %}nil{% end %} }"
-      parser.separator("#{prefix}  #{ {{text}}.colorize.light_blue }\n")
+      parser.separator("#{prefix}    · #{ {{text}} }\n".colorize.light_blue)
     end
 
     # @command_color_index = 0
