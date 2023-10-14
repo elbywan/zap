@@ -178,6 +178,29 @@ zap i jquery2@npm:jquery@2
 zap i jquery3@npm:jquery@3
 ```
 
+# Benchmarks
+
+### a.k.a is it fast?
+
+## Methodology
+
+Benchmarks consist on installing a fresh [**create-react-app**](https://create-react-app.dev/) in various scenarii, with postinstall scripts disabled.
+
+**See:** [https://github.com/elbywan/zap/tree/main/bench](/bench)
+
+They are performed on my own personal laptop (macbook pro 16" 2019, 2,3 GHz Intel Core i9, 16 Go 2667 MHz DDR4) with 5G wifi and 1 Gb/s fiber.
+
+The benchmarking tool is [**hyperfine**](https://github.com/sharkdp/hyperfine) and to make sure that the results are consistent I re-ran unfavorable results (high error delta).
+
+I am aware that this is not a very scientific approach, but it should give rough good idea about what zap is capable of.
+
+## Results
+
+![cold](bench/cold.png)
+![only-cache](bench/only-cache.png)
+![without-lockfile](bench/without-lockfile.png)
+![without-node-modules](bench/without-node-modules.png)
+
 ## Why?
 
 **This is a legitimate question.** There are already a lot of package managers out there, and they all have their own pros and cons. So why another one?
