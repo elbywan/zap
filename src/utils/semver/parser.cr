@@ -12,6 +12,10 @@ module Zap::Utils::Semver
       current_char == ' '
     end
 
+    def pipe? : Bool
+      current_char == '|'
+    end
+
     def skip_next!(char : Char)
       curr = current_char
       raise "Invalid character #{curr} (should be: #{char})" unless curr == char
@@ -50,15 +54,15 @@ module Zap::Utils::Semver
     def initialize(scanner : Scanner)
       scanner.skip?(' ', 'v')
       @major = self.class.xr!(scanner)
-      return if scanner.eos? || scanner.space?
+      return if scanner.eos? || scanner.space? || scanner.pipe?
       scanner.skip_next!('.')
       @minor = self.class.xr!(scanner)
-      return if scanner.eos? || scanner.space?
+      return if scanner.eos? || scanner.space? || scanner.pipe?
       scanner.skip_next!('.')
       @patch = self.class.xr!(scanner)
-      return if scanner.eos? || scanner.space?
+      return if scanner.eos? || scanner.space? || scanner.pipe?
       @prerelease = self.class.prerelease?(scanner)
-      return if scanner.eos? || scanner.space?
+      return if scanner.eos? || scanner.space? || scanner.pipe?
       @build_metadata = self.class.build_metadata?(scanner)
     end
 
@@ -160,6 +164,8 @@ module Zap::Utils::Semver
     end
 
     range_set
+  rescue e
+    raise Exception.new("Error parsing semver: #{str}", cause: e)
   ensure
     GC.free(scanner.as(Pointer(Void))) if scanner
   end
