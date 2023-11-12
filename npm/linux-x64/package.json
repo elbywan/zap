@@ -1,6 +1,6 @@
 {
   "name": "@zap.org/linux-x64",
-  "version": "0.0.56",
+  "version": "0.0.57",
   "description": "Linux binaries for the zap package manager",
   "main": "index.js",
   "scripts": {
