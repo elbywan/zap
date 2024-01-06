@@ -9,28 +9,28 @@ class Zap::CLI
 
     separator("Options")
 
-    parser.on("--ignore-scripts", "If true, does not run scripts specified in package.json files. #{"[env: ZAP_INSTALL_IGNORE_SCRIPTS]".colorize.dim}") do
+    flag("--frozen-lockfile <true|false>", "If true, will fail if the lockfile is outdated. #{"[env: ZAP_INSTALL_FROZEN_LOCKFILE]".colorize.dim}") do |frozen_lockfile|
+      @command_config = install_config.copy_with(frozen_lockfile: Utils::Various.str_to_bool(frozen_lockfile))
+    end
+    flag("--ignore-scripts", "If true, does not run scripts specified in package.json files. #{"[env: ZAP_INSTALL_IGNORE_SCRIPTS]".colorize.dim}") do
       @command_config = install_config.copy_with(ignore_scripts: true)
     end
-    parser.on("--no-logs", "If true, will not print logs like deprecation warnings. #{"[env: ZAP_INSTALL_PRINT_LOGS=false]".colorize.dim}") do
+    flag("--no-logs", "If true, will not print logs like deprecation warnings. #{"[env: ZAP_INSTALL_PRINT_LOGS=false]".colorize.dim}") do
       @command_config = install_config.copy_with(print_logs: false)
     end
-    parser.on("--production", "If true, will not install devDependencies.") do
-      @command_config = install_config.copy_with(omit: [Commands::Install::Config::Omit::Dev])
-    end
-    parser.on("--peers", "Pass this flag to enable checking for missing peer dependencies. #{"[env: ZAP_INSTALL_CHECK_PEER_DEPENDENCIES]".colorize.dim}") do
+    flag("--peers", "Pass this flag to enable checking for missing peer dependencies. #{"[env: ZAP_INSTALL_CHECK_PEER_DEPENDENCIES]".colorize.dim}") do
       @command_config = install_config.copy_with(check_peer_dependencies: true)
     end
-    parser.on("--prefer-offline", "Bypass staleness checks for package metadata cached from the registry. #{"[env: ZAP_INSTALL_PREFER_OFFLINE]".colorize.dim}") do
+    flag("--prefer-offline", "Bypass staleness checks for package metadata cached from the registry. #{"[env: ZAP_INSTALL_PREFER_OFFLINE]".colorize.dim}") do
       @command_config = install_config.copy_with(prefer_offline: true)
     end
-    parser.on("--frozen-lockfile <true|false>", "If true, will fail if the lockfile is outdated. #{"[env: ZAP_INSTALL_FROZEN_LOCKFILE]".colorize.dim}") do |frozen_lockfile|
-      @command_config = install_config.copy_with(frozen_lockfile: Utils::Various.str_to_bool(frozen_lockfile))
+    flag("--production", "If true, will not install devDependencies.") do
+      @command_config = install_config.copy_with(omit: [Commands::Install::Config::Omit::Dev])
     end
 
     subSeparator("Strategies")
 
-    parser.on(
+    flag(
       "--install-strategy <classic|classic_shallow|isolated>",
       <<-DESCRIPTION
       The strategy used to install packages. #{"[env: ZAP_INSTALL_STRATEGY]".colorize.dim}
@@ -44,35 +44,35 @@ class Zap::CLI
       @command_config = install_config.copy_with(strategy: InstallConfig::InstallStrategy.parse(strategy))
     end
 
-    parser.on("--classic", "Shorthand for: --install-strategy classic") do
+    flag("--classic", "Shorthand for: --install-strategy classic") do
       @command_config = install_config.copy_with(strategy: InstallConfig::InstallStrategy::Classic)
     end
 
-    parser.on("--isolated", "Shorthand for: --install-strategy isolated") do
+    flag("--isolated", "Shorthand for: --install-strategy isolated") do
       @command_config = install_config.copy_with(strategy: InstallConfig::InstallStrategy::Isolated)
     end
 
-    parser.on("--pnp", "Shorthand for: --install-strategy pnp") do
+    flag("--pnp", "Shorthand for: --install-strategy pnp") do
       @command_config = install_config.copy_with(strategy: InstallConfig::InstallStrategy::Pnp)
     end
 
     subSeparator("Save")
 
     unless update_packages
-      parser.on("-D", "--save-dev", "Added packages will appear in your devDependencies. #{"[env: ZAP_INSTALL_SAVE_DEV]".colorize.dim}") do
+      flag("--no-save", "Prevents saving to dependencies. #{"[env: ZAP_INSTALL_SAVE=false]".colorize.dim}") do
+        @command_config = install_config.copy_with(save: false)
+      end
+      flag("-D", "--save-dev", "Added packages will appear in your devDependencies. #{"[env: ZAP_INSTALL_SAVE_DEV]".colorize.dim}") do
         @command_config = install_config.copy_with(save_dev: true)
       end
-      parser.on("-E", "--save-exact", "Saved dependencies will be configured with an exact version rather than using npm's default semver range operator. #{"[env: ZAP_INSTALL_SAVE_EXACT]".colorize.dim}") do |path|
+      flag("-E", "--save-exact", "Saved dependencies will be configured with an exact version rather than using npm's default semver range operator. #{"[env: ZAP_INSTALL_SAVE_EXACT]".colorize.dim}") do |path|
         @command_config = install_config.copy_with(save_exact: true)
       end
-      parser.on("-O", "--save-optional", "Added packages will appear in your optionalDependencies. #{"[env: ZAP_INSTALL_SAVE_OPTIONAL]".colorize.dim}") do
+      flag("-O", "--save-optional", "Added packages will appear in your optionalDependencies. #{"[env: ZAP_INSTALL_SAVE_OPTIONAL]".colorize.dim}") do
         @command_config = install_config.copy_with(save_optional: true)
       end
-      parser.on("-P", "--save-prod", "Added packages will appear in your dependencies. #{"[env: ZAP_INSTALL_SAVE_PROD]".colorize.dim}") do
+      flag("-P", "--save-prod", "Added packages will appear in your dependencies. #{"[env: ZAP_INSTALL_SAVE_PROD]".colorize.dim}") do
         @command_config = install_config.copy_with(save_prod: true)
-      end
-      parser.on("--no-save", "Prevents saving to dependencies. #{"[env: ZAP_INSTALL_SAVE=false]".colorize.dim}") do
-        @command_config = install_config.copy_with(save: false)
       end
     end
 

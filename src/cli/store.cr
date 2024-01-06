@@ -5,20 +5,20 @@ class Zap::CLI
     @command_config = nil
     separator("Options")
 
-    command("path", "Prints the path to the zap store.") do
-      @command_config = StoreConfig.new(action: StoreConfig::StoreAction::PrintPath)
-    end
-
-    command("clear", "Clears the zap store.") do
+    command("clear", "Clear the zap store.") do
       @command_config = StoreConfig.new(action: StoreConfig::StoreAction::Clear)
     end
 
-    command("clear-http-cache", "Clears the cached registry responses.") do
+    command("clear-http-cache", "Clear the cached registry responses.") do
       @command_config = StoreConfig.new(action: StoreConfig::StoreAction::ClearHttpCache)
     end
 
-    command("clear-packages", "Clears the stored packages.") do
+    command("clear-packages", "Clear the stored packages.") do
       @command_config = StoreConfig.new(action: StoreConfig::StoreAction::ClearPackages)
+    end
+
+    command("path", "Print the path to the zap store.") do
+      @command_config = StoreConfig.new(action: StoreConfig::StoreAction::PrintPath)
     end
 
     parser.before_each do |arg|

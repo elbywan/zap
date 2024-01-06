@@ -6,7 +6,7 @@ class Zap::CLI
 
     separator("Options")
 
-    parser.on("--short", "Do not display the dependencies paths. #{"[env: ZAP_WHY_SHORT]".colorize.dim}") do
+    flag("--short", "Do not display the dependencies paths. #{"[env: ZAP_WHY_SHORT]".colorize.dim}") do
       @command_config = why_config.copy_with(short: true)
     end
 

@@ -96,26 +96,6 @@ module Zap
 
         separator("Commands")
 
-        subSeparator("Install", early_line_break: false)
-
-        command(["install", "i", "add"], "This command installs one or more packages and any packages that they depends on.", "[options] <package(s)>") do
-          on_install(parser)
-        end
-
-        command(["remove", "rm", "uninstall", "un"], "This command removes one or more packages from the node_modules folder, the package.json file and the lockfile.", "[options] <package(s)>") do
-          on_install(parser, remove_packages: true)
-        end
-
-        command(["update", "up", "upgrade"], "This command updates the lockfile to use the newest package versions.", "[options] <package(s)>") do
-          on_install(parser, update_packages: true)
-        end
-
-        command(["why", "y"], "Show information about why a package is installed.", "<package(s)>") do
-          on_why(parser)
-        end
-
-        subSeparator("Execute")
-
         command(["dlx", "x"], "Install one or more packages and run a command in a temporary environment.", "[options] <command>") do
           on_dlx(parser)
         end
@@ -124,22 +104,32 @@ module Zap
           on_exec(parser)
         end
 
-        command(["run", "r"], "Run a package's \"script\" command.", "[options] <script>") do
-          on_run(parser)
-        end
-
-        subSeparator("Miscellaneous")
-
         command(["init", "innit", "create"], "Create a new package.json file.", "[options] <initializer>") do
           on_init(parser)
+        end
+
+        command(["install", "i", "add"], "Install one or more packages and any packages that they depends on.", "[options] <package(s)>") do
+          on_install(parser)
         end
 
         command(["rebuild", "rb"], "Rebuild native dependencies.", "<package(s)> [options are passed through]") do
           on_rebuild(parser)
         end
 
+        command(["remove", "rm", "uninstall", "un"], "Remove one or more packages from the node_modules folder, the package.json file and the lockfile.", "[options] <package(s)>") do
+          on_install(parser, remove_packages: true)
+        end
+
         command(["store", "s"], "Manage the global store used to save packages and cache registry responses.") do
           on_store(parser)
+        end
+
+        command(["update", "up", "upgrade"], "Update the lockfile to use the newest package versions.", "[options] <package(s)>") do
+          on_install(parser, update_packages: true)
+        end
+
+        command(["why", "y"], "Show information about why a package is installed.", "<package(s)>") do
+          on_why(parser)
         end
 
         parser.before_each do |arg|
@@ -171,19 +161,19 @@ module Zap
     macro common_options(sub = false)
       {% if sub %}subSeparator{% else %}separator{% end %}("Common", early_line_break: false)
 
-      parser.on("-C <path>", "--dir <path>", "Use PATH as the root directory of the project. #{"[env: ZAP_PREFIX]".colorize.dim}") do |path|
+      flag("-C <path>", "--dir <path>", "Use PATH as the root directory of the project. #{"[env: ZAP_PREFIX]".colorize.dim}") do |path|
         @config = @config.copy_with(prefix: Path.new(path).expand.to_s, global: false)
       end
 
-      parser.on("--concurrency <number>", "Set the maximum number of tasks that will be run in parallel. (default: 5) #{"[env: ZAP_CONCURRENCY]".colorize.dim}") do |concurrency|
+      flag("--concurrency <number>", "Set the maximum number of tasks that will be run in parallel. (default: 5) #{"[env: ZAP_CONCURRENCY]".colorize.dim}") do |concurrency|
         @config = @config.copy_with(concurrency: concurrency.to_i32)
       end
 
-      parser.on("--deferred-output", "Do not print the output in real time when running multiple scripts in parallel but instead defer it to have a nicer packed output. (default: false unless CI) #{"[env: ZAP_DEFERRED_OUTPUT]".colorize.dim}") do
+      flag("--deferred-output", "Do not print the output in real time when running multiple scripts in parallel but instead defer it to have a nicer packed output. (default: false unless CI) #{"[env: ZAP_DEFERRED_OUTPUT]".colorize.dim}") do
         @config = @config.copy_with(deferred_output: true)
       end
 
-      parser.on(
+      flag(
         "--file-backend <clonefile|hardlink|copyfile|copy>",
         <<-DESCRIPTION
         The backend to use when linking packages on disk. #{"[env: ZAP_FILE_BACKEND]".colorize.dim}
@@ -197,7 +187,7 @@ module Zap
         @config = @config.copy_with(file_backend: Backend::Backends.parse(backend))
       end
 
-      parser.on(
+      flag(
         "--flock-scope <global|package|none>",
         <<-DESCRIPTION
         Set the scope of the file lock mechanism used to prevent store corruption. #{"[env: ZAP_FLOCK_SCOPE]".colorize.dim}
@@ -210,25 +200,25 @@ module Zap
         @config = @config.copy_with(flock_scope: Config::FLockScope.parse(scope))
       end
 
-      parser.on("-g", "--global", "Operates in \"global\" mode, so that packages are installed into the global folder instead of the current working directory.") do |path|
+      flag("-g", "--global", "Operates in \"global\" mode, so that packages are installed into the global folder instead of the current working directory.") do |path|
         @config = @config.copy_with(prefix: @config.deduce_global_prefix, global: true)
       end
 
-      parser.on("-h", "--help", "Show this help.") do
+      flag("-h", "--help", "Show this help.") do
         puts parser
         exit
       end
 
-      parser.on("--silent", "Minimize the output. #{"[env: ZAP_SILENT]".colorize.dim}") do
+      flag("--silent", "Minimize the output. #{"[env: ZAP_SILENT]".colorize.dim}") do
         @config = @config.copy_with(silent: true)
       end
 
-      parser.on("-v", "--version", "Show version.") do
+      flag("-v", "--version", "Show version.") do
         puts "v#{VERSION}"
         exit
       end
 
-      parser.on("--lockfile-format <yaml|message_pack>", "The serialization to use when saving the lockfile to the disk. (Default: the current lockfile format, or YAML) #{"[env: ZAP_LOCKFILE_FORMAT]".colorize.dim}") do |format|
+      flag("--lockfile-format <yaml|message_pack>", "The serialization to use when saving the lockfile to the disk. (Default: the current lockfile format, or YAML) #{"[env: ZAP_LOCKFILE_FORMAT]".colorize.dim}") do |format|
         @config = @config.copy_with(lockfile_format: Lockfile::Format.parse(format))
       end
     end
@@ -236,21 +226,21 @@ module Zap
     macro workspace_options(sub = false)
       {% if sub %}subSeparator{% else %}separator{% end %}("Workspace")
 
-      parser.on("-F FILTER", "--filter <pattern>", "Filtering allows you to restrict commands to specific subsets of packages.") do |filter|
+      flag("-F <pattern>", "--filter <pattern>", "Filtering allows you to restrict commands to specific subsets of packages.") do |filter|
         filters = @config.filters || Array(Utils::Filter).new
         filters << Utils::Filter.new(filter)
         @config = @config.copy_with(filters: filters)
       end
 
-      parser.on("--ignore-workspaces", "Will completely ignore workspaces when applying the command. #{"[env: ZAP_NO_WORKSPACES]".colorize.dim}") do
+      flag("--ignore-workspaces", "Will completely ignore workspaces when applying the command. #{"[env: ZAP_NO_WORKSPACES]".colorize.dim}") do
         @config = @config.copy_with(no_workspaces: true)
       end
 
-      parser.on("-r", "--recursive", "Will apply the command to all packages in the workspace. #{"[env: ZAP_RECURSIVE]".colorize.dim}") do
+      flag("-r", "--recursive", "Will apply the command to all packages in the workspace. #{"[env: ZAP_RECURSIVE]".colorize.dim}") do
         @config = @config.copy_with(recursive: true)
       end
 
-      parser.on("-w", "--workspace-root", "Will apply the command to the root workspace package. #{"[env: ZAP_ROOT_WORKSPACE]".colorize.dim}") do
+      flag("-w", "--workspace-root", "Will apply the command to the root workspace package. #{"[env: ZAP_ROOT_WORKSPACE]".colorize.dim}") do
         @config = @config.copy_with(root_workspace: true)
       end
     end
@@ -267,7 +257,7 @@ module Zap
     end
 
     private macro separator(text, *, prepend = false)
-      %text = "\n• #{ {{text}}.colorize.underline }\n".colorize.blue.bold.to_s
+      %text = "\n#{ {{text + ":"}}.colorize.underline }\n".colorize.green.bold.to_s
       {% if prepend %}
       parser.@flags.unshift(%text)
       {% else %}
@@ -277,15 +267,24 @@ module Zap
 
     private macro subSeparator(text, *, early_line_break = true)
       prefix = "#{ {% if early_line_break %}NEW_LINE{% else %}nil{% end %} }"
-      parser.separator("#{prefix}    · #{ {{text}} }\n".colorize.light_blue)
+      parser.separator("#{prefix}    #{ {{text}} }\n".colorize.blue.bold)
     end
 
     # @command_color_index = 0
+
     private def command_formatter(flag)
       # flag.colorize(COLORS[@command_color_index % COLORS.size]).bold.tap {
       #   @command_color_index += 1
       # }.to_s
       flag.colorize.bold.to_s
+    end
+
+    private def flag_formatter(flag)
+      flag
+    end
+
+    private macro flag(*args, &block)
+      parser.on(*{{ args }}, ->flag_formatter(String)){{ block }}
     end
 
     private macro command(input, description, args = nil)
