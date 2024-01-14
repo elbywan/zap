@@ -1,3 +1,5 @@
+require "../commands/store/config"
+
 class Zap::CLI
   alias StoreConfig = Commands::Store::Config
 

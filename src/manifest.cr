@@ -52,7 +52,7 @@ struct Zap::Manifest
     @versions.sort! { |a, b| Semver::Version.parse(b) <=> Semver::Version.parse(a) }
   end
 
-  def get_raw_metadata(version : Utils::Semver::Range | String) : String?
+  def get_raw_metadata?(version : Utils::Semver::Range | String) : String?
     raw_metadata = nil
 
     case version

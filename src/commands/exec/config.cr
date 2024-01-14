@@ -1,4 +1,4 @@
-require "../commands"
+require "../config"
 require "../../utils/macros"
 
 struct Zap::Commands::Exec::Config < Zap::Commands::Config

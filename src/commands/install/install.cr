@@ -1,7 +1,8 @@
 require "./config"
 require "../../config"
 require "../../npmrc"
-require "../../resolver"
+require "./resolver"
+require "./state"
 require "../../installer/isolated"
 require "../../installer/classic"
 require "../../installer/pnp"
@@ -9,18 +10,6 @@ require "../../workspaces"
 
 module Zap::Commands::Install
   alias Pipeline = Utils::Concurrent::Pipeline
-
-  record State,
-    config : Zap::Config,
-    install_config : Install::Config,
-    store : Zap::Store,
-    main_package : Package,
-    lockfile : Lockfile,
-    context : Zap::Config::InferredContext,
-    npmrc : Npmrc,
-    registry_clients : RegistryClients,
-    pipeline : Pipeline = Pipeline.new,
-    reporter : Reporter = Reporter::Interactive.new
 
   def self.run(
     config : Zap::Config,
@@ -33,7 +22,7 @@ module Zap::Commands::Install
     state = uninitialized State
     reporter ||= config.silent ? Reporter::Null.new : Reporter::Interactive.new
     config = config.check_if_store_is_linkeable
-    store = Zap::Store.new(config.store_path)
+    store ||= Zap::Store.new(config.store_path)
     unmet_peers_hash = nil
 
     Zap.print_banner unless config.silent

@@ -1,4 +1,4 @@
-require "../commands"
+require "../config"
 require "../../utils/macros"
 require "../../utils/semver"
 require "../../utils/various"

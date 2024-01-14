@@ -1,16 +1,24 @@
-module Zap::Resolver
-  @git_url : Utils::GitUrl
+require "../../base"
+require "../../resolver"
+require "../../../../../utils/git"
 
-  private abstract struct GitBase < Base
-    alias DedupeLock = ::Zap::Utils::Concurrent::DedupeLock
+struct Zap::Commands::Install::Protocol::Git < Zap::Commands::Install::Protocol::Base
+end
 
-    DedupeLock::Global.setup(:clone, Package)
-
+module Zap::Commands::Install::Protocol::Git::Resolver
+  private abstract struct Base < Zap::Commands::Install::Protocol::Resolver
     getter git_url : Utils::GitUrl
 
-    def initialize(state, package_name, version, aliased_name = nil, parent = nil, dependency_type = nil, skip_cache = false)
+    def initialize(
+      state,
+      name,
+      specifier = "latest",
+      parent = nil,
+      dependency_type = nil,
+      skip_cache = false
+    )
       super
-      @git_url = Utils::GitUrl.new(@version.to_s, @state.reporter)
+      @git_url = Utils::GitUrl.new(@specifier.to_s, @state.reporter)
     end
 
     def resolve(*, pinned_version : String? = nil) : Package
@@ -19,7 +27,31 @@ module Zap::Resolver
       end
     end
 
-    def store(metadata : Package, &on_downloading) : Bool
+    def valid?(metadata : Package) : Bool
+      !!metadata.dist.as?(Package::Dist::Git).try(&.version.== specifier.to_s)
+    end
+
+    def fetch_metadata : Package
+      commit_hash = @git_url.commitish_hash
+      cache_key = Digest::SHA1.hexdigest("#{@git_url.short_key}")
+      metadata_cache_key = "#{@name}__git:#{cache_key}.package.json"
+      cloned_repo_path = Path.new(Dir.tempdir, cache_key)
+
+      Protocol::Git.dedupe_clone(cache_key) do
+        state.store.with_lock(cache_key, state.config) do
+          cloned = ::File.directory?(cloned_repo_path)
+          metadata_path = @name.nil? ? nil : @state.store.file_path(metadata_cache_key)
+          metadata_cached = metadata_path && ::File.exists?(metadata_path)
+          clone_to(cloned_repo_path) unless cloned || metadata_cached
+          Package.init(metadata_cached && metadata_path ? metadata_path : cloned_repo_path, append_filename: !metadata_cached).tap do |pkg|
+            @state.store.store_file(metadata_cache_key, pkg.to_json) unless metadata_cached
+            pkg.dist = Package::Dist::Git.new(commit_hash, specifier.to_s, @git_url.key, cache_key)
+          end
+        end
+      end
+    end
+
+    def store?(metadata : Package, &on_downloading) : Bool
       cache_key = metadata.dist.as(Package::Dist::Git).cache_key
       cloned_folder_path = Path.new(Dir.tempdir, cache_key)
       tarball_path = Path.new(@state.store.package_path(metadata).to_s + ".tgz")
@@ -31,7 +63,7 @@ module Zap::Resolver
       yield
 
       # Clone the repo and run the prepare script if needed
-      GitBase.dedupe_clone(cache_key) do
+      Protocol::Git.dedupe_clone(cache_key) do
         state.store.with_lock(cache_key, state.config) do
           packed = ::File.exists?(tarball_path)
           did_store = !packed
@@ -56,42 +88,18 @@ module Zap::Resolver
       raise e
     end
 
-    def is_pinned_metadata_valid?(cached_package : Package) : Bool
-      !!cached_package.dist.as?(Package::Dist::Git).try(&.version.== version.to_s)
-    end
-
-    def fetch_metadata : Package
-      commit_hash = @git_url.commitish_hash
-      cache_key = Digest::SHA1.hexdigest("#{@git_url.short_key}")
-      metadata_cache_key = "#{@package_name}__git:#{cache_key}.package.json"
-      cloned_repo_path = Path.new(Dir.tempdir, cache_key)
-
-      GitBase.dedupe_clone(cache_key) do
-        state.store.with_lock(cache_key, state.config) do
-          cloned = ::File.directory?(cloned_repo_path)
-          metadata_path = @package_name.empty? ? nil : @state.store.file_path(metadata_cache_key)
-          metadata_cached = metadata_path && ::File.exists?(metadata_path)
-          clone_to(cloned_repo_path) unless cloned || metadata_cached
-          Package.init(metadata_cached && metadata_path ? metadata_path : cloned_repo_path, append_filename: !metadata_cached).tap do |pkg|
-            @state.store.store_file(metadata_cache_key, pkg.to_json) unless metadata_cached
-            pkg.dist = Package::Dist::Git.new(commit_hash, version.to_s, @git_url.key, cache_key)
-          end
-        end
-      end
-    end
-
-    def clone_to(path : Path | String)
+    protected def clone_to(path : Path | String)
       @git_url.clone(path)
     end
 
     private def prepare_package(
       path : Path,
-      config : Config = state.config.copy_for_inner_consumption.copy_with(prefix: path.to_s)
+      config : ::Zap::Config = @state.config.copy_for_inner_consumption.copy_with(prefix: path.to_s)
     )
       Commands::Install.run(
         config,
         Commands::Install::Config.new(save: false),
-        store: state.store,
+        store: @state.store,
         raise_on_failure: true
       )
     end
@@ -116,24 +124,23 @@ module Zap::Resolver
     end
   end
 
-  struct Git < GitBase
+  struct Git < Base
   end
 
-  struct Github < GitBase
+  struct Github < Base
     getter raw_version : String
 
-    def initialize(state, package_name, version, aliased_name = nil, parent = nil, dependency_type = nil, skip_cache = false)
-      super(state, package_name, "git+https://github.com/#{version}", aliased_name, parent, dependency_type, skip_cache)
-      @raw_version = version
+    def initialize(state,
+                   name,
+                   specifier = "latest",
+                   parent = nil,
+                   dependency_type = nil,
+                   skip_cache = false)
+      super(state, name, "git+https://github.com/#{specifier}", parent, dependency_type, skip_cache)
+      @raw_version = specifier
     end
 
-    def resolve(*, pinned_version : String? = nil) : Package
-      fetch_metadata.tap do |pkg|
-        on_resolve(pkg)
-      end
-    end
-
-    def clone_to(path : Path | String)
+    protected def clone_to(path : Path | String)
       api_url = "https://api.github.com/repos/#{@raw_version.to_s.split('#')[0]}/tarball/#{@git_url.commitish || ""}"
       tarball_url = HTTP::Client.get(api_url).headers["Location"]?
       raise "Failed to fetch package location from Github at #{api_url}" unless tarball_url && !tarball_url.empty?

@@ -1,7 +1,7 @@
 require "ini"
 
 struct Zap::Npmrc
-  getter registry : String = "https://registry.npmjs.org/"
+  getter registry : String = "https://registry.npmjs.org"
   getter scoped_registries : Hash(String, String) = {} of String => String
   getter registries_auth : Hash(String, RegistryAuth) = {} of String => RegistryAuth
   getter cafile : String? = nil

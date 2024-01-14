@@ -1,3 +1,5 @@
+require "../commands/why/config"
+
 class Zap::CLI
   alias WhyConfig = Commands::Why::Config
 

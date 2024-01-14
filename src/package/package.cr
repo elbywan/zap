@@ -2,6 +2,7 @@ require "json"
 require "yaml"
 require "msgpack"
 require "colorize"
+require "../utils/semver"
 require "../utils/macros"
 require "../utils/data_structures/*"
 require "../utils/converters"
@@ -124,7 +125,7 @@ class Zap::Package
   @[JSON::Field(ignore: true)]
   @[YAML::Field(ignore: true)]
   @[MessagePack::Field(ignore: true)]
-  property transitive_peer_dependencies : Hash(String, Set(Semver::Range))? = nil
+  property transitive_peer_dependencies : Hash(String, Set(Utils::Semver::Range))? = nil
 
   @[JSON::Field(ignore: true)]
   @[YAML::Field(converter: Zap::Utils::OrderedSetConverter(String))]

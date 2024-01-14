@@ -34,4 +34,11 @@ module Zap
     :light_cyan,
     :light_magenta,
   }
+
+  GH_URL_REGEX   = /^https:\/\/github.com\/(?P<owner>[a-zA-Z0-9\-_]+)\/(?P<package>[^#^\/]+)(?:#(?P<hash>[.*]))?/
+  GH_SHORT_REGEX = /^[^@.\/][^\/]+\/[^\/]+$/
+
+  # See: https://github.com/npm/registry/blob/master/docs/responses/package-metadata.md#package-metadata
+  ACCEPT_HEADER = "application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*"
+  HEADERS       = HTTP::Headers{"Accept" => ACCEPT_HEADER}
 end

@@ -1,165 +1,42 @@
-require "../utils/semver"
-require "../utils/data_structures/safe_set"
-require "../utils/concurrent/keyed_lock"
-require "../utils/concurrent/dedupe_lock"
-require "../store"
+require "../../constants"
+require "../../utils/semver"
+require "../../utils/data_structures/safe_set"
+require "../../utils/concurrent/keyed_lock"
+require "../../utils/concurrent/dedupe_lock"
+require "../../utils/concurrent/pipeline"
+require "../../store"
+require "./state"
+require "./protocol/resolver"
+require "./protocol"
 
-module Zap::Resolver
+module Zap::Commands::Install::Resolver
   Log = Zap::Log.for(self)
 
-  alias UnmetPeersHash = SafeHash(String, SafeHash(String, SafeSet(String)))
   alias Pipeline = ::Zap::Utils::Concurrent::Pipeline
-end
 
-abstract struct Zap::Resolver::Base
-  getter package_name : String
-  getter version : String | Utils::Semver::Range
-  getter state : Commands::Install::State
-  getter parent : (Package | Lockfile::Root)? = nil
-  getter aliased_name : String? = nil
-  getter dependency_type : Package::DependencyType? = nil
-
-  def initialize(
-    @state,
-    @package_name,
-    @version = "latest",
-    @aliased_name = nil,
-    @parent = nil,
-    @dependency_type = nil,
-    @skip_cache = false
-  )
-  end
-
-  def on_resolve(pkg : Package)
-    aliased_name = @aliased_name
-    parent_package = parent
-    if parent_package.is_a?(Lockfile::Root)
-      # For direct dependencies: check if the package is freshly added since the last install and report accordingly
-      if parent_specifier = parent_package.dependency_specifier?(aliased_name || pkg.name)
-        if pkg.specifier != parent_specifier
-          state.reporter.on_package_added("#{aliased_name.try(&.+("@npm:"))}#{pkg.key}")
-          state.reporter.on_package_removed("#{aliased_name || pkg.name}@#{parent_specifier}")
-        end
-      else
-        state.reporter.on_package_added(pkg.key)
-      end
-    end
-    # Infer if the package has install hooks (the npm registry does the job already - but only when listing versions)
-    # Also we need that when reading from other sources
-    pkg.has_install_script ||= pkg.scripts.try(&.has_install_script?)
-    # Infer if the package has a prepare script - needed to know when to build git dependencies
-    pkg.has_prepare_script ||= pkg.scripts.try(&.has_prepare_script?)
-    # Pin the dependency to the locked version
-    if aliased_name
-      parent_package.try &.dependency_specifier(aliased_name, Package::Alias.new(name: pkg.name, version: pkg.specifier), @dependency_type)
-    else
-      Log.debug { "Setting dependency specifier for #{pkg.name} to #{pkg.specifier} in #{parent_package.specifier}" } if parent_package.is_a?(Package)
-      parent_package.try &.dependency_specifier(pkg.name, pkg.specifier, @dependency_type)
-    end
-  end
-
-  def get_pinned_metadata(name : String)
-    parent_package = parent
-    pinned_dependency = parent_package.try &.dependency_specifier?(name)
-    if pinned_dependency
-      if pinned_dependency.is_a?(Package::Alias)
-        packages_ref = pinned_dependency.key
-      else
-        packages_ref = "#{name}@#{pinned_dependency}"
-      end
-      state.lockfile.packages_lock.synchronize do
-        state.lockfile.packages[packages_ref]?
-      end
-    end
-  end
-
-  abstract def resolve(*, pinned_version : String? = nil) : Package
-  abstract def store(metadata : Package, &on_downloading) : Bool
-  abstract def is_pinned_metadata_valid?(cached_package : Package) : Bool
-end
-
-module Zap::Resolver
   Utils::Concurrent::DedupeLock::Global.setup(:store, Bool)
   Utils::Concurrent::KeyedLock::Global.setup(Package)
 
-  GH_URL_REGEX   = /^https:\/\/github.com\/(?P<owner>[a-zA-Z0-9\-_]+)\/(?P<package>[^#^\/]+)(?:#(?P<hash>[.*]))?/
-  GH_SHORT_REGEX = /^[^@.].*\/.*$/
-
-  def self.instantiate(
+  def self.get(
     state : Commands::Install::State,
-    name : String,
-    version_field : String = "latest",
+    name : String?,
+    specifier : String = "latest",
     parent : Package | Lockfile::Root | Nil = nil,
-    type : Package::DependencyType? = nil,
+    dependency_type : Package::DependencyType? = nil,
     skip_cache : Bool = false
-  ) : Base
-    # Check if the package depending on the current one is a workspace
-    parent_is_workspace = !parent || parent.is_a?(Lockfile::Root)
-
-    # Partial implementation of the pnpm workspace protocol
-    # Does not support aliases for the moment
-    # https://pnpm.io/workspaces#workspace-protocol-workspace
-    workspace_protocol = version_field.starts_with?("workspace:")
-
-    # Check if the package is a workspace
-    workspaces = state.context.workspaces
-    workspace = begin
-      if workspace_protocol
-        raise "The workspace:* protocol is forbidden for non-direct dependencies." unless parent_is_workspace
-        raise "The workspace:* protocol must be used inside a workspace." unless workspaces
-        begin
-          workspaces.get!(name, version_field)
-        rescue e
-          raise "Workspace '#{name}' not found but required from package '#{parent.try &.name}' using specifier '#{version_field}'. Did you forget to add it to the workspace list?"
-        end
-      elsif parent_is_workspace
-        workspaces.try(&.get(name, version_field))
-      end
+  ) : Protocol::Resolver
+    resolver = Protocol::PROTOCOLS.reduce(nil) do |acc, protocol|
+      next acc unless acc.nil?
+      next protocol.resolver?(
+        state,
+        name,
+        specifier,
+        parent,
+        dependency_type,
+        skip_cache)
     end
-
-    # Strip the workspace:// prefix
-    version_field = version_field[10..] if workspace_protocol
-
-    # Will link the workspace in the parent node_modules folder
-    if workspace
-      Log.debug { "(#{name}@#{version_field}) Resolved as a workspace dependency" }
-      return Workspace.new(state, name, version_field, workspace, parent)
-    end
-
-    # Special case for aliases
-    # Extract the aliased name and the version field
-    if version_field.starts_with?("npm:")
-      aliased_name = name
-      stripped_version = version_field[4..]
-      name, version = Utils::Various.parse_key(stripped_version)
-      version_field = version || "*"
-    end
-
-    case version_field
-    when .starts_with?("git://"), .starts_with?("git+ssh://"), .starts_with?("git+http://"), .starts_with?("git+https://"), .starts_with?("git+file://")
-      Log.debug { "(#{name}@#{version_field}) Resolved as a git dependency" }
-      Git.new(state, name, version_field, aliased_name, parent, type)
-    when .starts_with?("file:")
-      Log.debug { "(#{name}@#{version_field}) Resolved as a file dependency" }
-      File.new(state, name, version_field, aliased_name, parent, type)
-    when .starts_with?("github:")
-      Log.debug { "(#{name}@#{version_field}) Resolved as a github dependency" }
-      Github.new(state, name, version_field[7..], aliased_name, parent, type)
-    when .matches?(GH_URL_REGEX)
-      Log.debug { "(#{name}@#{version_field}) Resolved as a github dependency" }
-      Github.new(state, name, version_field[19..], aliased_name, parent, type)
-    when .starts_with?("http://"), .starts_with?("https://")
-      Log.debug { "(#{name}@#{version_field}) Resolved as a tarball url dependency" }
-      TarballUrl.new(state, name, version_field, aliased_name, parent, type)
-    when .matches?(GH_SHORT_REGEX)
-      Log.debug { "(#{name}@#{version_field}) Resolved as a github dependency" }
-      Github.new(state, name, version_field, aliased_name, parent, type)
-    else
-      version = Utils::Semver.parse?(version_field)
-      Log.debug { "(#{name}@#{version_field}) Failed to parse semver '#{version_field}', treating as a dist-tag." } unless version
-      Log.debug { "(#{name}@#{version_field}) Resolved as a registry dependency" }
-      Registry.new(state, name, version || version_field, aliased_name, parent, type, skip_cache)
-    end
+    raise "No resolver found for #{name} (#{specifier})" unless resolver
+    resolver
   end
 
   def self.resolve_dependencies_of(
@@ -258,12 +135,12 @@ module Zap::Resolver
     state.pipeline.process do
       parent = package.try { |package| is_direct_dependency ? state.lockfile.get_root(package.name, package.version) : package }
       # Create the appropriate resolver depending on the version (git, tarball, registry, local folder…)
-      resolver = Resolver.instantiate(state, name, version, parent, type)
+      resolver = Resolver.get(state, name, version, parent, type)
       # Attempt to use the package data from the lockfile
       maybe_metadata = resolver.get_pinned_metadata(name) unless bust_pinned_cache
       # Check if the data from the lockfile is still valid (direct deps can be modified in the package.json file or through the cli)
       if maybe_metadata && is_direct_dependency
-        maybe_metadata = nil unless resolver.is_pinned_metadata_valid?(maybe_metadata)
+        maybe_metadata = nil unless resolver.valid?(maybe_metadata)
       end
 
       Log.debug { "(#{maybe_metadata.key}) Metatadata found in the lockfile cache #{(package ? "[parent: #{package.key}]" : "")}" if maybe_metadata }
@@ -335,7 +212,7 @@ module Zap::Resolver
       end
       # Attempt to store the package in the filesystem or in the cache if needed
       stored = dedupe_store(metadata_key) do
-        resolver.store(metadata) { state.reporter.on_downloading_package }
+        resolver.store?(metadata) { state.reporter.on_downloading_package }
       end
       Log.debug { "(#{metadata_key}) Saved package metadata in the store #{(package ? "[parent: #{package.key}]" : "")}" if stored }
       # Call the on_resolve callback
@@ -417,9 +294,9 @@ module Zap::Resolver
         # Infer the package.json version from the CLI argument
         inferred_version, inferred_name = parse_new_package(new_dep, directory: directory)
         # Resolve the package
-        resolver = Resolver.instantiate(state, inferred_name, inferred_version || "*", state.lockfile.get_root(package.name, package.version), skip_cache: true)
+        resolver = Resolver.get(state, inferred_name, inferred_version || "*", state.lockfile.get_root(package.name, package.version), skip_cache: true)
         metadata = resolver.resolve
-        name = inferred_name.empty? ? metadata.name : inferred_name
+        name = inferred_name.nil? ? metadata.name : inferred_name
         # If the save flag is set
         if state.install_config.save
           saved_version = inferred_version
@@ -449,8 +326,8 @@ module Zap::Resolver
     # Check the package_extensions field in the zap config
     if package_extensions = state.context.main_package.zap_config.try(&.package_extensions)
       # Find matching extensions
-      extensions = package_extensions.select { |selector|
-        name, version = Utils::Various.parse_key(selector)
+      extensions = package_extensions.select { |extension|
+        name, version = Utils::Various.parse_key(extension)
         name == metadata.name && (!version || Utils::Semver.parse(version).satisfies?(metadata.version))
       }
 
@@ -474,47 +351,14 @@ module Zap::Resolver
   # Try to detect what kind of target it is
   # See: https://docs.npmjs.com/cli/v9/commands/npm-install?v=true#description
   # Returns a {version, name} tuple
-  private def self.parse_new_package(cli_input : String, *, directory : String) : {String?, String}
+  private def self.parse_new_package(cli_input : String, *, directory : String) : {String?, String?}
     input_is_path = cli_input.starts_with?(".") || cli_input.starts_with?("/") || cli_input.starts_with?("~")
     fs_path = input_is_path ? Path.new(cli_input).expand : nil
-    if fs_path && ::File.directory?(fs_path)
-      # 1. npm install <folder>
-      return "file:#{fs_path.relative_to(directory)}", ""
-      # 2. npm install <tarball file>
-    elsif fs_path && ::File.file?(fs_path) && (fs_path.to_s.ends_with?(".tgz") || fs_path.to_s.ends_with?(".tar.gz") || fs_path.to_s.ends_with?(".tar"))
-      return "file:#{fs_path.relative_to(directory)}", ""
-      # 3. npm install <tarball url>
-    elsif cli_input.starts_with?("https://") || cli_input.starts_with?("http://")
-      return cli_input, ""
-    elsif cli_input.starts_with?("github:")
-      # 9. npm install github:<githubname>/<githubrepo>[#<commit-ish>]
-      return cli_input, "" # cli_input.split("#")[0].split("/").last
-    elsif cli_input.starts_with?("gist:")
-      # 10. npm install gist:[<githubname>/]<gistID>[#<commit-ish>|#semver:<semver>]
-      return "git+https://gist.github.com/#{cli_input[5..]}", ""
-    elsif cli_input.starts_with?("bitbucket:")
-      # 11. npm install bitbucket:<bitbucketname>/<bitbucketrepo>[#<commit-ish>]
-      return "git+https://bitbucket.org/#{cli_input[10..]}", ""
-    elsif cli_input.starts_with?("gitlab:")
-      # 12. npm install gitlab:<gitlabname>/<gitlabrepo>[#<commit-ish>]
-      return "git+https://gitlab.com/#{cli_input[7..]}", ""
-    elsif cli_input.starts_with?("git+") || cli_input.starts_with?("git://") || cli_input.matches?(/^[^@].*\/.*$/)
-      # 7. npm install <git remote url>
-      # 8. npm install <githubname>/<githubrepo>[#<commit-ish>]
-      return cli_input, ""
-    elsif (parts = cli_input.split("@npm:")).size > 1
-      # 13. npm install <alias>@npm:<name>
-      return "npm:#{parts[1]}", parts[0]
-    else
-      # 4. npm install [<@scope>/]<name>
-      # 5. npm install [<@scope>/]<name>@<tag>
-      # 6. npm install [<@scope>/]<name>@<version range>
-      parts = cli_input.split('@')
-      if parts.size == 1 || (parts.size == 2 && cli_input.starts_with?('@'))
-        return nil, cli_input
-      else
-        return parts.last, parts[...-1].join('@')
-      end
+    result = Protocol::PROTOCOLS.reduce(nil) do |acc, protocol|
+      next acc unless acc.nil?
+      next protocol.normalize?(cli_input, base_directory: directory, path: fs_path)
     end
+    raise "Could not parse #{cli_input}" unless result
+    result
   end
 end

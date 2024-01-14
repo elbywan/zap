@@ -3,6 +3,7 @@ require "./utils/from_env"
 require "./backend"
 require "./package"
 require "./lockfile"
+require "./workspaces"
 
 module Zap
   DEFAULT_HOIST_PATTERNS        = ["*"]
