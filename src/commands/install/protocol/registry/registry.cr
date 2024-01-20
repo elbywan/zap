@@ -6,7 +6,7 @@ struct Zap::Commands::Install::Protocol::Registry < Zap::Commands::Install::Prot
   # [<@scope>/]<name>
   # [<@scope>/]<name>@<tag>
   # [<@scope>/]<name>@<version range>
-  def self.normalize?(str : String, base_directory : String, path : Path?) : {String?, String?}?
+  def self.normalize?(str : String, path_info : PathInfo?) : {String?, String?}?
     parts = str.split('@')
     if parts.size == 1 || (parts.size == 2 && str.starts_with?('@'))
       return nil, str

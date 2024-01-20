@@ -1,5 +1,7 @@
 require "./utils/filter"
 require "./utils/from_env"
+require "./utils/directories"
+require "./utils/file"
 require "./backend"
 require "./package"
 require "./lockfile"

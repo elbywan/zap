@@ -18,9 +18,9 @@ jobs:
       - name: Install dependencies
         run: shards install
       - name: Run tests
-        run: crystal spec ./src ./spec
+        run: crystal spec
       - name: Run tests (multithreaded)
-        run: crystal spec ./src ./spec -Dpreview_mt
+        run: crystal spec -Dpreview_mt
   launch:
     name: Build and check if the binary is working
     strategy:

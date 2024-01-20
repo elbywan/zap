@@ -2,7 +2,7 @@ require "../base"
 require "./resolver"
 
 struct Zap::Commands::Install::Protocol::TarballUrl < Zap::Commands::Install::Protocol::Base
-  def self.normalize?(str : String, base_directory : String, path : Path?) : {String?, String?}?
+  def self.normalize?(str : String, path_info : PathInfo?) : {String?, String?}?
     # <tarball url>
     if str.starts_with?("https://") || str.starts_with?("http://")
       return str, nil

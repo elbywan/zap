@@ -1,6 +1,7 @@
 require "json"
 require "yaml"
 require "msgpack"
+require "../utils/scripts"
 
 class Zap::Package
   class LifecycleScripts

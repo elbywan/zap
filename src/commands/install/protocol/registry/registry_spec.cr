@@ -1,9 +1,9 @@
 require "spec"
 require "./registry"
 
-alias Registry = Zap::Commands::Install::Protocol::Registry
+alias RegistryProtocol = Zap::Commands::Install::Protocol::Registry
 
-describe Registry, tags: "protocol" do
+describe RegistryProtocol, tags: "protocol" do
   {
     {"package", {nil, "package"}},
     {"@scope/package", {nil, "@scope/package"}},
@@ -12,10 +12,10 @@ describe Registry, tags: "protocol" do
     {"package@^2", {"^2", "package"}},
     {"@scope/package@^2", {"^2", "@scope/package"}},
     {"package@dist-tag", {"dist-tag", "package"}},
-    {"@scope/package@dist-tag", {"dist-tag", "@scope/package"}},
+    {"@scope/package@latest", {"latest", "@scope/package"}},
   }.each do |(specifier, expected)|
     it "should normalize specifiers (#{specifier})" do
-      Registry.normalize?(specifier, "/base", nil).should eq(expected)
+      RegistryProtocol.normalize?(specifier, nil).should eq(expected)
     end
   end
 end

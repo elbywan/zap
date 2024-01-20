@@ -1,5 +1,5 @@
-require "./spec_helper"
-require "../src/utils/concurrent/parallel"
+require "spec"
+require "./parallel"
 
 alias Parallel = ::Zap::Utils::Concurrent::Parallel
 

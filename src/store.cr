@@ -1,3 +1,5 @@
+require "./utils/targzip"
+
 struct Zap::Store
   PACKAGES_STORE_PREFIX = "packages"
   LOCKS_STORE_PREFIX    = "locks"

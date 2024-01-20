@@ -1,11 +1,13 @@
+require "./git/ignore"
+
 module Zap::Utils::File
   def self.crawl(
     directory : Path | String,
     *,
-    always_included : GitIgnore? = nil,
-    always_excluded : GitIgnore? = nil,
-    included : GitIgnore? = nil,
-    excluded : GitIgnore? = nil,
+    always_included : Git::Ignore? = nil,
+    always_excluded : Git::Ignore? = nil,
+    included : Git::Ignore? = nil,
+    excluded : Git::Ignore? = nil,
     path_prefix = Path.new,
     &block : Path -> Bool | Nil
   )
@@ -72,10 +74,10 @@ module Zap::Utils::File
 
     Utils::File.crawl(
       directory,
-      included: GitIgnore.new(includes),
-      excluded: GitIgnore.new(excludes),
-      always_included: GitIgnore.new(ALWAYS_INCLUDED),
-      always_excluded: GitIgnore.new(ALWAYS_IGNORED),
+      included: Git::Ignore.new(includes),
+      excluded: Git::Ignore.new(excludes),
+      always_included: Git::Ignore.new(ALWAYS_INCLUDED),
+      always_excluded: Git::Ignore.new(ALWAYS_IGNORED),
       &block
     )
   end

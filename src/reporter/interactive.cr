@@ -1,6 +1,7 @@
 require "term-cursor"
 require "./reporter"
 require "../utils/timers"
+require "../utils/concurrent/thread"
 
 class Zap::Reporter::Interactive < Zap::Reporter
   @lock = Mutex.new

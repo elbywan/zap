@@ -1,16 +1,17 @@
+require "../../resolver"
 require "../base"
 require "./resolver"
 
 struct Zap::Commands::Install::Protocol::File < Zap::Commands::Install::Protocol::Base
-  def self.normalize?(str : String, base_directory : String, path : Path?) : {String?, String?}?
-    return nil unless path
-    path_str = path.to_s
-    if ::File.directory?(path)
+  def self.normalize?(str : String, path_info : PathInfo?) : {String?, String?}?
+    return nil unless path_info
+    path_str = path_info.path.to_s
+    if path_info.dir?
       # npm install <folder>
-      return "file:#{path.relative_to(base_directory)}", nil
-    elsif ::File.file?(path) && (path_str.ends_with?(".tgz") || path_str.ends_with?(".tar.gz") || path_str.ends_with?(".tar"))
+      return "file:#{path_info.relative_path}", nil
+    elsif path_info.file? && (path_str.ends_with?(".tgz") || path_str.ends_with?(".tar.gz") || path_str.ends_with?(".tar"))
       # npm install <tarball file>
-      return "file:#{path.relative_to(base_directory)}", nil
+      return "file:#{path_info.relative_path}", nil
     end
   end
 

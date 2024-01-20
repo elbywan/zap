@@ -2,44 +2,42 @@ require "../data_structures/safe_array"
 
 class Zap::Utils::Concurrent::Pipeline
   getter counter = Atomic(Int32).new(0)
-  getter max = Atomic(Int32).new(0)
   @errors = SafeArray(Exception).new
   @end_channel = Channel(SafeArray(Exception)?).new
-  @sync_channel : Channel(Nil)? = nil
+  @max_fibers_channel : Channel(Nil)? = nil
 
   def initialize
   end
 
   def reset
     @counter = Atomic(Int32).new(0)
-    @max = Atomic(Int32).new(0)
     @errors = SafeArray(Exception).new
     @end_channel.close unless @end_channel.closed?
     @end_channel = Channel(SafeArray(Exception)?).new
-    @sync_channel.try { |c| c.close unless c.closed? }
-    @sync_channel = nil
+    @max_fibers_channel.try { |c| c.close unless c.closed? }
+    @max_fibers_channel = nil
   end
 
   def set_concurrency(max_fibers : Int32 | Nil)
     if max_fibers
-      @sync_channel = Channel(Nil).new(max_fibers)
+      @max_fibers_channel = Channel(Nil).new(max_fibers)
     else
-      @sync_channel = nil
+      @max_fibers_channel = nil
     end
   end
 
-  def wait_for_sync
-    if (sync = @sync_channel).nil?
+  def check_max_fibers
+    if (max_fibers_channel = @max_fibers_channel).nil?
       yield
     else
       begin
-        sync.send(nil)
+        max_fibers_channel.send(nil)
         yield
-        sync.receive
+        max_fibers_channel.receive
       rescue Channel::ClosedError
         # Ignore
       rescue ex
-        sync.receive
+        max_fibers_channel.receive
       end
     end
   end
@@ -47,9 +45,8 @@ class Zap::Utils::Concurrent::Pipeline
   def process(&block)
     return if @errors.size > 0
     @counter.add(1)
-    @max.add(1)
     spawn do
-      wait_for_sync do
+      check_max_fibers do
         next if @errors.size > 0
         block.call
       rescue Channel::ClosedError

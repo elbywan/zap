@@ -1,3 +1,4 @@
+require "../../resolver"
 require "../base"
 require "../resolver"
 

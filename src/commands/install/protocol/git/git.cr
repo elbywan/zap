@@ -6,7 +6,7 @@ require "../../../../utils/concurrent/dedupe_lock"
 struct Zap::Commands::Install::Protocol::Git < Zap::Commands::Install::Protocol::Base
   Utils::Concurrent::DedupeLock::Global.setup(:clone, Package)
 
-  def self.normalize?(str : String, base_directory : String, path : Path?) : {String?, String?}?
+  def self.normalize?(str : String, path_info : PathInfo?) : {String?, String?}?
     if str.starts_with?("github:")
       # github:<githubname>/<githubrepo>[#<commit-ish>]
       return str, nil # str.split("#")[0].split("/").last

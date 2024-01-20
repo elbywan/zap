@@ -1,9 +1,9 @@
-require "./spec_helper"
-require "../src/utils/git"
+require "spec"
+require "./ignore"
 
 macro test_gitignore_file(name, should_match, should_not_match)
   describe "{{name.id}}.gitignore" do
-    gitignore = Zap::Utils::GitIgnore.new(File.read("./spec/fixtures/gitignore/{{name.id}}.gitignore").each_line.to_a)
+    gitignore = Zap::Utils::Git::Ignore.new(File.read("#{__DIR__}/fixtures/{{name.id}}.gitignore").each_line.to_a)
 
     should_match = {{ should_match }}
 
@@ -22,7 +22,7 @@ macro test_gitignore_file(name, should_match, should_not_match)
   end
 end
 
-describe Zap::Utils::GitIgnore do
+describe Zap::Utils::Git::Ignore do
   describe ".match?" do
     # https://github.com/github/gitignore/blob/main/Node.gitignore
     test_gitignore_file(

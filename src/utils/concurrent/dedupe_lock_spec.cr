@@ -1,5 +1,5 @@
-require "./spec_helper"
-require "../src/utils/concurrent/dedupe_lock"
+require "spec"
+require "./dedupe_lock"
 
 alias DedupeLock = ::Zap::Utils::Concurrent::DedupeLock
 

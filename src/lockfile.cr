@@ -2,7 +2,7 @@ require "json"
 require "yaml"
 require "msgpack"
 require "digest"
-require "./utils/**"
+require "./utils/macros"
 
 alias DependencyType = ::Zap::Package::DependencyType
 

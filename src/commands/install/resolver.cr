@@ -352,11 +352,9 @@ module Zap::Commands::Install::Resolver
   # See: https://docs.npmjs.com/cli/v9/commands/npm-install?v=true#description
   # Returns a {version, name} tuple
   private def self.parse_new_package(cli_input : String, *, directory : String) : {String?, String?}
-    input_is_path = cli_input.starts_with?(".") || cli_input.starts_with?("/") || cli_input.starts_with?("~")
-    fs_path = input_is_path ? Path.new(cli_input).expand : nil
     result = Protocol::PROTOCOLS.reduce(nil) do |acc, protocol|
       next acc unless acc.nil?
-      next protocol.normalize?(cli_input, base_directory: directory, path: fs_path)
+      next protocol.normalize?(cli_input, Protocol::PathInfo.from_str(cli_input, directory))
     end
     raise "Could not parse #{cli_input}" unless result
     result

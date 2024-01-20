@@ -1,8 +1,9 @@
+require "../../resolver"
 require "../base"
 require "../registry"
 
 struct Zap::Commands::Install::Protocol::Alias < Zap::Commands::Install::Protocol::Base
-  def self.normalize?(str : String, base_directory : String, path : Path?) : {String?, String?}?
+  def self.normalize?(str : String, path_info : PathInfo?) : {String?, String?}?
     if (parts = str.split("@npm:")).size > 1
       # <alias>@npm:<name>
       return "npm:#{parts[1]}", parts[0]

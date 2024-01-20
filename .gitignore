@@ -8,4 +8,4 @@ node_modules
 
 /test.cr
 /*_test.cr
-/spec/fixtures/projects
+/projects

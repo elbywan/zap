@@ -1,13 +1,13 @@
-require "../../base"
-require "../../resolver"
-require "../../../../../utils/git"
+require "../base"
+require "../resolver"
+require "../../../../utils/git/url"
 
 struct Zap::Commands::Install::Protocol::Git < Zap::Commands::Install::Protocol::Base
 end
 
 module Zap::Commands::Install::Protocol::Git::Resolver
   private abstract struct Base < Zap::Commands::Install::Protocol::Resolver
-    getter git_url : Utils::GitUrl
+    getter git_url : Utils::Git::Url
 
     def initialize(
       state,
@@ -18,7 +18,7 @@ module Zap::Commands::Install::Protocol::Git::Resolver
       skip_cache = false
     )
       super
-      @git_url = Utils::GitUrl.new(@specifier.to_s, @state.reporter)
+      @git_url = Utils::Git::Url.new(@specifier.to_s, @state.reporter)
     end
 
     def resolve(*, pinned_version : String? = nil) : Package

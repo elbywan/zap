@@ -1,5 +1,5 @@
-require "./spec_helper"
-require "../src/workspaces"
+require "spec"
+require "./workspaces"
 
 alias Workspaces = ::Zap::Workspaces
 alias Workspace = ::Zap::Workspaces::Workspace

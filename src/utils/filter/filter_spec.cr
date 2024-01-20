@@ -1,5 +1,5 @@
-require "./spec_helper"
-require "../src/utils/filter"
+require "spec"
+require "./filter"
 
 describe Zap::Utils::Filter do
   it "should parse filters" do

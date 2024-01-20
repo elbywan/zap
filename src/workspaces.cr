@@ -1,6 +1,7 @@
 require "./package"
 require "./utils/filter"
 require "./utils/semver"
+require "./utils/glob"
 
 # require "./utils/git"
 
@@ -50,8 +51,8 @@ class Zap::Workspaces
     #################
     # Utils::File.crawl(
     #   workspace_root,
-    #   included: Utils::GitIgnore.new(workspaces_field),
-    #   always_excluded: Utils::GitIgnore.new(["node_modules", ".git"]),
+    #   included: Utils::Git::Ignore.new(workspaces_field),
+    #   always_excluded: Utils::Git::Ignore.new(["node_modules", ".git"]),
     # ) do |path|
     #   nil.tap {
     #     if File.exists?(path / "package.json")

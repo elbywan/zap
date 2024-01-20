@@ -1,6 +1,6 @@
-require "./spec_helper"
-require "./fixtures/semver/*"
-require "../src/utils/semver"
+require "spec"
+require "./fixtures/*"
+require "./semver"
 
 include Zap::Utils
 
