@@ -77,7 +77,7 @@ module Zap::Commands::Run
     rescue ex : Exception
       if ex.is_a?(ScriptNotFoundError) && run_config.fallback_to_exec
         exec_config = Exec::Config.new(
-          command: ARGV.join(" "),
+          command: ARGV[0] || "", args: ARGV[1..-1],
           parallel: run_config.parallel,
         )
         Zap::Commands::Exec.run(config, exec_config, no_banner: true)

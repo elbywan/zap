@@ -24,7 +24,8 @@ module Zap::Commands::Exec
           package,
           path,
           "[exec]",
-          exec_config.command
+          exec_config.command,
+          args: exec_config.args,
         )
       end
 

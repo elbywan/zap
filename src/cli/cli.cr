@@ -65,7 +65,7 @@ module Zap
     when Commands::Rebuild::Config
       Commands::Rebuild.run(config, command_config)
     when Commands::Exec::Config
-      command_config = command_config.copy_with(command: ARGV.join(" "))
+      command_config = command_config.copy_with(command: ARGV[0] || "", args: ARGV[1..-1])
       Commands::Exec.run(config, command_config)
     when Commands::Store::Config
       Commands::Store.run(config, command_config)

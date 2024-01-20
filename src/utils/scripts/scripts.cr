@@ -11,13 +11,15 @@ module Zap::Utils::Scripts
     script_name : Symbol | String,
     script_command : String?,
     before : Enumerable(ScriptDataNested)? = nil,
-    after : Enumerable(ScriptDataNested)? = nil
+    after : Enumerable(ScriptDataNested)? = nil,
+    args : Array(String)? = nil
 
   record ScriptDataNested,
     package : Package,
     path : Path | String,
     script_name : Symbol | String,
-    script_command : String?
+    script_command : String?,
+    args : Array(String)? = nil
 
   def self.parallel_run(
     *,
@@ -211,7 +213,7 @@ module Zap::Utils::Scripts
     end
     begin
       if script_name.is_a?(Symbol)
-        package.scripts.not_nil!.run_script(script_name, path.to_s, config, output_io: printer.output, &hook)
+        package.scripts.not_nil!.run_script(script_name, path.to_s, config, output_io: printer.output, args: script_data.args, &hook)
       elsif script_command.is_a?(String)
         Utils::Scripts.run_script(
           script_command,
@@ -219,6 +221,7 @@ module Zap::Utils::Scripts
           config,
           output_io: printer.output,
           stdin: inherit_stdin ? Process::Redirect::Inherit : Process::Redirect::Close,
+          args: script_data.args,
           &hook
         )
       end
