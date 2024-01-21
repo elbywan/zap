@@ -1,9 +1,10 @@
 {% if flag?(:preview_mt) %}
   require "msgpack"
+  require "../concurrent/rwlock"
 
   struct SafeHash(K, V)
     getter inner : Hash(K, V)
-    getter lock = Mutex.new(:reentrant)
+    getter lock = Zap::Utils::Concurrent::RWLock.new
 
     def initialize(*args, **kwargs)
       @inner = Hash(K, V).new(*args, **kwargs)
@@ -13,18 +14,38 @@
       @inner = Hash(K, V).new(*args, **kwargs, &block)
     end
 
-    def synchronize
-      @lock.synchronize do
-        yield @inner
-      end
-    end
-
     def to_msgpack(packer : MessagePack::Packer)
       @inner.to_msgpack(packer)
     end
 
+    {% begin %}
+      {% write_methods = [
+           :[]=,
+           :clear,
+           :compact!,
+           :delete,
+           :merge!,
+           :put,
+           :put_if_absent,
+           :reject!,
+           :select!,
+           :shift,
+           :shift?,
+           :transform_values!,
+           :update,
+         ] %}
+
+      {% for write_method in write_methods %}
+      def {{write_method.id}}(*args, **kwargs)
+        @lock.write do
+          @inner.{{write_method.id}}(*args, **kwargs)
+        end
+      end
+      {% end %}
+    {% end %}
+
     macro method_missing(call)
-      @lock.synchronize do
+      @lock.read do
         @inner.\{{call}}
       end
     end

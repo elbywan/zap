@@ -67,7 +67,7 @@ abstract struct Zap::Commands::Install::Protocol::Resolver
       else
         packages_ref = "#{name}@#{pinned_dependency}"
       end
-      state.lockfile.packages_lock.synchronize do
+      state.lockfile.packages_lock.read do
         state.lockfile.packages[packages_ref]?
       end
     end

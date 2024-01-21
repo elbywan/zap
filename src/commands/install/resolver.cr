@@ -153,7 +153,7 @@ module Zap::Commands::Install::Resolver
       lockfile_cached = uninitialized Bool
       metadata = keyed_lock(metadata_key) do
         # If another fiber has already resolved the package, use the cached metadata
-        lockfile_metadata = state.lockfile.packages_lock.synchronize do
+        lockfile_metadata = state.lockfile.packages_lock.read do
           state.lockfile.packages[metadata_key]?
         end
         lockfile_cached = !!lockfile_metadata
@@ -181,7 +181,7 @@ module Zap::Commands::Install::Resolver
           # Remove dev dependencies
           _metadata.dev_dependencies = nil
           # Store the package data in the lockfile
-          state.lockfile.packages_lock.synchronize do
+          state.lockfile.packages_lock.write do
             state.lockfile.packages[metadata_key] = _metadata
           end
         end

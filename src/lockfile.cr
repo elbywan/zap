@@ -3,6 +3,7 @@ require "yaml"
 require "msgpack"
 require "digest"
 require "./utils/macros"
+require "./utils/concurrent/rwlock"
 
 alias DependencyType = ::Zap::Package::DependencyType
 
@@ -47,7 +48,7 @@ class Zap::Lockfile
   @roots_lock = Mutex.new
   @[YAML::Field(ignore: true)]
   @[MessagePack::Field(ignore: true)]
-  getter packages_lock = Mutex.new
+  getter packages_lock = Utils::Concurrent::RWLock.new
   @[YAML::Field(ignore: true)]
   @[MessagePack::Field(ignore: true)]
   property read_status : ReadStatus = ReadStatus::NotFound
