@@ -1,3 +1,4 @@
+require "../../../log"
 require "./alias"
 require "./file"
 require "./git"

@@ -1,7 +1,7 @@
 require "../zap"
 require "crystar"
 require "../ext/**"
-require "log"
+require "../log"
 require "colorize"
 require "benchmark"
 require "option_parser"
@@ -28,7 +28,6 @@ require "../constants"
 # Main entry point for the Zap CLI.
 module Zap
   Colorize.on_tty_only!
-  Log = ::Log.for(self)
   Zap.run
 
   def self.run
