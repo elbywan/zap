@@ -13,7 +13,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v2
       - name: Install Crystal
-        run: brew update && brew install crystal
+        run: brew update && brew install crystal || true
       - name: Build the binary
         # Statically link most non-system libraries
         run: |
@@ -31,7 +31,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v2
       - name: Install Crystal
-        run: brew update && brew install crystal
+        run: brew update && brew install crystal || true
       - name: Build the binary
         # Statically link most non-system libraries
         run: |
