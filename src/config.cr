@@ -231,7 +231,7 @@ module Zap
         nearest_package = packages_data.nearest_package
         nearest_package_dir = packages_data.nearest_package_dir
 
-        raise "Could not find a package.json file in #{config.prefix} or its parent folders!" unless nearest_package && nearest_package_dir
+        raise "Could not find a package.json file in #{config.prefix} or its parent folders" unless nearest_package && nearest_package_dir
 
         # Initialize workspaces if a workspace root has been found
         if (workspace_package_dir = packages_data.workspace_package_dir.try(&.to_s)) && (workspace_package = packages_data.workspace_package)

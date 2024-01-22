@@ -274,8 +274,8 @@ class Zap::Package
         end
       }
     end
-  rescue
-    raise "package.json not found at #{full_path}"
+  rescue e
+    raise "Unable to read package.json at #{full_path}\n#{e}"
   end
 
   def self.init_root_package(path : Path, *, append_filename : Bool = true) : self
