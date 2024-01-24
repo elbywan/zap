@@ -14,19 +14,21 @@ struct Zap::Commands::Install::Protocol::Workspace < Zap::Commands::Install::Pro
     dependency_type = nil,
     skip_cache = false
   ) : Protocol::Resolver?
-    return nil if name.nil?
-    # Check if the package depending on the current one is a workspace
-    parent_is_workspace = !parent || parent.is_a?(Lockfile::Root)
-
     # Partial implementation of the pnpm workspace protocol
     # Does not support aliases for the moment
     # https://pnpm.io/workspaces#workspace-protocol-workspace
-    has_workspace_protocol = specifier.starts_with?("workspace:")
+
+    return nil if name.nil?
+
+    # Check if the package depending on the current one is a root package
+    parent_is_workspace = !parent || parent.is_a?(Lockfile::Root)
+    workspaces = state.context.workspaces
+
+    is_workspace_protocol = specifier.starts_with?("workspace:")
 
     # Check if the package is a workspace
-    workspaces = state.context.workspaces
     workspace = begin
-      if has_workspace_protocol
+      if is_workspace_protocol
         raise "The workspace:* protocol is forbidden for non-direct dependencies." unless parent_is_workspace
         raise "The workspace:* protocol must be used inside a workspace." unless workspaces
         begin
@@ -42,7 +44,7 @@ struct Zap::Commands::Install::Protocol::Workspace < Zap::Commands::Install::Pro
     return nil unless workspace
 
     # Strip the workspace:// prefix
-    specifier = specifier[10..]
+    specifier = specifier[10..] if is_workspace_protocol
 
     # Will link the workspace in the parent node_modules folder
     Log.debug { "(#{name}@#{specifier}) Resolved as a workspace dependency" }

@@ -98,14 +98,14 @@ class Zap::Workspaces
 
   def get!(name : String, version : String) : Workspace
     if workspace = find { |w| w.package.name == name }
-      begin
-        return workspace if version.starts_with?("workspace:") || Utils::Semver.parse(version).satisfies?(workspace.package.version)
-        raise "Workspace #{name} does not match version #{version}"
-      rescue
+      if version.starts_with?("workspace:") || Utils::Semver.parse(version).satisfies?(workspace.package.version)
+        workspace
+      else
         raise "Workspace #{name} does not match version #{version}"
       end
+    else
+      raise "Workspace #{name} not found"
     end
-    raise "Workspace #{name} not found"
   end
 
   class CycleException < Exception
