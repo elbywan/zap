@@ -1,7 +1,10 @@
 require "../../package"
 require "../../lockfile"
+require "../../store"
+require "../../npmrc"
+require "../../reporter/interactive"
+require "../../utils/concurrent/pipeline"
 require "../config"
-require "../store"
 require "./config"
 
 module Zap::Commands::Install
@@ -14,6 +17,6 @@ module Zap::Commands::Install
     context : Zap::Config::InferredContext,
     npmrc : Npmrc,
     registry_clients : RegistryClients,
-    pipeline : Pipeline = Pipeline.new,
+    pipeline : Utils::Concurrent::Pipeline = Utils::Concurrent::Pipeline.new,
     reporter : Reporter = Reporter::Interactive.new
 end

@@ -1,7 +1,7 @@
 require "spec"
-require "./url"
+require "./remote"
 
-describe Zap::Utils::Git::Url do
+describe Zap::Utils::Git::Remote do
   it("should parse git urls") do
     {
       "git+ssh://git@github.com:sindresorhus/query-string.git#semver:6",
@@ -10,11 +10,11 @@ describe Zap::Utils::Git::Url do
       "git+https://isaacs@github.com/npm/cli.git",
       "git://github.com/npm/cli.git#v1.0.27",
     }.each do |url|
-      Zap::Utils::Git::Url.new(url)
+      Zap::Utils::Git::Remote.new(url)
     end
 
     expect_raises(Exception, "invalid git url: github.com/npm/cli.git") do
-      Zap::Utils::Git::Url.new("github.com/npm/cli.git")
+      Zap::Utils::Git::Remote.new("github.com/npm/cli.git")
     end
   end
 end

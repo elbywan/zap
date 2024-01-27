@@ -1,5 +1,7 @@
 require "../../../utils/semver"
-require "../../../commands/install"
+require "../../../utils/concurrent/dedupe_lock"
+require "../../../utils/concurrent/keyed_lock"
+require "../../../commands/install/state"
 require "../../../package"
 require "../../../lockfile"
 

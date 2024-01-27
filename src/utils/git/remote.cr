@@ -1,6 +1,6 @@
 require "../../reporter/*"
 
-class Zap::Utils::Git::Url
+class Zap::Utils::Git::Remote
   # See: https://docs.npmjs.com/cli/v9/configuring-npm/package-json#git-urls-as-dependencies
   # <protocol>://[<user>[:<password>]@]<hostname>[:<port>][:][/]<path>[#<commit-ish> | #semver:<semver>]
   GIT_URL_REGEX = /(?:git\+)?(?<protocol>git|ssh|http|https|file):\/\/(?:(?<user>[^:@]+)?(:(?<password>[^@]+))?@)?(?<hostname>[^:\/]+)(:(?<port>\d+))?[\/:](?<path>[^#]+)((?:#semver:(?<semver>[^:]+))|(?:#(?<commitish>[^:]+)))?/

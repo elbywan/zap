@@ -1,13 +1,13 @@
 require "../base"
 require "../resolver"
-require "../../../../utils/git/url"
+require "../../../../utils/git/remote"
 
 struct Zap::Commands::Install::Protocol::Git < Zap::Commands::Install::Protocol::Base
 end
 
 module Zap::Commands::Install::Protocol::Git::Resolver
   private abstract struct Base < Zap::Commands::Install::Protocol::Resolver
-    getter git_url : Utils::Git::Url
+    getter git_remote : Utils::Git::Remote
 
     def initialize(
       state,
@@ -18,7 +18,7 @@ module Zap::Commands::Install::Protocol::Git::Resolver
       skip_cache = false
     )
       super
-      @git_url = Utils::Git::Url.new(@specifier.to_s, @state.reporter)
+      @git_remote = Utils::Git::Remote.new(@specifier.to_s, @state.reporter)
     end
 
     def resolve(*, pinned_version : String? = nil) : Package
@@ -32,8 +32,8 @@ module Zap::Commands::Install::Protocol::Git::Resolver
     end
 
     def fetch_metadata : Package
-      commit_hash = @git_url.commitish_hash
-      cache_key = Digest::SHA1.hexdigest("#{@git_url.short_key}")
+      commit_hash = @git_remote.commitish_hash
+      cache_key = Digest::SHA1.hexdigest("#{@git_remote.short_key}")
       metadata_cache_key = "#{@name}__git:#{cache_key}.package.json"
       cloned_repo_path = Path.new(Dir.tempdir, cache_key)
 
@@ -45,7 +45,7 @@ module Zap::Commands::Install::Protocol::Git::Resolver
           clone_to(cloned_repo_path) unless cloned || metadata_cached
           Package.init(metadata_cached && metadata_path ? metadata_path : cloned_repo_path, append_filename: !metadata_cached).tap do |pkg|
             @state.store.store_file(metadata_cache_key, pkg.to_json) unless metadata_cached
-            pkg.dist = Package::Dist::Git.new(commit_hash, specifier.to_s, @git_url.key, cache_key)
+            pkg.dist = Package::Dist::Git.new(commit_hash, specifier.to_s, @git_remote.key, cache_key)
           end
         end
       end
@@ -89,7 +89,7 @@ module Zap::Commands::Install::Protocol::Git::Resolver
     end
 
     protected def clone_to(path : Path | String)
-      @git_url.clone(path)
+      @git_remote.clone(path)
     end
 
     private def prepare_package(
@@ -141,7 +141,7 @@ module Zap::Commands::Install::Protocol::Git::Resolver
     end
 
     protected def clone_to(path : Path | String)
-      api_url = "https://api.github.com/repos/#{@raw_version.to_s.split('#')[0]}/tarball/#{@git_url.commitish || ""}"
+      api_url = "https://api.github.com/repos/#{@raw_version.to_s.split('#')[0]}/tarball/#{@git_remote.commitish || ""}"
       tarball_url = HTTP::Client.get(api_url).headers["Location"]?
       raise "Failed to fetch package location from Github at #{api_url}" unless tarball_url && !tarball_url.empty?
       Utils::TarGzip.download_and_unpack(tarball_url, path)
