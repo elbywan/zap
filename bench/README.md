@@ -10,9 +10,17 @@ Install and make sure the binaries are in your path:
 - [bun](bun.sh/)
 - [zap](https://github.com/elbywan/zap)
 
+### With the [proto](https://moonrepo.dev/docs/proto) tool
+
+To setup the latest version of the package managers, just run:
+
+```bash
+proto use
+```
+
 ### With the [pkgx](https://pkgx.sh/) tool
 
-The pkgx tool can be used to install the dependencies easily.
+The pkgx tool can alternatively be used:
 
 ```bash
 pkgx +yarnpkg.com +node +npm +pnpm +bun +python
