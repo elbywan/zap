@@ -1,10 +1,10 @@
 require "./manifest"
-require "./utils/fetch"
+require "../../utils/fetch"
 
 # Exposes a pool of http(s) clients for each registry and convenience methods to access the pools.
 #
 # The pools are lazily initialized and cached.
-class Zap::RegistryClients
+class Zap::Commands::Install::RegistryClients
   # The pool of clients for each registry
   @client_pool_by_registry : Hash(String, Utils::Fetch(Manifest)) = Hash(String, Utils::Fetch(Manifest)).new
   # Lock to synchronize access to the pools

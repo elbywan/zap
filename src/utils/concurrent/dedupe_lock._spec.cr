@@ -11,7 +11,7 @@ module GloballyDeduped
   DedupeLock::Global.setup(:global, Int32)
 end
 
-describe DedupeLock do
+describe DedupeLock, tags: {"utils", "utils.concurrent"} do
   it "should lock and memoize a block" do
     s = Deduped.new
 
@@ -69,7 +69,7 @@ describe DedupeLock do
   end
 end
 
-describe DedupeLock::Global do
+describe DedupeLock::Global, tags: {"utils", "utils.concurrent"} do
   it "should lock and memoize a block" do
     check = Atomic(Int32).new(0)
     results = Array(Int32).new(10, 0)

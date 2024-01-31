@@ -1,8 +1,8 @@
 require "../base"
 require "../resolver"
+require "../../manifest"
+require "../../registry_clients"
 require "../../../../utils/fetch"
-require "../../../../registry_clients"
-require "../../../../manifest"
 
 struct Zap::Commands::Install::Protocol::Registry < Zap::Commands::Install::Protocol::Base
 end

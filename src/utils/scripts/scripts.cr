@@ -58,7 +58,7 @@ module Zap::Utils::Scripts
     *,
     config : Config,
     scripts : Array(ScriptData),
-    relationships : Hash(Workspaces::Workspace, Workspaces::WorkspaceRelationships),
+    relationships : Hash(Workspaces::Workspace, Workspaces::Relationships),
     reporter : Reporter = Reporter::Interactive.new,
     pipeline : Pipeline = Pipeline.new,
     print_header : Bool = true

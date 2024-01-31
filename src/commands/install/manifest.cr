@@ -1,8 +1,8 @@
 require "json"
 require "msgpack"
-require "./utils/semver"
+require "../../utils/semver"
 
-struct Zap::Manifest
+struct Zap::Commands::Install::Manifest
   include JSON::Serializable
   include MessagePack::Serializable
 

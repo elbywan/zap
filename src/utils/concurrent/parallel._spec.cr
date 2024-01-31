@@ -3,7 +3,7 @@ require "./parallel"
 
 alias Parallel = ::Zap::Utils::Concurrent::Parallel
 
-describe Parallel do
+describe Parallel, tags: {"utils", "utils.concurrent"} do
   it("should parallelize computations (index)") do
     10.times do
       results = Parallel.parallelize(10) { |i|

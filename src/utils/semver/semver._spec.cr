@@ -4,7 +4,7 @@ require "./semver"
 
 include Zap::Utils
 
-describe Zap::Utils::Semver do
+describe Zap::Utils::Semver, tags: {"utils", "utils.semver"} do
   describe "equality" do
     EQUALITY_FIXTURES.each { |fixture|
       it "should parse { \"version\": \"#{fixture[0]}\" }" do

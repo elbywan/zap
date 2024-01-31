@@ -6,6 +6,7 @@ require "../../reporter/interactive"
 require "../../utils/concurrent/pipeline"
 require "../config"
 require "./config"
+require "./registry_clients"
 
 module Zap::Commands::Install
   record State,

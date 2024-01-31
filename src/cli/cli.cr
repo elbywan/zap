@@ -6,7 +6,7 @@ require "colorize"
 require "benchmark"
 require "option_parser"
 require "../config"
-require "../utils/filter"
+require "../workspaces/filter"
 require "../utils/debug_formatter"
 require "../store"
 require "../package"
@@ -224,8 +224,8 @@ module Zap
       {% if sub %}subSeparator{% else %}separator{% end %}("Workspace")
 
       flag("-F <pattern>", "--filter <pattern>", "Filtering allows you to restrict commands to specific subsets of packages.") do |filter|
-        filters = @config.filters || Array(Utils::Filter).new
-        filters << Utils::Filter.new(filter)
+        filters = @config.filters || Array(Workspaces::Filter).new
+        filters << Workspaces::Filter.new(filter)
         @config = @config.copy_with(filters: filters)
       end
 

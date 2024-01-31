@@ -1,7 +1,9 @@
-require "./package"
-require "./utils/filter"
-require "./utils/semver"
-require "./utils/glob"
+require "../package"
+require "../utils/semver"
+require "../utils/glob"
+require "./workspace"
+require "./relationships"
+require "../constants"
 
 # require "./utils/git"
 
@@ -119,14 +121,8 @@ class Zap::Workspaces
     end
   end
 
-  record WorkspaceRelationships,
-    dependencies : Set(Workspace) = Set(Workspace).new,
-    direct_dependencies : Array(Workspace) = Array(Workspace).new,
-    dependents : Set(Workspace) = Set(Workspace).new,
-    direct_dependents : Array(Workspace) = Array(Workspace).new
-
-  getter relationships : Hash(Workspace, WorkspaceRelationships) do
-    relationships = {} of Workspace => WorkspaceRelationships
+  getter relationships : Hash(Workspace, Relationships) do
+    relationships = {} of Workspace => Relationships
 
     # Calculate direct dependencies / dependents
     workspaces.each do |workspace|
@@ -135,11 +131,11 @@ class Zap::Workspaces
         workspace.package.dev_dependencies,
         workspace.package.optional_dependencies,
       }.each do |value|
-        relationships[workspace] ||= WorkspaceRelationships.new
+        relationships[workspace] ||= Relationships.new
         next if value.nil?
         value.each do |name, version|
           if dependency_workspace = get(name, version)
-            relationships[dependency_workspace] ||= WorkspaceRelationships.new
+            relationships[dependency_workspace] ||= Relationships.new
             relationships[workspace].dependencies << dependency_workspace
             relationships[workspace].direct_dependencies << dependency_workspace
             relationships[dependency_workspace].direct_dependents << workspace
@@ -181,7 +177,7 @@ class Zap::Workspaces
     relationships
   end
 
-  private def cyclic_path(relationships : Hash(Workspace, WorkspaceRelationships), workspace : Workspace, *, target : Workspace = workspace, path = Deque(Workspace){workspace}) : Array(Workspace)?
+  private def cyclic_path(relationships : Hash(Workspace, Relationships), workspace : Workspace, *, target : Workspace = workspace, path = Deque(Workspace){workspace}) : Array(Workspace)?
     relationships[workspace].direct_dependencies.each do |dependency|
       if dependency == target
         return path.to_a << dependency
@@ -195,10 +191,10 @@ class Zap::Workspaces
   end
 
   def filter(*filters : String) : Array(Workspace)
-    filter(filters.map { |filter| Utils::Filter.new(filter) })
+    filter(filters.map { |filter| Workspaces::Filter.new(filter) })
   end
 
-  def filter(filters : Enumerable(Utils::Filter)) : Array(Workspace)
+  def filter(filters : Enumerable(Workspaces::Filter)) : Array(Workspace)
     include_list = nil
     exclude_list = nil
 
@@ -229,24 +225,6 @@ class Zap::Workspaces
     @workspaces.select do |workspace|
       (!include_list || include_list.includes?(workspace)) &&
         (!exclude_list || !exclude_list.includes?(workspace))
-    end
-  end
-
-  record Workspace, package : Package, path : Path, relative_path : Path do
-    def matches?(filter : Utils::Filter, diffs : Diffs? = nil)
-      matches = true
-      if scope = filter.scope
-        matches &&= File.match?(scope, package.name)
-      end
-      if glob = filter.glob
-        matches &&= File.match?(glob, relative_path)
-      end
-      if since = filter.since
-        matches &&= diffs.try &.get(path.to_s, since).any? do |diff|
-          diff.starts_with?(relative_path.to_s)
-        end
-      end
-      matches
     end
   end
 end

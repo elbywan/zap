@@ -52,25 +52,25 @@ WORKSPACE_D = Workspace.new(
   relative_path: Path.new("libs/d")
 )
 
-describe Workspaces do
+describe Workspaces, tags: "workspaces" do
   it "should compute deep relationships between workspaces" do
     workspaces = Workspaces.new([WORKSPACE_A, WORKSPACE_B, WORKSPACE_C, WORKSPACE_D])
     workspaces.relationships.should eq({
-      WORKSPACE_A => Workspaces::WorkspaceRelationships.new(
+      WORKSPACE_A => Workspaces::Relationships.new(
         direct_dependencies: [WORKSPACE_B, WORKSPACE_C],
         dependencies: Set{WORKSPACE_B, WORKSPACE_C, WORKSPACE_D},
       ),
-      WORKSPACE_B => Workspaces::WorkspaceRelationships.new(
+      WORKSPACE_B => Workspaces::Relationships.new(
         direct_dependencies: [WORKSPACE_D],
         dependencies: Set{WORKSPACE_D},
         direct_dependents: [WORKSPACE_A],
         dependents: Set{WORKSPACE_A},
       ),
-      WORKSPACE_C => Workspaces::WorkspaceRelationships.new(
+      WORKSPACE_C => Workspaces::Relationships.new(
         direct_dependents: [WORKSPACE_A],
         dependents: Set{WORKSPACE_A},
       ),
-      WORKSPACE_D => Workspaces::WorkspaceRelationships.new(
+      WORKSPACE_D => Workspaces::Relationships.new(
         direct_dependents: [WORKSPACE_B],
         dependents: Set{WORKSPACE_B, WORKSPACE_A},
       ),

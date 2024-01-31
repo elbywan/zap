@@ -22,7 +22,7 @@ macro test_gitignore_file(name, should_match, should_not_match)
   end
 end
 
-describe Zap::Utils::Git::Ignore do
+describe Zap::Utils::Git::Ignore, tags: {"utils", "utils.git"} do
   describe ".match?" do
     # https://github.com/github/gitignore/blob/main/Node.gitignore
     test_gitignore_file(

@@ -1,4 +1,3 @@
-require "./utils/filter"
 require "./utils/from_env"
 require "./utils/directories"
 require "./utils/file"
@@ -6,6 +5,7 @@ require "./backend"
 require "./package"
 require "./lockfile"
 require "./workspaces"
+require "./workspaces/filter"
 
 module Zap
   DEFAULT_HOIST_PATTERNS        = ["*"]
@@ -46,7 +46,7 @@ module Zap
     getter root_workspace : Bool = false
     @[Env]
     getter no_workspaces : Bool = false
-    getter filters : Array(Utils::Filter)? = nil
+    getter filters : Array(Workspaces::Filter)? = nil
     @[Env]
     getter deferred_output : Bool = !!ENV["CI"]?
     @[Env]

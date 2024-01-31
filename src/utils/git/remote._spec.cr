@@ -1,7 +1,7 @@
 require "spec"
 require "./remote"
 
-describe Zap::Utils::Git::Remote do
+describe Zap::Utils::Git::Remote, tags: {"utils", "utils.git"} do
   it("should parse git urls") do
     {
       "git+ssh://git@github.com:sindresorhus/query-string.git#semver:6",
