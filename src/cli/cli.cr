@@ -117,6 +117,10 @@ module Zap
           on_install(parser, remove_packages: true)
         end
 
+        command(["run", "r"], "Run a package's \"script\" command.", "[options] <script>") do
+          on_run(parser)
+        end
+
         command(["store", "s"], "Manage the global store used to save packages and cache registry responses.") do
           on_store(parser)
         end
