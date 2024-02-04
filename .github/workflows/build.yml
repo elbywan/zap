@@ -14,11 +14,24 @@ jobs:
         uses: actions/checkout@v2
       - name: Install Crystal
         run: brew update && brew install crystal || true
+      - name: Copy static libraries
+        run: |
+          mkdir -p ./libs
+          # openssl
+          cp $(brew --prefix)/opt/openssl@3/lib/libssl.a ./libs
+          cp $(brew --prefix)/opt/openssl@3/lib/libcrypto.a ./libs
+          # libevent
+          cp $(brew --prefix)/opt/libevent/lib/libevent_pthreads.a ./libs
+          cp $(brew --prefix)/opt/libevent/lib/libevent.a ./libs
+          # libyaml
+          cp $(brew --prefix)/opt/libyaml/lib/libyaml.a ./libs
+          # libgc
+          cp $(brew --prefix)/opt/bdw-gc/lib/libgc.a ./libs
+          # libpcre
+          cp $(brew --prefix)/opt/pcre2/lib/libpcre2-8.a ./libs
       - name: Build the binary
         # Statically link most non-system libraries
-        run: |
-          cc=$(env CRYSTAL_LIBRARY_PATH=`pwd`/libs/x86_64-apple-darwin shards build --target="x86_64-apple-darwin" --cross-compile --no-debug --release -Dpreview_mt | tail -n 1)
-          eval $cc
+        run: env CRYSTAL_LIBRARY_PATH=`pwd`/libs shards build --no-debug --release -Dpreview_mt
       - name: Upload a Build Artifact
         uses: actions/upload-artifact@v2
         with:
@@ -26,17 +39,29 @@ jobs:
           path: ./bin/zap
           if-no-files-found: error
   macos_arm64:
-    runs-on: macos-latest
+    runs-on: macos-14
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
       - name: Install Crystal
         run: brew update && brew install crystal || true
-      - name: Build the binary
-        # Statically link most non-system libraries
+      - name: Copy static libraries
         run: |
-          cc=$(env CRYSTAL_LIBRARY_PATH=`pwd`/libs/arm64-apple-darwin shards build --target="arm64-apple-darwin" --cross-compile --no-debug --release | tail -n 1 | sed -e "s/-rdynamic/--target=arm64-apple-darwin -rdynamic/g")
-          eval $cc
+          mkdir -p ./libs
+          # openssl
+          cp $(brew --prefix)/opt/openssl@3/lib/libssl.a ./libs
+          cp $(brew --prefix)/opt/openssl@3/lib/libcrypto.a ./libs
+          # libevent
+          cp $(brew --prefix)/opt/libevent/lib/libevent_pthreads.a ./libs
+          cp $(brew --prefix)/opt/libevent/lib/libevent.a ./libs
+          # libyaml
+          cp $(brew --prefix)/opt/libyaml/lib/libyaml.a ./libs
+          # libgc
+          cp $(brew --prefix)/opt/bdw-gc/lib/libgc.a ./libs
+          # libpcre
+          cp $(brew --prefix)/opt/pcre2/lib/libpcre2-8.a ./libs
+      - name: Build the binary
+        run: env CRYSTAL_LIBRARY_PATH=`pwd`/libs shards build --no-debug --release -Dpreview_mt
       - name: Upload a Build Artifact
         uses: actions/upload-artifact@v2
         with:
