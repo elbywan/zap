@@ -357,10 +357,8 @@ class Zap::Lockfile
     return results if ancestors.any? { |(ancestor, ancestor_type)| ancestor == package }
 
     ancestors << {package, type}
-    package.each_dependency do |name, version, type|
-      if dependency = get_package?(name, version)
-        results.concat(reduce_package(_type, dependency, type, root, ancestors, &block))
-      end
+    package.each_dependency_ref do |dependency, type|
+      results.concat(reduce_package(_type, dependency, type, root, ancestors, &block))
     end
     ancestors.pop
 

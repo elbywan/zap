@@ -186,10 +186,13 @@ module Zap::Commands::Install::Resolver
           end
         end
 
+        package.add_dependency_ref(_metadata, type) if package
+
         _metadata
       end
 
       Log.debug { "(#{name}@#{version}) Resolved version: #{metadata.version} #{(package ? "[parent: #{package.key}]" : "")}" }
+
       # If the package has already been resolved, skip it to prevent infinite loops
       if !single_resolution && already_resolved
         Log.debug { "(#{metadata_key}) Skipping dependencies resolution #{(package ? "[parent: #{package.key}]" : "")}" }

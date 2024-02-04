@@ -1,5 +1,18 @@
 module Zap::Package::Helpers
   module Dependencies
+    @[JSON::Field(ignore: true)]
+    @[YAML::Field(ignore: true)]
+    @[MessagePack::Field(ignore: true)]
+    getter dependencies_refs = SafeArray(Zap::Package).new
+    @[JSON::Field(ignore: true)]
+    @[YAML::Field(ignore: true)]
+    @[MessagePack::Field(ignore: true)]
+    getter dev_dependencies_refs = SafeArray(Zap::Package).new
+    @[JSON::Field(ignore: true)]
+    @[YAML::Field(ignore: true)]
+    @[MessagePack::Field(ignore: true)]
+    getter optional_dependencies_refs = SafeArray(Zap::Package).new
+
     def each_dependency_hash(*,
                              include_dev : Bool = true,
                              include_optional : Bool = true,
@@ -15,6 +28,25 @@ module Zap::Package::Helpers
                         &block : (String, String | Alias, DependencyType) -> Nil)
       each_dependency_hash(include_dev: include_dev, include_optional: include_optional) do |deps, type|
         deps.try &.each { |dep, version| block.call(dep, version, type) }
+      end
+    end
+
+    def each_dependency_ref(*,
+                            include_dev : Bool = true,
+                            include_optional : Bool = true,
+                            &block : (Package, DependencyType) -> Nil)
+      dependencies_refs.each do |package|
+        block.call(package, DependencyType::Dependency)
+      end
+      if include_dev
+        dev_dependencies_refs.each do |package|
+          block.call(package, DependencyType::DevDependency)
+        end
+      end
+      if include_optional
+        optional_dependencies_refs.each do |package|
+          block.call(package, DependencyType::OptionalDependency)
+        end
       end
     end
 
@@ -92,6 +124,17 @@ module Zap::Package::Helpers
       end
       if (peer_dependencies = @peer_dependencies) && peer_dependencies.empty?
         @peer_dependencies = nil
+      end
+    end
+
+    def add_dependency_ref(package : Package, type : DependencyType? = nil)
+      case type
+      when .dependency?, .nil?
+        dependencies_refs << package
+      when .dev_dependency?
+        dev_dependencies_refs << package
+      when .optional_dependency?
+        optional_dependencies_refs << package
       end
     end
   end

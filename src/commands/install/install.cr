@@ -97,8 +97,12 @@ module Zap::Commands::Install
       pruned_direct_dependencies = clean_lockfile(state)
 
       # Mark transtive and check for missing peer dependencies
+      Log.debug { "• Marking transitive peer dependencies" }
       unmet_peers_by_root = state.lockfile.mark_transitive_peers
-      unmet_peers_hash = check_unmet_peer_dependencies(unmet_peers_by_root) if state.install_config.check_peer_dependencies
+      if state.install_config.check_peer_dependencies
+        Log.debug { "• Checking for unmet peer dependencies" }
+        unmet_peers_hash = check_unmet_peer_dependencies(unmet_peers_by_root)
+      end
 
       if state.install_config.frozen_lockfile
         # Raise if the lockfile has been updated

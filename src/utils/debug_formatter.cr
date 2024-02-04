@@ -26,8 +26,9 @@ struct Zap::Debug::Formatter < ::Log::StaticFormatter
     string " ".colorize.dim
     @io << @entry.timestamp.to_s("%H:%M:%S.%L").colorize.dim
     if source_time
+      color = source_time < 0.1.seconds ? :light_magenta : source_time < 0.25.seconds ? :light_green : (source_time < 1.seconds ? :light_yellow : :light_red)
       string " "
-      string "+#{Utils::Various.format_time_span(source_time)}".rjust(6).colorize(:light_magenta).dim
+      string "+#{Utils::Various.format_time_span(source_time)}".rjust(6).colorize(color).dim
     end
     string " - "
     message
