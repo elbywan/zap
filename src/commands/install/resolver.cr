@@ -355,11 +355,12 @@ module Zap::Commands::Install::Resolver
   # See: https://docs.npmjs.com/cli/v9/commands/npm-install?v=true#description
   # Returns a {version, name} tuple
   private def self.parse_new_package(cli_input : String, *, directory : String) : {String?, String?}
-    result = Protocol::PROTOCOLS.reduce(nil) do |acc, protocol|
-      next acc unless acc.nil?
-      next protocol.normalize?(cli_input, Protocol::PathInfo.from_str(cli_input, directory))
+    result = nil
+    Protocol::PROTOCOLS.each do |protocol|
+      result = protocol.normalize?(cli_input, Protocol::PathInfo.from_str(cli_input, directory))
+      break if result && (result[0] || result[1])
     end
-    raise "Could not parse #{cli_input}" unless result
+    raise "Could not parse #{cli_input}" if result.nil? || (result[0].nil? && result[1].nil?)
     result
   end
 end

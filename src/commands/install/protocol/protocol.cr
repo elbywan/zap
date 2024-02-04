@@ -9,12 +9,12 @@ require "./workspace"
 module Zap::Commands::Install::Protocol
   Log = Zap::Log.for(self)
 
-  PROTOCOLS = [
+  PROTOCOLS = {
     Protocol::Workspace,
     Protocol::Alias,
     Protocol::File,
     Protocol::Git,
     Protocol::TarballUrl,
     Protocol::Registry,
-  ]
+  }
 end

@@ -6,6 +6,7 @@ struct Zap::Commands::Install::Protocol::File < Zap::Commands::Install::Protocol
   def self.normalize?(str : String, path_info : PathInfo?) : {String?, String?}?
     return nil unless path_info
     path_str = path_info.path.to_s
+
     if path_info.dir?
       # npm install <folder>
       return "file:#{path_info.relative_path}", nil

@@ -23,6 +23,8 @@ struct Zap::Commands::Install::Protocol::Git < Zap::Commands::Install::Protocol:
       # <git remote url>
       # <githubname>/<githubrepo>[#<commit-ish>]
       return str, nil
+    else
+      return nil
     end
   end
 

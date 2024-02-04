@@ -8,9 +8,9 @@ struct Zap::Commands::Install::Protocol::Registry < Zap::Commands::Install::Prot
   def self.normalize?(str : String, path_info : PathInfo?) : {String?, String?}?
     parts = str.split('@')
     if parts.size == 1 || (parts.size == 2 && str.starts_with?('@'))
-      return nil, str
+      return {nil, str}
     else
-      return parts.last, parts[...-1].join('@')
+      return {parts.last, parts[...-1].join('@')}
     end
   end
 
