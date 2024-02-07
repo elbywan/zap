@@ -33,20 +33,28 @@ struct Zap::Utils::Semver::Limit
   end
 
   def max(other : self, *, side : Symbol = :left)
+    same_numbers = version.same_version_numbers?(other.version)
     if version == other.version
       return self if boundary == other.boundary || (side == :left ? boundary.inclusive? : boundary.exclusive?)
       return other
     else
+      if same_numbers && self.version.prerelease? != other.version.prerelease?
+        return self.version.prerelease? ? other : self
+      end
       return self if version >= other.version
       return other
     end
   end
 
   def min(other : self, *, side : Symbol = :left)
+    same_numbers = version.same_version_numbers?(other.version)
     if version == other.version
       return self if boundary == other.boundary || (side == :left ? boundary.exclusive? : boundary.inclusive?)
       return other
     else
+      if same_numbers && self.version.prerelease? != other.version.prerelease?
+        return self.version.prerelease? ? other : self
+      end
       return self if version <= other.version
       return other
     end

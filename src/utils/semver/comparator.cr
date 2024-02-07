@@ -68,8 +68,8 @@ struct Zap::Utils::Semver::Comparator
   end
 
   def limits : {Limit, Limit}
-    max_limit = version.prerelease? ? Limit.exclusive(version.increment(:patch).copy_with(prerelease: Prerelease.new(""))) : Limit::MAX
-    min_limit = version.prerelease? ? Limit.inclusive(version.copy_with(prerelease: Prerelease.new(""))) : Limit::MIN
+    max_limit = Limit::MAX
+    min_limit = Limit::MIN
 
     case @operator
     in .greater_than?

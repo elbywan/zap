@@ -49,6 +49,10 @@ record(Zap::Utils::Semver::Version,
     end
   end
 
+  def same_version_numbers?(other : self)
+    major == other.major && minor == other.minor && patch == other.patch
+  end
+
   def <=>(other : self) : Int32
     return -1 if major < other.major
     return 1 if major > other.major

@@ -57,7 +57,7 @@ struct Zap::Utils::Semver::ComparatorSet
     # if at least one comparator with the same [major, minor, patch] tuple also has a prerelease tag.
     # See: https://github.com/npm/node-semver?tab=readme-ov-file#prerelease-tags
     allow_prerelease = version.prerelease && @comparators.any? { |c|
-      !!c.prerelease && version.major == c.major && version.minor == c.minor && version.patch == c.patch
+      !!c.prerelease && c.version.same_version_numbers?(version)
     }
     @comparators.all? do |comparator|
       comparator.satisfies?(version, allow_prerelease)
@@ -86,13 +86,6 @@ struct Zap::Utils::Semver::ComparatorSet
 
     # Return nil if one of the comparator sets is not a proper interval (lower limit > higher limit)
     return nil if self_low.version > self_high.version || other_low.version > other_high.version
-
-    # If one version has a prerelease tag, then ranges only intersect if the other version has a prerelease tag
-    return nil if self_low.prerelease? != other_low.prerelease?
-    if self_low.prerelease
-      # If both versions have a prerelease tag, then ranges only intersect if the version numbers are the same
-      return nil if self_low.major != other_low.major || self_low.minor != other_low.minor || self_low.patch != other_low.patch
-    end
 
     if self_low.version <= other_high.version && self_high.version >= other_low.version
       # No overlap when the boundaries are exclusive
