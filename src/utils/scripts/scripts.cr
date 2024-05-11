@@ -79,7 +79,7 @@ module Zap::Utils::Scripts
     concurrency = config.concurrency
 
     if print_header && !config.silent
-      reporter.output << reporter.header("⏳", "Hooks", Colorize::Color256.new(35)) << "\n\n"
+      reporter.output << reporter.header("🪝", "Hooks", Colorize::Color256.new(35)) << "\n\n"
     end
 
     pipeline.reset
