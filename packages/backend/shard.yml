@@ -1,0 +1,12 @@
+name: backend
+version: 0.1.0
+
+dependencies:
+  concurrency:
+    path: ../concurrency
+  data:
+    path: ../data
+  shared:
+    path: ../shared
+  extensions:
+    path: ../extensions

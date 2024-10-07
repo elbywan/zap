@@ -8,7 +8,7 @@ on:
 
 jobs:
   macos_x86_64:
-    runs-on: macos-latest
+    runs-on: macos-13
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
@@ -31,7 +31,10 @@ jobs:
           cp $(brew --prefix)/opt/pcre2/lib/libpcre2-8.a ./libs
       - name: Build the binary
         # Statically link most non-system libraries
-        run: env CRYSTAL_LIBRARY_PATH=`pwd`/libs shards build --no-debug --release -Dpreview_mt
+        run: |
+          env CRYSTAL_LIBRARY_PATH=`pwd`/libs crystal projects.cr build:cli --no-debug --release -Dpreview_mt
+          mkdir bin
+          mv ./packages/cli/bin/zap ./bin/zap
       - name: Upload a Build Artifact
         uses: actions/upload-artifact@v2
         with:
@@ -61,7 +64,10 @@ jobs:
           # libpcre
           cp $(brew --prefix)/opt/pcre2/lib/libpcre2-8.a ./libs
       - name: Build the binary
-        run: env CRYSTAL_LIBRARY_PATH=`pwd`/libs shards build --no-debug --release -Dpreview_mt
+        run: |
+          env CRYSTAL_LIBRARY_PATH=`pwd`/libs crystal projects.cr build:cli --no-debug --release -Dpreview_mt
+          mkdir bin
+          mv ./packages/cli/bin/zap ./bin/zap
       - name: Upload a Build Artifact
         uses: actions/upload-artifact@v2
         with:
@@ -76,7 +82,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v2
       - name: Build the static binary
-        run: shards build --production --release --static --no-debug --stats
+        run: |
+          crystal projects.cr build:cli --production --release --static --no-debug --stats
+          mkdir bin
+          mv ./packages/cli/bin/zap ./bin/zap
       - name: Upload a Build Artifact
         uses: actions/upload-artifact@v2
         with:
@@ -93,7 +102,9 @@ jobs:
       - name: Build the binary
         shell: bash
         run: |
-          shards build --progress --release --no-debug --stats
+          crystal projects.cr build:cli --progress --release --no-debug --stats
+          mkdir bin
+          mv ./packages/cli/bin/zap.exe ./bin/zap.exe
           ls -al ./bin
       - name: Upload a Build Artifact
         uses: actions/upload-artifact@v2
