@@ -11,7 +11,7 @@ jobs:
     runs-on: macos-13
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Install Crystal
         run: brew update && brew install crystal || true
       - name: Copy static libraries
@@ -45,7 +45,7 @@ jobs:
     runs-on: macos-14
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Install Crystal
         run: brew update && brew install crystal || true
       - name: Copy static libraries
@@ -80,7 +80,7 @@ jobs:
       image: crystallang/crystal:latest-alpine
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Build the static binary
         run: |
           crystal projects.cr build:cli --production --release --static --no-debug --stats
@@ -96,7 +96,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Install Crystal
         uses: crystal-lang/install-crystal@v1
       - name: Build the binary
@@ -118,7 +118,7 @@ jobs:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           fetch-depth: 2
       - name: Check if release is needed
