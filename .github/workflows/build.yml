@@ -36,7 +36,7 @@ jobs:
           mkdir bin
           mv ./packages/cli/bin/zap ./bin/zap
       - name: Upload a Build Artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: zap_x86_64-apple-darwin
           path: ./bin/zap
@@ -69,7 +69,7 @@ jobs:
           mkdir bin
           mv ./packages/cli/bin/zap ./bin/zap
       - name: Upload a Build Artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: zap_arm64-apple-darwin
           path: ./bin/zap
@@ -87,7 +87,7 @@ jobs:
           mkdir bin
           mv ./packages/cli/bin/zap ./bin/zap
       - name: Upload a Build Artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: zap_x86_64-linux-musl
           path: ./bin/zap
@@ -107,7 +107,7 @@ jobs:
           mv ./packages/cli/bin/zap.exe ./bin/zap.exe
           ls -al ./bin
       - name: Upload a Build Artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: zap_x86_64-pc-win32.exe
           path: ${{ github.workspace }}\bin\zap.exe
