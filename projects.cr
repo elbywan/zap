@@ -49,7 +49,7 @@ end
 extra_args = ARGV.join(" ")
 full_command = "#{command} #{subcommand} #{extra_args}"
 
-projects = Dir["./**/shard.yml"]
+projects = Dir["#{__DIR__}/**/shard.yml"]
   .each
   .map(&->File.dirname(String))
   .reject { |file|
