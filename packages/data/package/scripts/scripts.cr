@@ -4,7 +4,7 @@ require "./printer"
 
 class Data::Package
   module Scripts
-    Log = ::Log.for(self)
+    Log = ::Log.for("zap.data.package.scripts")
     alias Pipeline = Concurrency::Pipeline
 
     record ScriptData,

@@ -10,7 +10,7 @@ class Fetch(T)
   include Concurrency::DedupeLock(T)
   include Utils::Macros
 
-  Log       = ::Log.for(self)
+  Log       = ::Log.for("zap.fetch")
   CACHE_DIR = ".fetch_cache"
 
   getter base_url : String

@@ -3,7 +3,7 @@ require "data/package"
 require "../state"
 
 module Commands::Install::Installer
-  Log = ::Log.for(self)
+  Log = ::Log.for("zap.install")
 
   abstract class Base
     getter state : Commands::Install::State

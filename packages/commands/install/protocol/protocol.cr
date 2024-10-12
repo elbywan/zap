@@ -7,7 +7,7 @@ require "./tarball_url"
 require "./workspace"
 
 module Commands::Install::Protocol
-  Log = ::Log.for(self)
+  Log = ::Log.for("zap.install.protocol")
 
   PROTOCOLS = {
     Protocol::Workspace,

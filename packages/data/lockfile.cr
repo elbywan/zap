@@ -31,7 +31,7 @@ class Data::Lockfile
   end
 
   NAME = "zap.lock"
-  Log  = ::Log.for(self)
+  Log  = ::Log.for("zap.data.lockfile")
 
   # Serialized
   @[YAML::Field(converter: Utils::Converters::OrderedHash(String, Data::Lockfile::Root))]

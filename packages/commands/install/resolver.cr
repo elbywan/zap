@@ -11,7 +11,7 @@ require "./protocol/resolver"
 require "./protocol"
 
 module Commands::Install::Resolver
-  Log = ::Log.for(self)
+  Log = ::Log.for("zap.resolver")
 
   alias Pipeline = ::Concurrency::Pipeline
 
@@ -134,6 +134,7 @@ module Commands::Install::Resolver
     force_metadata_retrieval = state.install_config.force_metadata_retrieval
     # Multithreaded dependency resolution (if enabled)
     state.pipeline.process do
+      # Infer the parent package
       parent = package.try { |package| is_direct_dependency ? state.lockfile.get_root(package.name, package.version) : package }
       # Create the appropriate resolver depending on the version (git, tarball, registry, local folder…)
       resolver = Resolver.get(state, name, version, parent, type)

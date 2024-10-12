@@ -1,7 +1,7 @@
 require "log"
 
 class Concurrency::Pool(T)
-  Log = ::Log.for(self)
+  Log = ::Log.for("zap.concurrency.pool")
 
   @size : Atomic(Int32) = Atomic(Int32).new(0)
   @capacity : Int32
