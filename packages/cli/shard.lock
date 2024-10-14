@@ -1,0 +1,70 @@
+version: 2.0
+shards:
+  backend:
+    path: ../backend
+    version: 0.1.0
+
+  commands:
+    path: ../commands
+    version: 0.1.0
+
+  concurrency:
+    path: ../concurrency
+    version: 0.1.0
+
+  core:
+    path: ../core
+    version: 0.1.0
+
+  crystar:
+    git: https://github.com/naqvis/crystar.git
+    version: 0.4.0
+
+  data:
+    path: ../data
+    version: 0.1.0
+
+  extensions:
+    path: ../extensions
+    version: 0.1.0
+
+  fetch:
+    path: ../fetch
+    version: 0.1.0
+
+  git:
+    path: ../git
+    version: 0.1.0
+
+  msgpack:
+    git: https://github.com/crystal-community/msgpack-crystal.git
+    version: 1.3.4
+
+  reporter:
+    path: ../reporter
+    version: 0.1.0
+
+  semver:
+    path: ../semver
+    version: 0.1.0
+
+  shared:
+    path: ../shared
+    version: 0.1.0
+
+  store:
+    path: ../store
+    version: 0.0.1
+
+  term-cursor:
+    git: https://github.com/crystal-term/cursor.git
+    version: 0.1.0+git.commit.8805d5f686d153db92cf2ce3333433f8ed3708d0
+
+  utils:
+    path: ../utils
+    version: 0.1.0
+
+  workspaces:
+    path: ../workspaces
+    version: 0.1.0
+

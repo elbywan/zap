@@ -12,15 +12,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Install Crystal
         uses: crystal-lang/install-crystal@v1
       - name: Install dependencies
-        run: shards install
+        run: crystal projects.cr install
       - name: Run tests
-        run: crystal spec
+        run: crystal projects.cr spec
       - name: Run tests (multithreaded)
-        run: crystal spec -Dpreview_mt
+        run: crystal projects.cr spec -Dpreview_mt
   launch:
     name: Build and check if the binary is working
     strategy:
@@ -29,12 +29,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Install Crystal
         uses: crystal-lang/install-crystal@v1
       - name: Install dependencies
-        run: shards install
+        run: crystal projects.cr install
       - name: Build
-        run: shards build
+        run: crystal projects.cr build:cli
       - name: Print version
-        run: ./bin/zap --version
+        run: ./packages/cli/bin/zap --version

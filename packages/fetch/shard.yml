@@ -1,0 +1,11 @@
+name: fetch
+version: 0.1.0
+
+dependencies:
+  msgpack:
+    github: crystal-community/msgpack-crystal
+    version: 1.3.4
+  concurrency:
+    path: ../concurrency
+  utils:
+    path: ../utils

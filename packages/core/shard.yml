@@ -1,0 +1,11 @@
+name: core
+version: 0.1.0
+dependencies:
+  utils:
+    path: ../utils
+  workspaces:
+    path: ../workspaces
+  backend:
+    path: ../backend
+  data:
+    path: ../data

@@ -28,6 +28,12 @@ pkgx +yarnpkg.com +node +npm +pnpm +bun +python
 
 ## Dependencies
 
+### Benchmarking
+
+Benchmarking is done using [hyperfine](https://github.com/sharkdp/hyperfine).
+
+### Plotting
+
 Plotting requires python and the following dependencies:
 
 ```bash
@@ -38,7 +44,7 @@ pip install numpy matplotlib
 
 ```bash
 # Run the benchmarks
-./bench.sh
+./bench.sh # or ./bench-local.sh to build and benchmark a local version of zap
 # Plot the results
 ./plot.sh
 ```

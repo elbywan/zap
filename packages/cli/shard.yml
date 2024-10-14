@@ -1,0 +1,14 @@
+name: cli
+version: 0.1.0
+crystalline:
+  main: zap.cr
+targets:
+  zap:
+    main: zap.cr
+dependencies:
+  core:
+    path: ../core
+  utils:
+    path: ../utils
+  commands:
+    path: ../commands

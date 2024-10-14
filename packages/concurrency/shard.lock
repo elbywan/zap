@@ -1,0 +1,6 @@
+version: 2.0
+shards:
+  msgpack:
+    git: https://github.com/crystal-community/msgpack-crystal.git
+    version: 1.3.4
+

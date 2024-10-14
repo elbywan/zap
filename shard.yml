@@ -1,24 +1,13 @@
 name: zap
-version: 0.0.60
+version: 0.1.0
 
 authors:
   - Julien Elbaz <elbywan@hotmail.com>
 
-targets:
-  zap:
-    main: src/cli/cli.cr
-
-crystalline:
-  main: .crystalline_main.cr
-
-dependencies:
-  crystar:
-    github: naqvis/crystar
-  msgpack:
-    github: crystal-community/msgpack-crystal
-  term-cursor:
-    github: crystal-term/cursor
-
-crystal: 1.6.1
+crystal: ">= 1.6.1, < 2.0"
 
 license: MIT
+
+crystalline:
+  projects:
+    - ./packages/**

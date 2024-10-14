@@ -1,0 +1,19 @@
+name: commands
+version: 0.1.0
+dependencies:
+  utils:
+    path: ../utils
+  core:
+    path: ../core
+  extensions:
+    path: ../extensions
+  fetch:
+    path: ../fetch
+  store:
+    path: ../store
+  reporter:
+    path: ../reporter
+  extensions:
+    path: ../extensions
+  git:
+    path: ../git

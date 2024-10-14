@@ -1,0 +1,11 @@
+name: reporter
+version: 0.1.0
+dependencies:
+  term-cursor:
+    github: crystal-term/cursor
+  utils:
+    path: ../utils
+  shared:
+    path: ../shared
+  semver:
+    path: ../semver

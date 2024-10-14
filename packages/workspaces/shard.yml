@@ -1,0 +1,13 @@
+name: workspaces
+version: 0.1.0
+crystalline:
+  main: spec/specs.cr
+dependencies:
+  data:
+    path: "../data"
+  utils:
+    path: "../utils"
+  semver:
+    path: "../semver"
+  shared:
+    path: "../shared"

@@ -1,0 +1,10 @@
+name: store
+version: 0.0.1
+
+dependencies:
+  utils:
+    path: ../utils
+  data:
+    path: ../data
+  core:
+    path: ../core
