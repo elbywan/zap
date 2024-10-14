@@ -1,4 +1,6 @@
-class Commands::Install::Installer::Classic
+require "./writer"
+
+class Commands::Install::Linker::Classic
   struct Writer::Registry < Writer
     def hoist : self?
       if skip_hoisting?
@@ -28,23 +30,23 @@ class Commands::Install::Installer::Classic
         location: location,
         ancestors: self.ancestors,
         aliased_name: self.aliased_name,
-        installer: self.installer
+        linker: self.linker
       )
     end
 
     def install : InstallResult
       installation_path = location.value.node_modules / (aliased_name || dependency.name)
       installed = begin
-        Backend.install(dependency: dependency, target: installation_path, store: state.store, backend: state.config.file_backend) {
-          state.reporter.on_installing_package
+        Backend.link(dependency: dependency, target: installation_path, store: state.store, backend: state.config.file_backend) {
+          state.reporter.on_linking_package
         }
       rescue ex
         state.reporter.log(%(#{aliased_name.try &.+(":")}#{(dependency.name + '@' + dependency.version).colorize.yellow} Failed to install with #{state.config.file_backend} backend: #{ex.message}))
         # Fallback to the widely supported "plain copy" backend
-        Backend.install(backend: :copy, dependency: dependency, target: installation_path, store: state.store) { }
+        Backend.link(backend: :copy, dependency: dependency, target: installation_path, store: state.store) { }
       end
 
-      installer.on_install(dependency, installation_path, state: state, location: location, ancestors: ancestors) if installed
+      linker.on_link(dependency, installation_path, state: state, location: location, ancestors: ancestors) if installed
       {self.class.init_location(dependency, installation_path, location), installed}
     end
 

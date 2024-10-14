@@ -39,11 +39,11 @@ class Reporter::Null < Reporter
     # noop
   end
 
-  def on_package_installed : Nil
+  def on_package_linked : Nil
     # noop
   end
 
-  def on_installing_package : Nil
+  def on_linking_package : Nil
     # noop
   end
 
@@ -95,7 +95,7 @@ class Reporter::Null < Reporter
     yield # noop
   end
 
-  def report_installer_updates(& : -> T) : T forall T
+  def report_linker_updates(& : -> T) : T forall T
     yield # noop
   end
 

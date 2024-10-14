@@ -1,7 +1,7 @@
-require "../installer"
+require "../linker"
 
 # See: https://yarnpkg.com/advanced/pnp-spec
-class Commands::Install::Installer::PnP < Commands::Install::Installer::Base
+class Commands::Install::Linker::PnP < Commands::Install::Linker::Base
   @installed_packages : Set(String) = Set(String).new
   @node_modules : Path
   @modules_store : Path
@@ -136,13 +136,13 @@ class Commands::Install::Installer::PnP < Commands::Install::Installer::Base
         Utils::Directories.mkdir_p(install_path)
         case package.kind
         when .tarball_file?
-          Writer::File.install(package, install_path, installer: self, state: state)
+          Writer::File.install(package, install_path, linker: self, state: state)
         when .tarball_url?
-          Writer::Tarball.install(package, install_path, installer: self, state: state)
+          Writer::Tarball.install(package, install_path, linker: self, state: state)
         when .git?
-          Writer::Git.install(package, install_path, installer: self, state: state)
+          Writer::Git.install(package, install_path, linker: self, state: state)
         when .registry?
-          Writer::Registry.install(package, install_path, installer: self, state: state)
+          Writer::Registry.install(package, install_path, linker: self, state: state)
         end
       else
         # Prevents infinite loops and duplicate checks
@@ -267,7 +267,7 @@ class Commands::Install::Installer::PnP < Commands::Install::Installer::Base
     {reference: reference, path: install_path}
   end
 
-  def on_install(dependency : Data::Package, install_folder : Path, *, state : Commands::Install::State)
+  def on_link(dependency : Data::Package, install_folder : Path, *, state : Commands::Install::State)
     # Store package metadata
     unless File.symlink?(install_folder)
       File.open(install_folder / Shared::Constants::METADATA_FILE_NAME, "w") do |f|
@@ -296,7 +296,7 @@ class Commands::Install::Installer::PnP < Commands::Install::Installer::Base
     end
 
     # Report the package as installed
-    state.reporter.on_package_installed
+    state.reporter.on_package_linked
   end
 
   def prune_orphan_modules

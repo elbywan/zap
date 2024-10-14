@@ -7,7 +7,7 @@ module Shared::Constants
     EARLY_EXIT             = 1
     INSTALL_COMMAND_FAILED
     RESOLVER_ERROR
-    INSTALLER_ERROR
+    LINKER_ERROR
   end
 
   COLORS = {

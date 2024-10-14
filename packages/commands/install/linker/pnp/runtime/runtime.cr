@@ -1,4 +1,4 @@
-module Commands::Install::Installer::PnP::Runtime
+module Commands::Install::Linker::PnP::Runtime
   # All credits to the Yarn team for the runtime code. ❤️
   # See: https://github.com/yarnpkg/berry/tree/master/packages/yarnpkg-pnp
   #

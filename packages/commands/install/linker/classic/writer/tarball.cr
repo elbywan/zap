@@ -1,4 +1,6 @@
-class Commands::Install::Installer::Classic
+require "./writer"
+
+class Commands::Install::Linker::Classic
   struct Writer::Tarball < Writer
     def install : InstallResult
       install_folder = aliased_name || dependency.name
@@ -11,10 +13,10 @@ class Commands::Install::Installer::Classic
       else
         Utils::Directories.mkdir_p(target_path.dirname)
         extracted_folder = Path.new(dependency.dist.as(Data::Package::Dist::Tarball).path)
-        state.reporter.on_installing_package
+        state.reporter.on_linking_package
 
         FileUtils.cp_r(extracted_folder, target_path)
-        installer.on_install(dependency, target_path, state: state, location: location, ancestors: ancestors)
+        linker.on_link(dependency, target_path, state: state, location: location, ancestors: ancestors)
         {install_location, true}
       end
     end

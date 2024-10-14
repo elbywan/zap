@@ -1,6 +1,6 @@
-require "../installer"
+require "../linker"
 
-class Commands::Install::Installer::Classic < Commands::Install::Installer::Base
+class Commands::Install::Linker::Classic < Commands::Install::Linker::Base
   record DependencyItem,
     # the dependency to install
     dependency : Data::Package,
@@ -136,7 +136,7 @@ class Commands::Install::Installer::Classic < Commands::Install::Installer::Base
         ancestors_str = dependency_item.ancestors ? dependency_item.ancestors.map { |a| "#{a.name}@#{a.version}" }.join("~>") : ""
         package_in_error = dependency ? "#{dependency_item.alias.try &.+(":")}#{dependency.name}@#{dependency.version}" : ""
         state.reporter.error(e, "#{package_in_error.colorize.bold} (#{ancestors_str}) at #{parent_path.colorize.dim}")
-        exit Shared::Constants::ErrorCodes::INSTALLER_ERROR.to_i32
+        exit Shared::Constants::ErrorCodes::LINKER_ERROR.to_i32
       end
     end
   end
@@ -144,15 +144,15 @@ class Commands::Install::Installer::Classic < Commands::Install::Installer::Base
   private def install_dependency(dependency : Data::Package, *, location : LocationNode, ancestors : Array(Data::Package), aliased_name : String?) : Writer::InstallResult
     writer = case dependency.kind
              in .tarball_file?, .link?
-               Writer::File.new(dependency, installer: self, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
+               Writer::File.new(dependency, linker: self, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
              in .tarball_url?
-               Writer::Tarball.new(dependency, installer: self, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
+               Writer::Tarball.new(dependency, linker: self, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
              in .git?
-               Writer::Git.new(dependency, installer: self, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
+               Writer::Git.new(dependency, linker: self, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
              in .registry?
                registry_writer = Writer::Registry.new(
                  dependency,
-                 installer: self,
+                 linker: self,
                  location: location,
                  state: state,
                  ancestors: ancestors,
@@ -161,14 +161,14 @@ class Commands::Install::Installer::Classic < Commands::Install::Installer::Base
                return {nil, false} unless registry_writer
                registry_writer
              in .workspace?
-               Writer::Workspace.new(dependency, installer: self, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
+               Writer::Workspace.new(dependency, linker: self, location: location, state: state, ancestors: ancestors, aliased_name: aliased_name)
              end
 
     writer.install
   end
 
   # Actions to perform after the dependency has been freshly installed.
-  def on_install(dependency : Data::Package, install_folder : Path, *, state : Commands::Install::State, location : LocationNode, ancestors : Array(Data::Package))
+  def on_link(dependency : Data::Package, install_folder : Path, *, state : Commands::Install::State, location : LocationNode, ancestors : Array(Data::Package))
     # Store package metadata
     unless File.symlink?(install_folder)
       File.open(install_folder / Shared::Constants::METADATA_FILE_NAME, "w") do |f|
@@ -226,7 +226,7 @@ class Commands::Install::Installer::Classic < Commands::Install::Installer::Base
     end
 
     # Report that this package has been installed
-    state.reporter.on_package_installed
+    state.reporter.on_package_linked
   end
 end
 

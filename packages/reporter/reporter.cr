@@ -11,8 +11,8 @@ abstract class Reporter
   abstract def on_package_downloaded : Nil
   abstract def on_packing_package : Nil
   abstract def on_package_packed : Nil
-  abstract def on_package_installed : Nil
-  abstract def on_installing_package : Nil
+  abstract def on_package_linked : Nil
+  abstract def on_linking_package : Nil
   abstract def on_package_built : Nil
   abstract def on_building_package : Nil
   abstract def on_package_added(pkg_key : String) : Nil
@@ -25,7 +25,7 @@ abstract class Reporter
   abstract def prepend(bytes : Bytes) : Nil
   abstract def log(str : String) : Nil
   abstract def report_resolver_updates(& : -> T) forall T
-  abstract def report_installer_updates(& : -> T) forall T
+  abstract def report_linker_updates(& : -> T) forall T
   abstract def report_builder_updates(& : -> T) forall T
   abstract def report_done(realtime, memory, install_config, *, unmet_peers : Hash(String, Hash(Semver::Range, Set(String)))? = nil) : Nil
   abstract def header(emoji : String, str : String, color = :default) : String

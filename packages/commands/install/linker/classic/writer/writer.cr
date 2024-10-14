@@ -1,9 +1,10 @@
 require "data/package"
+require "../classic"
 
-class Commands::Install::Installer::Classic
+class Commands::Install::Linker::Classic
   abstract struct Writer
     getter dependency : Data::Package
-    getter installer : Installer::Classic
+    getter linker : Linker::Classic
     getter location : LocationNode
     getter state : Commands::Install::State
     getter ancestors : Array(Data::Package)
@@ -12,7 +13,7 @@ class Commands::Install::Installer::Classic
     def initialize(
       @dependency : Data::Package,
       *,
-      @installer : Installer::Classic,
+      @linker : Linker::Classic,
       @location : LocationNode,
       @state : Commands::Install::State,
       @ancestors : Array(Data::Package),

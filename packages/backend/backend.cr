@@ -130,7 +130,7 @@ require "./hardlink"
 require "./symlink"
 
 module Backend
-  def self.install(*, dependency : Data::Package, target : Path | String, backend : Backends, store : Store, &on_installing) : Bool
+  def self.link(*, dependency : Data::Package, target : Path | String, backend : Backends, store : Store, &on_installing) : Bool
     src_path, dest_path, already_installed = self.prepare(dependency, target, store: store)
     return false if already_installed
 
@@ -139,22 +139,22 @@ module Backend
     case backend
     in .clone_file?
       {% if flag?(:darwin) %}
-        Backend::CloneFile.install(src_path, dest_path)
+        Backend::CloneFile.link(src_path, dest_path)
       {% else %}
         raise "The clonefile backend is not supported on this platform"
       {% end %}
     in .copy_file?
       {% if flag?(:darwin) %}
-        Backend::CopyFile.install(src_path, dest_path)
+        Backend::CopyFile.link(src_path, dest_path)
       {% else %}
         raise "The copyfile backend is not supported on this platform"
       {% end %}
     in .hardlink?
-      Backend::Hardlink.install(src_path, dest_path)
+      Backend::Hardlink.link(src_path, dest_path)
     in .copy?
-      Backend::Copy.install(src_path, dest_path)
+      Backend::Copy.link(src_path, dest_path)
     in .symlink?
-      Backend::Symlink.install(src_path, dest_path)
+      Backend::Symlink.link(src_path, dest_path)
     end
   end
 end

@@ -2,9 +2,9 @@ require "semver"
 require "shared/constants"
 require "utils/directories"
 require "utils/misc"
-require "../installer"
+require "../linker"
 
-class Commands::Install::Installer::Isolated < Commands::Install::Installer::Base
+class Commands::Install::Linker::Isolated < Commands::Install::Linker::Base
   # See: https://github.com/npm/rfcs/blob/main/accepted/0042-isolated-mode.md
 
   @node_modules : Path
@@ -122,13 +122,13 @@ class Commands::Install::Installer::Isolated < Commands::Install::Installer::Bas
         Utils::Directories.mkdir_p(install_path)
         case package.kind
         when .tarball_file?
-          Writer::File.install(package, package_path, installer: self, state: state)
+          Writer::File.install(package, package_path, linker: self, state: state)
         when .tarball_url?
-          Writer::Tarball.install(package, package_path, installer: self, state: state)
+          Writer::Tarball.install(package, package_path, linker: self, state: state)
         when .git?
-          Writer::Git.install(package, package_path, installer: self, state: state)
+          Writer::Git.install(package, package_path, linker: self, state: state)
         when .registry?
-          Writer::Registry.install(package, package_path, installer: self, state: state)
+          Writer::Registry.install(package, package_path, linker: self, state: state)
         end
       end
     else
@@ -190,7 +190,7 @@ class Commands::Install::Installer::Isolated < Commands::Install::Installer::Bas
     end
   end
 
-  def on_install(dependency : Data::Package, install_folder : Path, *, state : Commands::Install::State)
+  def on_link(dependency : Data::Package, install_folder : Path, *, state : Commands::Install::State)
     # Store package metadata
     unless File.symlink?(install_folder)
       File.open(install_folder / Shared::Constants::METADATA_FILE_NAME, "w") do |f|
@@ -222,7 +222,7 @@ class Commands::Install::Installer::Isolated < Commands::Install::Installer::Bas
     hoist_package(dependency, install_folder)
 
     # Report the package as installed
-    state.reporter.on_package_installed
+    state.reporter.on_package_linked
   end
 
   def prune_orphan_modules

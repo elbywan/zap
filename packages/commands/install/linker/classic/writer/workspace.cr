@@ -1,4 +1,6 @@
-class Commands::Install::Installer::Classic
+require "./writer"
+
+class Commands::Install::Linker::Classic
   struct Writer::Workspace < Writer
     def install : InstallResult
       dist = dependency.dist.as(Data::Package::Dist::Workspace)
@@ -10,11 +12,11 @@ class Commands::Install::Installer::Classic
       if exists
         {nil, false}
       else
-        state.reporter.on_installing_package
+        state.reporter.on_linking_package
         Utils::Directories.mkdir_p(target_path.dirname)
         FileUtils.rm_rf(target_path) if ::File.directory?(target_path)
         ::File.symlink(link_source, target_path)
-        installer.on_install(dependency, target_path, state: state, location: location, ancestors: ancestors)
+        linker.on_link(dependency, target_path, state: state, location: location, ancestors: ancestors)
         {nil, true}
       end
     end

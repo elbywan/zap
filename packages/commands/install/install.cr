@@ -9,10 +9,10 @@ require "data/package/scripts"
 require "./config"
 require "./state"
 require "./resolver"
-require "./installer"
-require "./installer/classic"
-require "./installer/isolated"
-require "./installer/pnp"
+require "./linker"
+require "./linker/classic"
+require "./linker/isolated"
+require "./linker/pnp"
 
 module Commands::Install
   alias Pipeline = Concurrency::Pipeline
@@ -126,10 +126,10 @@ module Commands::Install
       end
 
       # Install dependencies to the appropriate node_modules folder
-      installer = install_packages(state, pruned_direct_dependencies)
+      linker = link_packages(state, pruned_direct_dependencies)
 
       # Run package.json hooks for the installed packages
-      run_install_hooks(state, installer)
+      run_install_hooks(state, linker)
 
       # Run package.json hooks for the workspace packages
       run_own_install_hooks(state)
@@ -369,37 +369,37 @@ module Commands::Install
     end
   end
 
-  private def self.install_packages(state : State, pruned_direct_dependencies)
-    state.reporter.report_installer_updates do
-      installer = case state.install_config.strategy
-                  when .isolated?
-                    Installer::Isolated.new(state)
-                  when .classic?, .classic_shallow?
-                    Installer::Classic.new(state)
-                  when .pnp?
-                    Installer::PnP.new(state)
-                  else
-                    raise "Unsupported install strategy: #{state.install_config.strategy}"
-                  end
+  private def self.link_packages(state : State, pruned_direct_dependencies)
+    state.reporter.report_linker_updates do
+      linker = case state.install_config.strategy
+               when .isolated?
+                 Linker::Isolated.new(state)
+               when .classic?, .classic_shallow?
+                 Linker::Classic.new(state)
+               when .pnp?
+                 Linker::PnP.new(state)
+               else
+                 raise "Unsupported install strategy: #{state.install_config.strategy}"
+               end
       Log.debug { "• Pruning previous install" }
-      installer.remove(pruned_direct_dependencies)
-      installer.prune_orphan_modules
+      linker.remove(pruned_direct_dependencies)
+      linker.prune_orphan_modules
       Log.debug { "• Installing packages" }
-      installer.install
-      installer
+      linker.install
+      linker
     end
   end
 
-  private def self.run_install_hooks(state : State, installer : Installer::Base)
+  private def self.run_install_hooks(state : State, linker : Linker::Base)
     Log.debug { "• Running install hooks" }
-    if !state.install_config.ignore_scripts && installer.installed_packages_with_hooks.size > 0
+    if !state.install_config.ignore_scripts && linker.installed_packages_with_hooks.size > 0
       error_messages = [] of {Exception, String}
       state.pipeline.reset
       # Process hooks in parallel
       state.pipeline.set_concurrency(state.config.concurrency)
       begin
         state.reporter.report_builder_updates do
-          installer.installed_packages_with_hooks.each do |package, path|
+          linker.installed_packages_with_hooks.each do |package, path|
             package.scripts.try do |scripts|
               state.pipeline.process do
                 state.reporter.on_building_package

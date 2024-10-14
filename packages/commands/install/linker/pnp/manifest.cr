@@ -1,7 +1,7 @@
 require "json"
 
 # See: https://yarnpkg.com/advanced/pnp-spec#manifest-reference
-struct Commands::Install::Installer::PnP::Manifest
+struct Commands::Install::Linker::PnP::Manifest
   include JSON::Serializable
 
   getter __info : Array(String) = [

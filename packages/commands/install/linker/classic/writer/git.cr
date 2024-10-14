@@ -1,4 +1,6 @@
-class Commands::Install::Installer::Classic
+require "./writer"
+
+class Commands::Install::Linker::Classic
   struct Writer::Git < Writer
     def install : InstallResult
       unless packed_tarball_path = dependency.dist.try &.as(Data::Package::Dist::Git).cache_key.try { |key| state.store.package_path(dependency).to_s + ".tgz" }
@@ -14,11 +16,11 @@ class Commands::Install::Installer::Classic
         {install_location, false}
       else
         Utils::Directories.mkdir_p(target_path.dirname)
-        state.reporter.on_installing_package
+        state.reporter.on_linking_package
         ::File.open(packed_tarball_path, "r") do |tarball|
           Utils::TarGzip.unpack_to(tarball, target_path)
         end
-        installer.on_install(dependency, target_path, state: state, location: location, ancestors: ancestors)
+        linker.on_link(dependency, target_path, state: state, location: location, ancestors: ancestors)
         {install_location, true}
       end
     end

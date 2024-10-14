@@ -73,12 +73,12 @@ class Reporter::Interactive < Reporter
     update()
   end
 
-  def on_package_installed : Nil
+  def on_package_linked : Nil
     @installed_packages.add(1)
     update()
   end
 
-  def on_installing_package : Nil
+  def on_linking_package : Nil
     @installing_packages.add(1)
     update()
   end
@@ -224,7 +224,7 @@ class Reporter::Interactive < Reporter
     self.stop
   end
 
-  def report_installer_updates(& : -> T) : T forall T
+  def report_linker_updates(& : -> T) : T forall T
     @update_channel = Channel(Int32?).new
     Concurrency::Thread.worker do
       installing_header = header("💽", "Installing…", :magenta)
