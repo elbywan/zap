@@ -1,3 +1,4 @@
+require "utils/macros"
 require "../linker"
 
 class Commands::Install::Linker::Classic < Commands::Install::Linker::Base
@@ -191,7 +192,7 @@ class Commands::Install::Linker::Classic < Commands::Install::Linker::Base
           if !File.exists?(bin_path) || is_direct_dependency
             File.delete?(bin_path)
             File.symlink(Path.new(path).expand(install_folder), bin_path)
-            File.chmod(bin_path, 0o755)
+            Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
           end
         end
       else
@@ -200,7 +201,7 @@ class Commands::Install::Linker::Classic < Commands::Install::Linker::Base
         if !File.exists?(bin_path) || is_direct_dependency
           File.delete?(bin_path)
           File.symlink(Path.new(bin).expand(install_folder), bin_path)
-          File.chmod(bin_path, 0o755)
+          Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
         end
       end
     end

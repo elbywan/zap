@@ -2,6 +2,7 @@ require "semver"
 require "shared/constants"
 require "utils/directories"
 require "utils/misc"
+require "utils/macros"
 require "../linker"
 
 class Commands::Install::Linker::Isolated < Commands::Install::Linker::Base
@@ -243,14 +244,14 @@ class Commands::Install::Linker::Isolated < Commands::Install::Linker::Base
           bin_path = Utils::File.join(base_bin_path, bin_name)
           File.delete?(bin_path)
           File.symlink(Path.new(path).expand(package_path), bin_path)
-          File.chmod(bin_path, 0o755)
+          Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
         end
       else
         bin_name = package.name.split("/").last
         bin_path = Utils::File.join(base_bin_path, bin_name)
         File.delete?(bin_path)
         File.symlink(Path.new(bin).expand(package_path), bin_path)
-        File.chmod(bin_path, 0o755)
+        Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
       end
     end
   end

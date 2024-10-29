@@ -3,7 +3,7 @@ require "yaml"
 require "msgpack"
 
 module Utils::Macros
-  macro ignore
+  macro swallow_error
     begin
       {{ yield }}
     rescue

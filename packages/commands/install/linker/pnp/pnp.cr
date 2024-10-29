@@ -1,3 +1,4 @@
+require "utils/macros"
 require "../linker"
 
 # See: https://yarnpkg.com/advanced/pnp-spec
@@ -313,14 +314,14 @@ class Commands::Install::Linker::PnP < Commands::Install::Linker::Base
           bin_path = Utils::File.join(target_bin_path, bin_name)
           File.delete?(bin_path)
           File.symlink(Path.new(path).expand(package_path), bin_path)
-          File.chmod(bin_path, 0o755)
+          Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
         end
       else
         bin_name = package.name.split("/").last
         bin_path = Utils::File.join(target_bin_path, bin_name)
         File.delete?(bin_path)
         File.symlink(Path.new(bin).expand(package_path), bin_path)
-        File.chmod(bin_path, 0o755)
+        Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
       end
     end
   end
