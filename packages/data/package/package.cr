@@ -98,7 +98,7 @@ class Data::Package
 
   def_equals_and_hash key
 
-  internal; getter lock = Mutex.new
+  internal { getter lock = Mutex.new }
 
   def add_dependency(name : String, version : String, type : DependencyType)
     @lock.synchronize do
@@ -281,7 +281,7 @@ class Data::Package
     !kind.link? && !kind.workspace?
   end
 
-  internal; getter resolved = Atomic(Int8).new(0_i8)
+  internal { getter resolved = Atomic(Int8).new(0_i8) }
 
   # For some dependencies, we need to remember when they have already been resolved
   # This is to prevent infinite loops when crawling the dependency tree

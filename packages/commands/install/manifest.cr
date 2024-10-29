@@ -10,7 +10,7 @@ struct Commands::Install::Manifest
   getter versions_json : Hash(String, String) = Hash(String, String).new
   getter versions : Array(String) = Array(String).new
 
-  def initialize(manifest_string : String)
+  def initialize(manifest_string : String | IO)
     @dist_tags = Hash(String, String).new
     @versions_json = Hash(String, String).new
     @versions = Array(String).new

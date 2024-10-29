@@ -15,6 +15,7 @@ module Utils::Macros
     @[JSON::Field(ignore: true)]
     @[YAML::Field(ignore: true)]
     @[MessagePack::Field(ignore: true)]
+    {{ yield }}
   end
 
   macro safe_getter(name, &block)

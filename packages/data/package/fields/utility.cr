@@ -21,9 +21,11 @@ class Data::Package
     end
 
     # Used to mark a package as visited during the dependency resolution and point to its parents.
-    internal; getter dependents : Set(Package) do
-      Set(Package).new
-    end
+    internal {
+      getter dependents : Set(Package) do
+        Set(Package).new
+      end
+    }
 
     def get_root_dependents? : Set(String)?
       return nil if dependents.empty?
@@ -46,10 +48,10 @@ class Data::Package
     end
 
     # Prevents the package from being pruned in the lockfile.
-    internal; property prevent_pruning : Bool = false
+    internal { property prevent_pruning : Bool = false }
 
     # Where the package comes from.
-    internal; getter kind : Kind do
+    internal { getter kind : Kind do
       case dist = self.dist
       when Dist::Tarball
         if dist.tarball.starts_with?("http://") || dist.tarball.starts_with?("https://")
@@ -66,15 +68,15 @@ class Data::Package
       else
         Kind::Registry
       end
-    end
+    end }
 
     # A unique key depending on the package's kind.
-    internal; getter key : String do
+    internal { getter key : String do
       "#{name}@#{specifier}"
-    end
+    end }
 
     # A specifier for the resolved package.
-    internal; getter specifier : String do
+    internal { getter specifier : String do
       case dist = self.dist
       in Dist::Link
         "file:#{dist.link}"
@@ -94,15 +96,15 @@ class Data::Package
       in Nil
         version
       end
-    end
+    end }
 
     # A more path-friendly key.
-    internal; getter hashed_key : String do
+    internal { getter hashed_key : String do
       "#{name}@#{version}__#{dist.class.to_s.split("::").last.downcase}:#{Digest::SHA1.hexdigest(key)}"
-    end
+    end }
 
-    internal; safe_property transitive_overrides : Concurrency::SafeSet(Overrides::Override)? = nil
+    internal { safe_property transitive_overrides : Concurrency::SafeSet(Overrides::Override)? = nil }
 
-    internal; property package_extensions_updated : Bool = false
+    internal { property package_extensions_updated : Bool = false }
   end
 end

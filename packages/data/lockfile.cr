@@ -50,11 +50,11 @@ class Data::Lockfile
   end
 
   # Not serialized
-  internal; @roots_lock = Mutex.new
-  internal; getter packages_lock = Concurrency::RWLock.new
-  internal; property read_status : ReadStatus = ReadStatus::NotFound
-  internal; property format : Format = Format::YAML
-  internal; property! lockfile_path : Path
+  internal { @roots_lock = Mutex.new }
+  internal { getter packages_lock = Concurrency::RWLock.new }
+  internal { property read_status : ReadStatus = ReadStatus::NotFound }
+  internal { property format : Format = Format::YAML }
+  internal { property! lockfile_path : Path }
 
   def self.new(project_path : Path | String, *, default_format : Format? = nil)
     default_format ||= Format::YAML
