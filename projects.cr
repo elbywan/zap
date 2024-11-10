@@ -46,7 +46,7 @@ OptionParser.parse do |parser|
   end
 end
 
-extra_args = ARGV.join(" ")
+extra_args = ARGV.map { |s| s.includes?(" ") ? %("#{s.gsub('"', "\"")}") : s }.join(" ")
 full_command = "#{command} #{subcommand} #{extra_args}"
 
 projects = Dir["#{Path.posix(Path.new(__DIR__)).normalize}/**/shard.yml"]
