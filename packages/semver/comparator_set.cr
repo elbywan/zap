@@ -5,10 +5,56 @@ require "./limit"
 
 # Comparators can be joined by whitespace to form a comparator set, which is satisfied by the intersection of all of the comparators it includes.
 struct Semver::ComparatorSet
+  include Comparable(self)
+
   @comparators = [] of Comparator
   def_equals_and_hash @comparators
   def_clone
 
+  # Initializes an empty ComparatorSet.
+  def initialize
+  end
+
+  # Initializes a ComparatorSet with given low and high limits.
+  # If low and high are equal, an exact match comparator is added.
+  # If low is zero and high is max, wildcard comparator is added.
+  # Otherwise, appropriate comparators are added based on the boundaries.
+  def initialize(low : Limit, high : Limit)
+    if low == high
+      @comparators << Comparator.new(Operator::ExactMatch, low.version)
+    elsif low.zero? && high.max?
+      @comparators << Comparator.new(Operator::GreaterThanOrEqual, low.version)
+    else
+      unless low.zero? || low.prerelease.try(&.empty?)
+        @comparators << Comparator.new(
+          low.boundary.exclusive? ? Operator::GreaterThan : Operator::GreaterThanOrEqual,
+          low.version
+        )
+      end
+
+      unless high.max? || high.prerelease.try(&.empty?)
+        @comparators << Comparator.new(
+          high.boundary.exclusive? ? Operator::LessThan : Operator::LessThanOrEqual,
+          high.version
+        )
+      end
+    end
+  end
+
+  # Compares two ComparatorSets based on their limits.
+  # Returns 1 if self is greater, -1 if other is greater, and 0 if they are equal.
+  def <=>(other : self) : Int32
+    self_low, self_high = self.limits
+    other_low, other_high = other.limits
+    return 1 if self_low.version > other_low.version
+    return -1 if self_low.version < other_low.version
+    return 1 if self_high.version > other_high.version
+    return -1 if self_high.version < other_high.version
+    return 0
+  end
+
+  # Parses a ComparatorSet from a Scanner.
+  # The scanner is expected to contain a series of comparators separated by whitespace.
   def self.parse(scanner : Scanner) : ComparatorSet
     comparator_set = ComparatorSet.new
 
@@ -48,14 +94,15 @@ struct Semver::ComparatorSet
     comparator_set
   end
 
+  # Adds a comparator to the ComparatorSet.
   def <<(comparator : Comparator)
     @comparators << comparator
   end
 
+  # Checks if a given version satisfies all comparators in the ComparatorSet.
+  # If the version has a prerelease tag, it will only satisfy the set if at least
+  # one comparator with the same [major, minor, patch] tuple also has a prerelease tag.
   def satisfies?(version : Version) : Bool
-    # If a version has a prerelease tag (for example, 1.2.3-alpha.3) then it will only be allowed to satisfy comparator sets
-    # if at least one comparator with the same [major, minor, patch] tuple also has a prerelease tag.
-    # See: https://github.com/npm/node-semver?tab=readme-ov-file#prerelease-tags
     allow_prerelease = version.prerelease && @comparators.any? { |c|
       !!c.prerelease && c.version.same_version_numbers?(version)
     }
@@ -64,61 +111,67 @@ struct Semver::ComparatorSet
     end
   end
 
+  # Checks if the ComparatorSet represents an exact match.
   def exact_match?
     @comparators.size == 1 && @comparators[0].operator.exact_match?
   end
 
+  # Converts the ComparatorSet to a string representation.
   def to_s(io)
     io << @comparators.map(&.to_s).join(" ")
   end
 
+  # Returns the limits (low and high) of the ComparatorSet.
   def limits : {Limit, Limit}
     @comparators.reduce({Limit::MIN, Limit::MAX}) do |acc, comparator|
       min, max = acc
       low, high = comparator.limits
-      {min.max(low, side: :right), max.min(high, side: :left)}
+      {min.max(low), max.min(high)}
     end
   end
 
+  # Returns the intersection of two ComparatorSets if they overlap, otherwise returns nil.
   def intersection?(other : self) : ComparatorSet?
     self_low, self_high = self.limits
     other_low, other_high = other.limits
 
-    # Return nil if one of the comparator sets is not a proper interval (lower limit > higher limit)
     return nil if self_low.version > self_high.version || other_low.version > other_high.version
 
     if self_low.version <= other_high.version && self_high.version >= other_low.version
-      # No overlap when the boundaries are exclusive
       return nil if self_low.version == other_high.version && (self_low.boundary.exclusive? || other_high.boundary.exclusive?)
       return nil if self_high.version == other_low.version && (self_high.boundary.exclusive? || other_low.boundary.exclusive?)
 
-      low = self_low.max(other_low, side: :right)
-      high = self_high.min(other_high, side: :left)
+      low = self_low.max(other_low)
+      high = self_high.min(other_high)
 
-      ComparatorSet.new.tap do |set|
-        if low == high
-          set << Comparator.new(Operator::ExactMatch, low.version)
-        elsif low.zero? && high.max?
-          set << Comparator.new(Operator::GreaterThanOrEqual, low.version)
-        else
-          unless low.zero? || low.prerelease.try(&.empty?)
-            set << Comparator.new(
-              low.boundary.exclusive? ? Operator::GreaterThan : Operator::GreaterThanOrEqual,
-              low.version
-            )
-          end
-
-          unless high.max? || high.prerelease.try(&.empty?)
-            set << Comparator.new(
-              high.boundary.exclusive? ? Operator::LessThan : Operator::LessThanOrEqual,
-              high.version
-            )
-          end
-        end
+      if self_low.prerelease_mismatch?(other_low)
+        low = Limit.exclusive(low.version.copy_with(prerelease: nil))
       end
+
+      if self_high.prerelease_mismatch?(other_high)
+        high = Limit.exclusive(high.version.copy_with(prerelease: nil))
+      end
+
+      ComparatorSet.new(low, high)
     end
   end
 
+  # Returns the aggregate of two ComparatorSets if they overlap or are adjacent, otherwise returns nil.
+  def aggregate(other : self) : ComparatorSet?
+    self_low, self_high = self.limits
+    other_low, other_high = other.limits
+
+    is_adjacent = self_high.version == other_low.version && (self_high.boundary.inclusive? || other_low.boundary.inclusive?)
+
+    if self.intersection?(other) || is_adjacent
+      lower_limit = self_low.min(other_low)
+      upper_limit = self_high.max(other_high)
+
+      ComparatorSet.new(lower_limit, upper_limit)
+    end
+  end
+
+  # Parses a partial version from the scanner and adds appropriate comparators to the ComparatorSet.
   protected def parse_partial(scanner : Scanner, operator, tilde, caret)
     partial = Partial.new(scanner)
 
