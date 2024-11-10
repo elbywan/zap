@@ -13,7 +13,7 @@ class Workspaces
   class Diffs
     getter inner : Hash(String, Array(String)) = Hash(String, Array(String)).new
 
-    def get(path : String, base : String)
+    def get(base : String)
       if result = @inner[base]?
         return result
       else

@@ -16,8 +16,8 @@ struct Semver::Range
   # Clones the range.
   def_clone
 
-  # Protected initializer to prevent direct instantiation.
-  protected def initialize
+  # Initializes an empty range.
+  def initialize
   end
 
   # Protected initializer with comparator_sets parameter.

@@ -11,7 +11,7 @@ class Workspaces
         matches &&= File.match?(glob, relative_path)
       end
       if since = filter.since
-        matches &&= diffs.try &.get(path.to_s, since).any? do |diff|
+        matches &&= diffs.try &.get(since).any? do |diff|
           diff.starts_with?(relative_path.to_s)
         end
       end
