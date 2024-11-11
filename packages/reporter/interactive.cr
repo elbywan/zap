@@ -102,11 +102,12 @@ class Reporter::Interactive < Reporter
   end
 
   def stop : Nil
+    update_channel = @update_channel
+    @debounced_update.abort
     @lock.synchronize do
-      @debounced_update.abort
-      @update_channel.send 0 if @written
+      update_channel.send 0 if @written
       Fiber.yield
-      @update_channel.close
+      update_channel.close
       @stop_channel.receive
       @written = false
       @lines.set(0)
@@ -180,19 +181,15 @@ class Reporter::Interactive < Reporter
   end
 
   def report_resolver_updates(& : -> T) : T forall T
-    @update_channel = Channel(Int32?).new
+    @update_channel = update_channel = Channel(Int32?).new
     Concurrency::Thread.worker do
       @lines.set(1)
       resolving_header = header("🔍", "Resolving…", :yellow)
       downloading_header = header("📡", "Downloading…", :cyan)
       packing_header = header("🎁", "Packing…")
       loop do
-        msg = @update_channel.receive?
-        if msg.nil?
-          @io_lock.synchronize { @out << Shared::Constants::NEW_LINE } if @written
-          @stop_channel.send nil
-          break
-        end
+        msg = update_channel.receive?
+        break if msg.nil?
         output = String.build do |str|
           str << @cursor.clear_lines(@lines.get, :up)
           str << resolving_header
@@ -218,6 +215,9 @@ class Reporter::Interactive < Reporter
           STDIN.cooked! if STDIN.tty?
         end
       end
+    ensure
+      @io_lock.synchronize { @out << Shared::Constants::NEW_LINE } if @written
+      @stop_channel.send nil
     end
     yield
   ensure
@@ -225,16 +225,12 @@ class Reporter::Interactive < Reporter
   end
 
   def report_linker_updates(& : -> T) : T forall T
-    @update_channel = Channel(Int32?).new
+    @update_channel = update_channel = Channel(Int32?).new
     Concurrency::Thread.worker do
       installing_header = header("💽", "Installing…", :magenta)
       loop do
-        msg = @update_channel.receive?
-        if msg.nil?
-          @io_lock.synchronize { @out << Shared::Constants::NEW_LINE } if @written
-          @stop_channel.send nil
-          break
-        end
+        msg = update_channel.receive?
+        break if msg.nil?
         next if @installing_packages.get == 0
         @io_lock.synchronize do
           @out << @cursor.clear_line
@@ -243,6 +239,9 @@ class Reporter::Interactive < Reporter
           @out.flush
         end
       end
+    ensure
+      @io_lock.synchronize { @out << Shared::Constants::NEW_LINE } if @written
+      @stop_channel.send nil
     end
     yield
   ensure
@@ -250,16 +249,12 @@ class Reporter::Interactive < Reporter
   end
 
   def report_builder_updates(& : -> T) : T forall T
-    @update_channel = Channel(Int32?).new
+    @update_channel = update_channel = Channel(Int32?).new
     building_header = header("🧱", "Building…", :light_red)
     Concurrency::Thread.worker do
       loop do
-        msg = @update_channel.receive?
-        if msg.nil?
-          @io_lock.synchronize { @out << Shared::Constants::NEW_LINE } if @written
-          @stop_channel.send nil
-          break
-        end
+        msg = update_channel.receive?
+        break if msg.nil?
         @io_lock.synchronize do
           @out << @cursor.clear_line
           @out << building_header
@@ -267,6 +262,9 @@ class Reporter::Interactive < Reporter
           @out.flush
         end
       end
+    ensure
+      @io_lock.synchronize { @out << Shared::Constants::NEW_LINE } if @written
+      @stop_channel.send nil
     end
     yield
   ensure
@@ -375,10 +373,11 @@ class Reporter::Interactive < Reporter
   end
 
   private def update_action
+    update_channel = @update_channel
     @lock.synchronize do
-      return if @update_channel.closed?
+      return if update_channel.closed?
       @written = true
-      @update_channel.send 0
+      update_channel.send 0
     rescue Channel::ClosedError
       # Ignore
     end
