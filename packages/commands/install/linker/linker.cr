@@ -111,7 +111,9 @@ module Commands::Install::Linker
       peers = Hash(String, Set(Semver::Range)).new
       if direct_peers = package.peer_dependencies
         direct_peers.each do |direct_peer, peer_range|
-          peers[direct_peer] = Set(Semver::Range){Semver.parse(peer_range)}
+          peers[direct_peer] = Set(Semver::Range){
+            begin Semver.parse(peer_range) rescue Semver.parse("*") end,
+          }
         end
       end
       if transitive_peers = package.transitive_peer_dependencies

@@ -43,7 +43,7 @@ struct Semver::Range
   def self.parse(str : String) : Range
     range_set = Range.new
 
-    if (str.empty? || str == "*" || str == "latest")
+    if (str.empty? || str == "*")
       comparator_set = ComparatorSet.new
       range_set << comparator_set
       comparator_set << Comparator.new(Operator::GreaterThanOrEqual)
