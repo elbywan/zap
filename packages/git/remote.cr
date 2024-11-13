@@ -1,6 +1,8 @@
 require "log"
 
 class Git::Remote
+  Log = ::Log.for("zap.git.remote")
+
   # See: https://docs.npmjs.com/cli/v9/configuring-npm/package-json#git-urls-as-dependencies
   # <protocol>://[<user>[:<password>]@]<hostname>[:<port>][:][/]<path>[#<commit-ish> | #semver:<semver>]
   GIT_URL_REGEX = /(?:git\+)?(?<protocol>git|ssh|http|https|file):\/\/(?:(?<user>[^:@]+)?(:(?<password>[^@]+))?@)?(?<hostname>[^:\/]+)(:(?<port>\d+))?[\/:](?<path>[^#]+)((?:#semver:(?<semver>[^:]+))|(?:#(?<commitish>[^:]+)))?/
@@ -118,7 +120,7 @@ class Git::Remote
   def self.run(command : String, stdio : Process::Stdio? = nil, **extra) : Nil
     command_and_args = command.split(/\s+/)
     output = stdio || Process::Redirect::Inherit
-    ::Log.debug { "Spawning: #{command_and_args} (#{extra})" }
+    Log.debug { "Spawning: #{command_and_args} (#{extra})" }
     status = Process.run(command_and_args[0], **extra, args: command_and_args[1..]? || nil, output: output, error: output)
     unless status.success?
       Fiber.yield
@@ -130,7 +132,7 @@ class Git::Remote
     command_and_args = command.split(/\s+/)
     stderr = IO::Memory.new
     stdout = IO::Memory.new
-    ::Log.debug { "Spawning: #{command_and_args} (#{extra})" }
+    Log.debug { "Spawning: #{command_and_args} (#{extra})" }
     status = Process.run(command_and_args[0], **extra, args: command_and_args[1..]? || nil, output: stdout, error: stderr)
     unless status.success?
       raise stderr.to_s

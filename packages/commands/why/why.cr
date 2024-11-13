@@ -1,4 +1,9 @@
+require "log"
+require "data/lockfile"
+
 module Commands::Why
+  Log = ::Log.for("zap.commands.why")
+
   alias PackageResult = {root: Data::Lockfile::Root, ancestors: Deque({Data::Package, DependencyType}), type: DependencyType}
 
   DEPENDS_ON_CHAR               = '←'

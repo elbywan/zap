@@ -23,6 +23,7 @@ class Fetch(T)
     &block : HTTP::Client ->
   )
     @pool = Concurrency::Pool(HTTP::Client).new(@pool_max_size) do
+      Log.debug { "Creating new client for #{@base_url}" }
       HTTP::Client.new(URI.parse(base_url)).tap do |client|
         block.call(client)
       end
@@ -41,7 +42,7 @@ class Fetch(T)
         begin
           break yield client
         rescue e
-          ::Log.debug { e.message.colorize.red.to_s + Shared::Constants::NEW_LINE + e.backtrace.map { |line| "\t#{line}" }.join(Shared::Constants::NEW_LINE).colorize.red.to_s }
+          Log.debug { e.message.colorize.red.to_s + Shared::Constants::NEW_LINE + e.backtrace.map { |line| "\t#{line}" }.join(Shared::Constants::NEW_LINE).colorize.red.to_s }
           client.close
           sleep 0.5.seconds * retry_count
           raise e if retry_count >= retry_attempts

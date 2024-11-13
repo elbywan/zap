@@ -1,7 +1,10 @@
+require "log"
 require "shared/constants"
 require "./config"
 
 module Commands::Dlx
+  Log = ::Log.for("zap.commands.dlx")
+
   def self.run(
     config : Core::Config,
     dlx_config : Dlx::Config

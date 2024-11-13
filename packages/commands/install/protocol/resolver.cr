@@ -7,6 +7,8 @@ require "./aliased"
 require "../state"
 
 abstract struct Commands::Install::Protocol::Resolver
+  Log = ::Log.for("zap.commands.install.protocol.resolver")
+
   alias Specifier = String | Semver::Range
 
   getter name : (String | Aliased)?

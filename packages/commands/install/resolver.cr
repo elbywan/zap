@@ -11,7 +11,7 @@ require "./protocol/resolver"
 require "./protocol"
 
 module Commands::Install::Resolver
-  Log = ::Log.for("zap.resolver")
+  Log = ::Log.for("zap.commands.install.resolver")
 
   alias Pipeline = ::Concurrency::Pipeline
 

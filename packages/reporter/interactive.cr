@@ -284,9 +284,9 @@ class Reporter::Interactive < Reporter
           end
 
           if install_version
-            %("#{name}@#{install_version}")
+            %("#{name}@#{install_version.reduce}")
           else
-            incompatible_versions << {name, versions.map { |v, _| "     #{v}" }.join(Shared::Constants::NEW_LINE)}
+            incompatible_versions << {name, versions.map { |v, peers| "     #{v} #{"(#{peers.join(", ")})".colorize.dim}" }.join(Shared::Constants::NEW_LINE)}
             nil
           end
         end.compact!

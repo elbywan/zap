@@ -1,7 +1,10 @@
+require "log"
 require "../base"
 require "./resolver"
 
 struct Commands::Install::Protocol::Workspace < Commands::Install::Protocol::Base
+  Log = ::Log.for("zap.commands.install.protocol.workspace")
+
   def self.normalize?(str : String, path_info : PathInfo?) : {String?, String?}?
     nil
   end

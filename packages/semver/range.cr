@@ -24,6 +24,13 @@ struct Semver::Range
   protected def initialize(@comparator_sets : Array(ComparatorSet))
   end
 
+  # Merges multiple ranges into a new range.
+  def merge(*others : self) : self
+    others.reduce(self) { |acc, range|
+      Range.new(acc.comparator_sets + range.comparator_sets)
+    }
+  end
+
   # Parses a string into a Range object, returning nil if parsing fails.
   def self.parse?(str : String) : Range?
     parse(str)
@@ -36,7 +43,7 @@ struct Semver::Range
   def self.parse(str : String) : Range
     range_set = Range.new
 
-    if (str.empty? || str == "*")
+    if (str.empty? || str == "*" || str == "latest")
       comparator_set = ComparatorSet.new
       range_set << comparator_set
       comparator_set << Comparator.new(Operator::GreaterThanOrEqual)

@@ -1,3 +1,4 @@
+require "log"
 require "utils/macros"
 require "../linker"
 
@@ -8,6 +9,8 @@ class Commands::Install::Linker::PnP < Commands::Install::Linker::Base
   @modules_store : Path
   @relative_modules_store : Path
   @manifest : Manifest = Manifest.new
+
+  Log = ::Log.for("zap.commands.install.linker.pnp")
 
   def initialize(state : Commands::Install::State)
     super(state)

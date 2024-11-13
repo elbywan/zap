@@ -1,6 +1,7 @@
 require "shared/constants"
 
 abstract class Reporter
+  Log = ::Log.for("zap.reporter")
   getter io_lock = Mutex.new
 
   abstract def output : IO

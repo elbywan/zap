@@ -1,7 +1,10 @@
+require "log"
 require "../base"
 require "./resolver"
 
 struct Commands::Install::Protocol::Registry < Commands::Install::Protocol::Base
+  Log = ::Log.for("zap.commands.install.protocol.registry")
+
   # [<@scope>/]<name>
   # [<@scope>/]<name>@<tag>
   # [<@scope>/]<name>@<version range>

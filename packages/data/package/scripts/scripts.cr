@@ -146,14 +146,14 @@ class Data::Package
       pipeline.await
     end
 
+    # See: https://docs.npmjs.com/cli/commands/npm-run-script
     def self.run_script(command : String, chdir : Path | String, config : Core::Config, raise_on_error_code = true, output_io = nil, stdin = Process::Redirect::Close, **args, &block : String, Symbol ->)
       return if command.empty?
-      Log.debug {
-        "Running script: #{command} #{Utils::Macros.args_str}"
-      }
       output = (config.silent ? nil : output_io) || IO::Memory.new
-      # See: https://docs.npmjs.com/cli/commands/npm-run-script
       env = make_env(chdir, config)
+      Log.debug {
+        "Running script: #{command}\n#{Utils::Macros.args_str}\nenvironment: #{env}"
+      }
       yield command, :before
       status = Process.run(command, **args, shell: true, env: env, chdir: chdir.to_s, output: output, input: stdin, error: output)
       if !status.success? && raise_on_error_code

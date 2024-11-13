@@ -100,7 +100,7 @@ class Data::Package
 
     # A more path-friendly key.
     internal { getter hashed_key : String do
-      "#{name}@#{version}__#{dist.class.to_s.split("::").last.downcase}:#{Digest::SHA1.hexdigest(key)}"
+      "#{name}@#{version}__#{dist.class.to_s.split("::").last.downcase}:#{Digest::SHA1.hexdigest(key)}".gsub(':', '_')
     end }
 
     internal { safe_property transitive_overrides : Concurrency::SafeSet(Overrides::Override)? = nil }

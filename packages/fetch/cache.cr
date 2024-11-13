@@ -4,6 +4,8 @@ require "utils/misc"
 
 class Fetch(T)
   abstract class Cache(T)
+    Log = ::Log.for("zap.fetch.cache")
+
     abstract def get(key_str : String, etag : String?) : T?
     abstract def get(key_str : String, &etag : -> String?) : T?
     abstract def set(key_str : String, value : T, expiry : Time::Span?, etag : String?) : Nil

@@ -1,3 +1,4 @@
+require "log"
 require "utils/misc"
 require "extensions/object"
 require "../../resolver"
@@ -5,6 +6,8 @@ require "../base"
 require "../registry"
 
 struct Commands::Install::Protocol::Alias < Commands::Install::Protocol::Base
+  Log = ::Log.for("zap.commands.install.protocol.alias")
+
   def self.normalize?(str : String, path_info : PathInfo?) : {String?, String?}?
     if (parts = str.split("@npm:")).size > 1
       # <alias>@npm:<name>

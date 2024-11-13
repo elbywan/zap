@@ -1,3 +1,4 @@
+require "log"
 require "semver"
 require "shared/constants"
 require "utils/directories"
@@ -14,6 +15,8 @@ class Commands::Install::Linker::Isolated < Commands::Install::Linker::Base
   @hoist_patterns : Array(Regex)
   @public_hoist_patterns : Array(Regex)
   @installed_packages : Set(String) = Set(String).new
+
+  Log = ::Log.for("zap.commands.install.linker.isolated")
 
   def initialize(
     state,
@@ -103,7 +106,6 @@ class Commands::Install::Linker::Isolated < Commands::Install::Linker::Base
       end
 
       # If the package folder exists, we assume that the package dependencies were already installed too
-      package_path = install_path / package.name
       if File.directory?(install_path)
         # If there is no need to perform a full pass, we can just return the package path and skip the dependencies
         unless state.install_config.refresh_install

@@ -1,9 +1,12 @@
+require "log"
 require "../base"
 require "./resolver"
 require "shared/constants"
 require "concurrency/dedupe_lock"
 
 struct Commands::Install::Protocol::Git < Commands::Install::Protocol::Base
+  Log = ::Log.for("zap.commands.install.protocol.git")
+
   Concurrency::DedupeLock::Global.setup(:clone, Data::Package)
 
   def self.normalize?(str : String, path_info : PathInfo?) : {String?, String?}?

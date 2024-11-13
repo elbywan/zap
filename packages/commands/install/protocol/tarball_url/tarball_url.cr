@@ -1,7 +1,10 @@
+require "log"
 require "../base"
 require "./resolver"
 
 struct Commands::Install::Protocol::TarballUrl < Commands::Install::Protocol::Base
+  Log = ::Log.for("zap.commands.install.protocol.tarball_url")
+
   def self.normalize?(str : String, path_info : PathInfo?) : {String?, String?}?
     # <tarball url>
     if str.starts_with?("https://") || str.starts_with?("http://")

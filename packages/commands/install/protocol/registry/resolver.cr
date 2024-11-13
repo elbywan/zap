@@ -1,3 +1,4 @@
+require "log"
 require "fetch"
 require "shared/constants"
 require "../base"
@@ -9,6 +10,8 @@ struct Commands::Install::Protocol::Registry < Commands::Install::Protocol::Base
 end
 
 struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Protocol::Resolver
+  Log = ::Log.for("zap.commands.install.protocol.registry.resolver")
+
   @clients : RegistryClients
   @client_pool : Fetch(Manifest)
   @package_name : String
@@ -116,7 +119,7 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
             end
           rescue e
             state.store.remove_package(metadata)
-            raise e
+            raise Exception.new("Unable to download package #{metadata.name}@#{metadata.version} from #{tarball_url}: #{e.message}", e)
           end
           true
         end

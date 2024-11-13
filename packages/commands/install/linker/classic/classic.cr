@@ -1,7 +1,10 @@
+require "log"
 require "utils/macros"
 require "../linker"
 
 class Commands::Install::Linker::Classic < Commands::Install::Linker::Base
+  Log = ::Log.for("zap.commands.install.linker.classic")
+
   record DependencyItem,
     # the dependency to install
     dependency : Data::Package,

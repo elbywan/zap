@@ -1,4 +1,5 @@
 require "benchmark"
+require "log"
 require "concurrency/pipeline"
 require "reporter/reporter"
 require "reporter/null"
@@ -15,6 +16,8 @@ require "./linker/isolated"
 require "./linker/pnp"
 
 module Commands::Install
+  Log = ::Log.for("zap.commands.install")
+
   alias Pipeline = Concurrency::Pipeline
 
   def self.run(
@@ -65,10 +68,10 @@ module Commands::Install
       config = self.strategy_check(config, install_config, lockfile, inferred_context, reporter)
 
       # Force hoisting if the hoisting options have changed
-      self.hoisting_check(install_config, lockfile, inferred_context, reporter)
+      install_config = self.hoisting_check(install_config, lockfile, inferred_context, reporter)
 
       # Force metadata retrieval if the package extensions options have changed
-      self.package_extensions_check(install_config, lockfile, inferred_context, reporter)
+      install_config = self.package_extensions_check(install_config, lockfile, inferred_context, reporter)
 
       # Init state struct
       state = State.new(
@@ -119,6 +122,7 @@ module Commands::Install
       # Do not edit lockfile or package.json files in global mode or if the save flag is false
       unless state.config.global || !state.install_config.save
         # Write lockfile
+        Log.debug { "• Writing the lockfile" }
         state.lockfile.write(format: config.lockfile_format)
 
         # Edit and write the package.json files if the flags have been set in the config
@@ -236,7 +240,7 @@ module Commands::Install
     config
   end
 
-  private def self.hoisting_check(install_config : Install::Config, lockfile : Data::Lockfile, inferred_context : Core::Config::InferredContext, reporter : Reporter)
+  private def self.hoisting_check(install_config : Install::Config, lockfile : Data::Lockfile, inferred_context : Core::Config::InferredContext, reporter : Reporter) : Install::Config
     if lockfile.update_hoisting_shasum(inferred_context.main_package)
       if install_config.frozen_lockfile
         # If the lockfile is frozen, raise an error
@@ -246,12 +250,13 @@ module Commands::Install
       if lockfile.read_status.from_disk?
         Log.debug { "Detected a change in hoisting options in the package.json file" }
         reporter.info("Hoisting options were modified. The packages will be re-installed.")
-        install_config = install_config.copy_with(refresh_install: true)
+        return install_config.copy_with(refresh_install: true)
       end
     end
+    install_config
   end
 
-  private def self.package_extensions_check(install_config : Install::Config, lockfile : Data::Lockfile, inferred_context : Core::Config::InferredContext, reporter : Reporter)
+  private def self.package_extensions_check(install_config : Install::Config, lockfile : Data::Lockfile, inferred_context : Core::Config::InferredContext, reporter : Reporter) : Install::Config
     if lockfile.update_package_extensions_shasum(inferred_context.main_package)
       if install_config.frozen_lockfile
         # If the lockfile is frozen, raise an error
@@ -261,9 +266,10 @@ module Commands::Install
       if lockfile.read_status.from_disk?
         Log.debug { "Detected a change in package extensions options in the package.json file" }
         reporter.info("Package extensions have been modified. Package metadata will forcefully be fetched from the registry and packages will be re-installed.")
-        install_config = install_config.copy_with(force_metadata_retrieval: true, refresh_install: true)
+        return install_config.copy_with(force_metadata_retrieval: true, refresh_install: true)
       end
     end
+    install_config
   end
 
   private def self.remove_packages(state : State)
