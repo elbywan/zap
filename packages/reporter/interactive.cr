@@ -38,7 +38,7 @@ class Reporter::Interactive < Reporter
 
   def output_sync(&block : IO ->) : Nil
     @io_lock.synchronize do
-      yield @out
+      block.call(@out)
     end
   end
 

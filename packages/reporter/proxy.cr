@@ -1,58 +1,59 @@
 require "./reporter"
 
-class Reporter::Null < Reporter
-  @out : IO
+class Reporter::Proxy < Reporter
+  getter parent : Reporter
 
-  def initialize
-    @out = File.open(File::NULL, "w")
+  def initialize(@parent : Reporter)
   end
 
   def output : IO
-    @out
+    parent.output
   end
 
   def output_sync(&block : IO ->) : Nil
-    block.call(@out)
+    parent.output_sync do |io|
+      block.call(io)
+    end
   end
 
   def on_resolving_package : Nil
-    # noop
+    parent.on_resolving_package
   end
 
   def on_package_resolved : Nil
-    # noop
+    parent.on_package_resolved
   end
 
   def on_downloading_package : Nil
-    # noop
+    parent.on_downloading_package
   end
 
   def on_package_downloaded : Nil
-    # noop
+    parent.on_package_downloaded
   end
 
   def on_packing_package : Nil
-    # noop
+    parent.on_packing_package
   end
 
   def on_package_packed : Nil
-    # noop
+    parent.on_package_packed
   end
 
   def on_package_linked : Nil
-    # noop
+    parent.on_package_linked
   end
 
   def on_linking_package : Nil
-    # noop
+    parent.on_linking_package
   end
 
   def on_package_built : Nil
-    # noop
+    parent.on_package_built
   end
 
   def on_building_package : Nil
-    # noop
+    parent.on_building_package
   end
 
   def on_package_added(pkg_key : String) : Nil
@@ -68,27 +69,27 @@ class Reporter::Null < Reporter
   end
 
   def info(str : String) : Nil
-    # noop
+    parent.info(str)
   end
 
   def warning(error : Exception, location : String? = "") : Nil
-    # noop
+    parent.warning(error, location)
   end
 
   def error(error : Exception, location : String? = "") : Nil
-    # noop
+    parent.error(error, location)
   end
 
   def errors(errors : Array({Exception, String})) : Nil
-    # noop
+    parent.errors(errors)
   end
 
   def prepend(bytes : Bytes) : Nil
-    # noop
+    parent.prepend(bytes)
   end
 
   def log(str : String) : Nil
-    # noop
+    parent.log(str)
   end
 
   def report_resolver_updates(& : -> T) : T forall T

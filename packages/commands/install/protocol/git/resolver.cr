@@ -1,5 +1,6 @@
 require "git/remote"
 require "data/package"
+require "reporter/proxy"
 require "../base"
 require "../resolver"
 
@@ -101,7 +102,8 @@ module Commands::Install::Protocol::Git::Resolver
         config,
         Commands::Install::Config.new(save: false),
         store: @state.store,
-        raise_on_failure: true
+        raise_on_failure: true,
+        reporter: Reporter::Proxy.new(@state.reporter),
       )
     end
 
