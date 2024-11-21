@@ -97,10 +97,10 @@ module Backend
   #   end
   # end
 
-  protected def self.prepare(dependency : Data::Package, dest_path : Path | String, *, store : Store, mkdir_parent = false) : {Path, Path, Bool}
+  protected def self.prepare(dependency : Data::Package, dest_path : Path | String, *, store : Store) : {Path, Path, Bool}
     src_path = store.package_path(dependency)
     already_installed = self.package_already_installed?(dependency.key, dest_path)
-    Utils::Directories.mkdir_p(mkdir_parent ? dest_path.dirname : dest_path) unless already_installed
+    Utils::Directories.mkdir_p(dest_path.dirname) unless already_installed
     {src_path, dest_path, already_installed}
   end
 
