@@ -84,14 +84,14 @@ class Commands::Install::Linker::Classic
       package_dep = package.dependencies.try(&.[dependency.name]?) || package.optional_dependencies.try(&.[dependency.name]?)
       if package_dep
         version = package_dep.is_a?(String) ? package_dep : package_dep.version
-        return HoistAction::Stop unless Semver.parse(version).satisfies?(dependency.version)
+        return HoistAction::Stop unless Semver.parse?(version).try &.satisfies?(dependency.version)
       end
 
       # stop hoisting if the package at the current location has a peer dependency but the version of dependency is not compatible
       package_peer = package.peer_dependencies.try(&.[dependency.name]?)
       if package_peer
         version = package_peer.is_a?(String) ? package_peer : package_peer.version
-        return HoistAction::Stop unless Semver.parse(version).satisfies?(dependency.version)
+        return HoistAction::Stop unless Semver.parse?(version).try &.satisfies?(dependency.version)
       end
 
       # stop hoisting if the dependency has a peer dependency on package, no matter the version
@@ -102,7 +102,7 @@ class Commands::Install::Linker::Classic
       # dependency has a peer dependency on a previous hoisted dependency, but the version is not compatible
       dependency.peer_dependencies.try &.each do |peer_name, peer_version|
         hoisted = location.value.hoisted_packages[peer_name]?
-        compatible = !hoisted || Semver.parse(peer_version).satisfies?(hoisted.version)
+        compatible = !hoisted || Semver.parse?(peer_version).try &.satisfies?(hoisted.version)
         return HoistAction::Stop unless compatible
       end
 

@@ -112,7 +112,7 @@ module Commands::Install::Linker
       if direct_peers = package.peer_dependencies
         direct_peers.each do |direct_peer, peer_range|
           peers[direct_peer] = Set(Semver::Range){
-            begin Semver.parse(peer_range) rescue Semver.parse("*") end,
+            Semver.parse?(peer_range).or(Semver::ANY),
           }
         end
       end

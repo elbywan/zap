@@ -21,6 +21,8 @@ require "./range"
 # range.satisfies?("2.0.0") # => false
 # ```
 module Semver
+  ANY = self.parse("*")
+
   # Parses a semantic versioning string into a `Range` object.
   def self.parse(str : String) : Range
     Range.parse(str)

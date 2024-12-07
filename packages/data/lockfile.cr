@@ -282,7 +282,7 @@ class Data::Lockfile
         # end
         # Return the unresolved transitive peers + its own peers to the ancestor package
         transitive_peers + pkg_peers.map do |peer_name, peer_range|
-          {peer_name, begin Semver.parse(peer_range) rescue Semver.parse("*") end, package}
+          {peer_name, Semver.parse?(peer_range).or(Semver::ANY), package}
         end
       else
         # No own peer dependencies, return only the unresolved peers
