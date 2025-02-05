@@ -1,4 +1,10 @@
+require "core/config"
+require "reporter/interactive"
+require "./config"
+
 module Commands::Exec
+  Log = ::Log.for("zap.exec")
+
   def self.run(config : Core::Config, exec_config : Exec::Config, *, no_banner : Bool = false)
     reporter = Reporter::Interactive.new
     begin
@@ -8,6 +14,8 @@ module Commands::Exec
       inferred_context = config.infer_context
       workspaces, config = inferred_context.workspaces, inferred_context.config
       targets = inferred_context.scope_packages_and_paths(:command)
+
+      return if targets.size == 0
 
       unless config.silent || no_banner
         Zap.print_banner
@@ -19,6 +27,8 @@ module Commands::Exec
         print Shared::Constants::NEW_LINE
       end
 
+      Log.debug { "• Initializing scripts" }
+
       scripts = targets.map do |package, path|
         Data::Package::Scripts::ScriptData.new(
           package,
@@ -29,9 +39,9 @@ module Commands::Exec
         )
       end
 
-      workspace_relationships = workspaces.try(&.relationships)
+      Log.debug { "• Running the scripts" }
 
-      if !workspace_relationships || exec_config.parallel
+      if targets.size < 2 || exec_config.parallel
         Data::Package::Scripts.parallel_run(
           config: config,
           scripts: scripts,
@@ -39,13 +49,23 @@ module Commands::Exec
           print_header: false,
         )
       else
-        Data::Package::Scripts.topological_run(
-          config: config,
-          scripts: scripts,
-          relationships: workspace_relationships,
-          reporter: reporter,
-          print_header: false,
-        )
+        workspace_relationships = workspaces.try(&.relationships)
+        if !workspace_relationships
+          Data::Package::Scripts.parallel_run(
+            config: config,
+            scripts: scripts,
+            reporter: reporter,
+            print_header: false,
+          )
+        else
+          Data::Package::Scripts.topological_run(
+            config: config,
+            scripts: scripts,
+            relationships: workspace_relationships,
+            reporter: reporter,
+            print_header: false,
+          )
+        end
       end
     rescue ex : Exception
       reporter.error(ex)

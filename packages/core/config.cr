@@ -1,3 +1,4 @@
+require "log"
 require "utils/from_env"
 require "workspaces"
 require "workspaces/filter"
@@ -8,6 +9,8 @@ require "data/package"
 
 # Global configuration for Zap
 struct Core::Config
+  Log = ::Log.for("zap.core.config")
+
   include Utils::FromEnv
   Utils::Macros.record_utils
 
@@ -207,6 +210,8 @@ struct Core::Config
   end
 
   def infer_context : InferredContext
+    Log.debug { "Inferring context and targets" }
+
     config = self
     # The scope when installing packages
     install_scope = [] of WorkspaceOrPackage
@@ -219,6 +224,7 @@ struct Core::Config
       install_scope << main_package
       command_scope << main_package
     else
+      Log.debug { "Finding nearest package files" }
       # Find the nearest package.json file and workspace package.json file
       packages_data = Data::Package.find_package_files(config.prefix)
       nearest_package = packages_data.nearest_package
@@ -226,10 +232,17 @@ struct Core::Config
 
       raise "Could not find a package.json file in #{config.prefix} or its parent folders" unless nearest_package && nearest_package_dir
 
+      Log.debug { "Workspace package.json: #{packages_data.workspace_package_dir}" }
+      Log.debug { "Nearest package.json: #{nearest_package_dir}" }
+
       # Initialize workspaces if a workspace root has been found
       if (workspace_package_dir = packages_data.workspace_package_dir.try(&.to_s)) && (workspace_package = packages_data.workspace_package)
+        Log.debug { "Initializing Workspaces ⏳" }
         workspaces = Workspaces.new(workspace_package, workspace_package_dir)
+        Log.debug { "Workspaces ✅" }
       end
+
+      Log.debug { "Perform workspace checks" }
       # Check if the nearest package.json file is the workspace root
       nearest_is_workspace_root = workspace_package && workspace_package.object_id == nearest_package.object_id
       # Find the nearest workspace if it exists

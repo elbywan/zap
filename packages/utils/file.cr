@@ -1,3 +1,4 @@
+require "dir"
 require "git/ignore"
 
 module Utils::File

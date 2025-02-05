@@ -25,6 +25,8 @@ module Zap
 
   VERSION = {{ `shards version`.stringify }}.chomp
 
+  Log = ::Log.for("zap.entry")
+
   def self.print_banner
     puts "⚡ #{"Zap".colorize.bold.underline} #{"(v#{VERSION})".colorize.dim}"
   end
@@ -42,6 +44,7 @@ module Zap
     end
 
     begin
+      Log.debug { "• Registring CLI commands" }
       commands = [
         Commands::Install::CLI.new,
         Commands::Dlx::CLI.new,
@@ -52,11 +55,14 @@ module Zap
         Commands::Store::CLI.new,
         Commands::Why::CLI.new,
       ].map(&.as(Commands::CLI))
+      Log.debug { "• Parsing the CLI arguments" }
       config, command_config = CLI.new(commands).parse
     rescue e
       puts e.message
       exit Shared::Constants::ErrorCodes::EARLY_EXIT.to_i32
     end
+
+    Log.debug { "• Executing command #{command_config.to_s}" }
 
     case command_config
     when Commands::Install::Config

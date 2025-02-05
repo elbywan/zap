@@ -1,3 +1,8 @@
+require "log"
+require "core/config"
+require "reporter/interactive"
+require "./config"
+
 class ScriptNotFoundError < Exception
   def initialize(script_name : String, package_name : String)
     super("Script #{script_name} not found in #{package_name}.")
@@ -5,6 +10,8 @@ class ScriptNotFoundError < Exception
 end
 
 module Commands::Run
+  Log = ::Log.for("zap.run")
+
   def self.run(
     config : Core::Config,
     run_config : Run::Config
@@ -19,6 +26,10 @@ module Commands::Run
       workspaces, config = inferred_context.workspaces, inferred_context.config
       targets = inferred_context.scope_packages_and_paths(:command)
 
+      return if targets.size == 0
+
+      Log.debug { "• Initializing scripts" }
+
       unless config.silent
         Zap.print_banner
         if workspaces
@@ -28,6 +39,8 @@ module Commands::Run
         end
         print Shared::Constants::NEW_LINE
       end
+
+      Log.debug { "• Running the scripts" }
 
       scripts = targets.flat_map do |package, path|
         json = File.open(Path.new(path) / "package.json") do |file|
@@ -56,9 +69,7 @@ module Commands::Run
         )
       end.compact
 
-      workspace_relationships = workspaces.try(&.relationships)
-
-      if !workspace_relationships || run_config.parallel
+      if run_config.parallel
         Data::Package::Scripts.parallel_run(
           config: config,
           scripts: scripts,
@@ -66,13 +77,23 @@ module Commands::Run
           print_header: false,
         )
       else
-        Data::Package::Scripts.topological_run(
-          config: config,
-          scripts: scripts,
-          relationships: workspace_relationships,
-          reporter: reporter,
-          print_header: false,
-        )
+        workspace_relationships = workspaces.try(&.relationships)
+        if !workspace_relationships
+          Data::Package::Scripts.parallel_run(
+            config: config,
+            scripts: scripts,
+            reporter: reporter,
+            print_header: false,
+          )
+        else
+          Data::Package::Scripts.topological_run(
+            config: config,
+            scripts: scripts,
+            relationships: workspace_relationships,
+            reporter: reporter,
+            print_header: false,
+          )
+        end
       end
     rescue ex : Exception
       if ex.is_a?(ScriptNotFoundError) && run_config.fallback_to_exec

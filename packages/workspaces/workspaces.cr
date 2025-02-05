@@ -1,3 +1,4 @@
+require "log"
 require "shared/constants"
 require "data/package"
 require "semver"
@@ -6,6 +7,8 @@ require "./workspace"
 require "./relationships"
 
 class Workspaces
+  Log = ::Log.for("zap.workspaces")
+
   getter workspaces = [] of Workspace
   forward_missing_to @workspaces
   getter no_hoist : Array(String)? = nil
@@ -57,8 +60,9 @@ class Workspaces
     #   nil.tap {
     #     if File.exists?(path / "package.json")
     #       workspaces << Workspace.new(
-    #         package: Package.init(path),
-    #         path: path
+    #         package: Data::Package.init(path),
+    #         path: path,
+    #         relative_path: path.relative_to(workspace_root)
     #       )
     #     end
     #   }
@@ -77,9 +81,9 @@ class Workspaces
     }
     Utils::Glob.glob(patterns, exclude: ["node_modules", ".git"]) do |path|
       path = Path.new(path)
-      if File.directory?(path) && File.exists?(path / "package.json")
+      if package = Data::Package.init?(path)
         workspaces << Workspace.new(
-          package: Data::Package.init(path),
+          package: package,
           path: path,
           relative_path: path.relative_to(workspace_root)
         )
