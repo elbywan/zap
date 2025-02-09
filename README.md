@@ -244,7 +244,7 @@ crystal projects.cr spec install
 # Run the specs
 crystal projects.cr spec
 # Build locally (-Dpreview_mt might not work on some os/arch)
-crystal projects.cr cli:build --production  --release --progress -Dpreview_mt
+crystal projects.cr cli:build --production  --release --progress # -Dpreview_mt
 # Run the binary
 ./packages/cli/bin/zap --help
 ```
