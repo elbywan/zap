@@ -26,7 +26,7 @@ module Commands::Install
     *,
     reporter : Reporter? = nil,
     store : ::Store? = nil,
-    raise_on_failure : Bool = false
+    raise_on_failure : Bool = false,
   )
     state = uninitialized State
     reporter ||= config.silent ? Reporter::Null.new : Reporter::Interactive.new
@@ -164,7 +164,7 @@ module Commands::Install
     inferred_context : Core::Config::InferredContext,
     install_config : Install::Config,
     lockfile : Data::Lockfile,
-    workspaces : Workspaces?
+    workspaces : Workspaces?,
   )
     unless config.silent
       workers_info = begin
@@ -206,7 +206,7 @@ module Commands::Install
     install_config : Install::Config,
     lockfile : Data::Lockfile,
     context : Core::Config::InferredContext,
-    reporter : Reporter
+    reporter : Reporter,
   ) : Core::Config
     if !config.global && lockfile.strategy && lockfile.strategy != install_config.strategy
       Log.debug { "Install strategy changed from #{lockfile.strategy} to #{install_config.strategy}" if lockfile.strategy }
@@ -290,6 +290,7 @@ module Commands::Install
   end
 
   private def self.resolve_dependencies(state : State)
+    state.pipeline.set_concurrency(state.config.network_concurrency * 3)
     state.reporter.report_resolver_updates do
       # Resolve overrides
       Log.debug { "• Resolving overrides" }

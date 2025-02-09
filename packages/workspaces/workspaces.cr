@@ -46,7 +46,7 @@ class Workspaces
       workspaces_field = workspaces_field["packages"]
     end
 
-    return if workspaces_field.nil?
+    return if workspaces_field.nil? || workspaces_field.empty?
 
     #################
     # Gitignore rules from: https://git-scm.com/docs/gitignore

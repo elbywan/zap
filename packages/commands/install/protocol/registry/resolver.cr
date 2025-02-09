@@ -23,7 +23,7 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
     specifier = "latest",
     parent = nil,
     dependency_type = nil,
-    skip_cache = false
+    skip_cache = false,
   )
     super
 
@@ -73,7 +73,7 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
       shasum = dist.shasum
       version = metadata.version
       unsupported_algorithm = false
-      algorithm, hash, algorithm_instance = nil, nil, nil
+      algorithm, hash = nil, nil
 
       if integrity
         algorithm, hash = integrity.split("-")
@@ -81,17 +81,18 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
         unsupported_algorithm = true
       end
 
-      algorithm_instance = case algorithm
-                           when "sha1"
-                             Digest::SHA1.new
-                           when "sha256"
-                             Digest::SHA256.new
-                           when "sha512"
-                             Digest::SHA512.new
-                           else
-                             unsupported_algorithm = true
-                             Digest::SHA1.new
-                           end
+      algorithm_instance =
+        case algorithm
+        when "sha1"
+          -> { Digest::SHA1.new }
+        when "sha256"
+          -> { Digest::SHA256.new }
+        when "sha512"
+          -> { Digest::SHA512.new }
+        else
+          unsupported_algorithm = true
+          -> { Digest::SHA1.new }
+        end
 
       # the tarball_url is absolute and can point to an entirely different domain
       # so we need to find the right client pool for it
@@ -103,7 +104,7 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
         client.get("/" + relative_url) do |response|
           raise "Invalid status code from #{tarball_url} (#{response.status_code})" unless response.status_code == 200
 
-          IO::Digest.new(response.body_io, algorithm_instance).tap do |io|
+          IO::Digest.new(response.body_io, algorithm_instance.call).tap do |io|
             state.store.unpack_and_store_tarball(metadata, io)
 
             io.skip_to_end
