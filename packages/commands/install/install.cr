@@ -7,6 +7,7 @@ require "reporter/interactive"
 require "store"
 require "extensions/scheduler"
 require "data/package/scripts"
+require "utils/shasum"
 require "./config"
 require "./state"
 require "./resolver"
@@ -58,7 +59,7 @@ module Commands::Install
 
       # Raise if frozen lockfile is set and the lockfile is not found
       if install_config.frozen_lockfile && !lockfile.read_status.from_disk?
-        raise "The --frozen-lockfile flag is on but the lockfile is missing. Run `zap i --frozen-lockfile=false` to generate the lockfile and try again."
+        raise "The --frozen-lockfile flag is on but the lockfile is missing.\nRun `zap i --frozen-lockfile=false` to generate the lockfile and try again."
       end
 
       # Print info about the install
@@ -114,8 +115,14 @@ module Commands::Install
 
       if state.install_config.frozen_lockfile
         # Raise if the lockfile has been updated
-        if (state.lockfile.serialize != File.read(state.lockfile.lockfile_path))
-          raise "The --frozen-lockfile flag is on but the lockfile has been updated during the resolution phase. Run `zap i --frozen-lockfile=false` to regenerate the lockfile and try again."
+
+        current_shasum = Shasum.new(Digest::SHA1.new).tap do |shasum|
+          state.lockfile.serialize(shasum)
+        end.final
+        new_shasum = Digest::SHA1.new.file(state.lockfile.lockfile_path).final
+
+        if (current_shasum != new_shasum)
+          raise "The --frozen-lockfile flag is on but the lockfile has been updated during the resolution phase.\nRun `zap i --frozen-lockfile=false` to regenerate the lockfile and try again."
         end
       end
 

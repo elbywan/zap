@@ -160,14 +160,16 @@ class Data::Lockfile
 
   def write(format : Format? = nil)
     format ||= @format
-    File.write(@lockfile_path.to_s, self.serialize(format))
+    File.open(@lockfile_path.to_s, "w") do |file|
+      self.serialize(file, format)
+    end
   end
 
-  def serialize(format = @format)
+  def serialize(io : IO? = nil, format = @format)
     if format.message_pack?
-      self.to_msgpack
+      io ? self.to_msgpack(io) : self.to_msgpack
     else
-      self.to_yaml
+      io ? self.to_yaml(io) : self.to_yaml
     end
   end
 

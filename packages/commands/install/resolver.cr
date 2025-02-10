@@ -24,7 +24,7 @@ module Commands::Install::Resolver
     specifier : String = "latest",
     parent : Data::Package | Data::Lockfile::Root | Nil = nil,
     dependency_type : Data::Package::DependencyType? = nil,
-    skip_cache : Bool = false
+    skip_cache : Bool = false,
   ) : Protocol::Resolver
     resolver = Protocol::PROTOCOLS.reduce(nil) do |acc, protocol|
       next acc unless acc.nil?
@@ -46,7 +46,7 @@ module Commands::Install::Resolver
     state : Commands::Install::State,
     ancestors : Deque(Data::Package) = Deque(Data::Package).new,
     disable_cache_for_packages : Array(String)? = nil,
-    disable_cache : Bool = false
+    disable_cache : Bool = false,
   )
     is_root = ancestors.size == 0
     package.each_dependency(
@@ -97,7 +97,7 @@ module Commands::Install::Resolver
     is_direct_dependency : Bool = false,
     single_resolution : Bool = false,
     ancestors : Deque(Data::Package) = Deque(Data::Package).new,
-    bust_pinned_cache : Bool = false
+    bust_pinned_cache : Bool = false,
   )
     resolve(
       package,
