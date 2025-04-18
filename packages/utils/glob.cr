@@ -100,7 +100,7 @@ module Utils::Glob
 
     private def self.compile(pattern)
       expanded_patterns = [] of String
-      ::File.expand_brace_pattern(pattern, expanded_patterns)
+      ::Dir::Globber.expand_brace_pattern(pattern, expanded_patterns)
 
       expanded_patterns.map do |expanded_pattern|
         single_compile expanded_pattern
@@ -331,7 +331,7 @@ module Utils::Glob
       ::File.join(path, entry)
     end
 
-    private def self.each_child(path)
+    private def self.each_child(path, &)
       Dir.open(path || Dir.current) do |dir|
         while entry = read_entry(dir)
           next if entry.name == "." || entry.name == ".."

@@ -15,4 +15,10 @@ class Dir
       yield entry unless excluded.includes?(entry.name)
     end
   end
+
+  module Globber
+    def self.expand_brace_pattern(pattern : String, expanded) : Array(String)?
+      previous_def(pattern, expanded)
+    end
+  end
 end

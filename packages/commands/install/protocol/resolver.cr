@@ -18,16 +18,13 @@ abstract struct Commands::Install::Protocol::Resolver
   getter dependency_type : Data::Package::DependencyType? = nil
   getter skip_cache : Bool = false
 
-  Concurrency::DedupeLock::Global.setup(:store, Bool)
-  Concurrency::KeyedLock::Global.setup(Data::Package)
-
   def initialize(
     @state,
     @name,
     @specifier = "latest",
     @parent = nil,
     @dependency_type = nil,
-    @skip_cache = false
+    @skip_cache = false,
   )
   end
 
