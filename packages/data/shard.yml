@@ -1,0 +1,19 @@
+name: data
+version: 0.1.0
+
+dependencies:
+  msgpack:
+    github: crystal-community/msgpack-crystal
+    version: 1.3.4
+  semver:
+    path: ../semver
+  utils:
+    path: ../utils
+  concurrency:
+    path: ../concurrency
+  shared:
+    path: ../shared
+  utils:
+    path: ../utils
+  # core:
+  #   path: ../core

@@ -188,7 +188,7 @@ Benchmarks consist on installing a fresh [**create-react-app**](https://create-r
 
 **See:** [https://github.com/elbywan/zap/tree/main/bench](/bench)
 
-They are performed on my own personal laptop (macbook pro 16" 2019, 2,3 GHz Intel Core i9, 16 Go 2667 MHz DDR4) with 5G wifi and 1 Gb/s fiber.
+They are performed on my own personal laptop (Framework Laptop 13, AMD Ryzen 5 7640U, 32 GB 5600 MHz DDR5) with 5G wifi and 1 Gb/s fiber.
 
 The benchmarking tool is [**hyperfine**](https://github.com/sharkdp/hyperfine) and to make sure that the results are consistent I re-ran unfavorable results (high error delta).
 
@@ -240,11 +240,13 @@ On top of that, zap will also try to cache package manifests in order to avoid u
 
 ```bash
 git clone https://github.com/elbywan/zap
-shards install
+crystal projects.cr spec install
 # Run the specs
-crystal spec
+crystal projects.cr spec
 # Build locally (-Dpreview_mt might not work on some os/arch)
-shards build --progress -Dpreview_mt --release
+crystal projects.cr cli:build --production  --release --progress # -Dpreview_mt
+# Run the binary
+./packages/cli/bin/zap --help
 ```
 
 ## Contributing

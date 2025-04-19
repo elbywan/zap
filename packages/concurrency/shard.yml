@@ -1,0 +1,10 @@
+name: concurrency
+version: 0.1.0
+
+crystalline:
+  main: spec/specs.cr
+
+dependencies:
+  msgpack:
+    github: crystal-community/msgpack-crystal
+    version: 1.3.4
