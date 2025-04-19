@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const childProcess = require("child_process");
 
-const packageName = `@zap.org/${process.platform}-${process.arch}`;
+const packageName = `@zap./${process.platform}-${process.arch}`;
 
 BIN_NAME = process.platform === "win32" ? "zap.exe" : "zap";
 
