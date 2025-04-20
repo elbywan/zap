@@ -38,6 +38,9 @@ OptionParser.parse do |parser|
       when "spec"
         command = "crystal"
         subcommand = "spec"
+      when "bump"
+        command = "@@"
+        subcommand = "bump"
       end
       project_filter = project_name[0] if project_name.size == 1
       ARGV.shift
@@ -56,7 +59,8 @@ projects = Dir["#{Path.posix(Path.new(__DIR__)).normalize}/**/shard.yml"]
     Path.new(file).parent.basename == "lib"
   }
   .map { |project_path|
-    {path: project_path, name: YAML.parse(File.read("#{project_path}/shard.yml")).dig("name").as_s}
+    shard_yml = YAML.parse(File.read("#{project_path}/shard.yml"))
+    {path: project_path, name: shard_yml.dig("name").as_s, shard_yml: shard_yml}
   }
   .select { |project| project_filter.nil? || project[:name] == project_filter }
   .to_a
@@ -75,24 +79,42 @@ puts
 
 wg = WaitGroup.new(projects.size) if parallel
 
-run_command = ->(project : {path: String, name: String}) do
-  project_path, project_name = project[:path], project[:name]
-  buffer = IO::Memory.new
-  status = Process.run(
-    full_command,
-    shell: true,
-    chdir: project_path,
-    output: buffer,
-    error: buffer
-  )
+run_command = ->(project : {path: String, name: String, shard_yml: YAML::Any}) do
+  project_path, project_name, shard_yml = project[:path], project[:name], project[:shard_yml]
 
-  if status.success?
-    puts "✅ #{project_name}".colorize.green.bold
-    puts buffer.rewind.gets_to_end if buffer.size > 0
+  if command == "@@"
+    full_command = "#{command} #{project_path}"
+    case subcommand
+    when "bump"
+      new_version = ARGV[0]?
+      if new_version.nil?
+        puts "❌ No version specified for bumping.".colorize.red.bold
+        exit 1
+      end
+      shard_yml.as_h[YAML::Any.new("version")] = YAML::Any.new(new_version)
+      File.write("#{project_path}/shard.yml", shard_yml.to_yaml)
+      puts "✅ Bumped version of #{project_name} to #{new_version}".colorize.green.bold
+    else
+      raise "Unknown subcommand: #{subcommand}"
+    end
   else
-    puts "❌ #{project_name}".colorize.red.bold
-    puts buffer.rewind.gets_to_end if buffer.size > 0
-    raise "Failed to run command for project #{project_name} with exit code #{status.exit_code}"
+    buffer = IO::Memory.new
+    status = Process.run(
+      full_command,
+      shell: true,
+      chdir: project_path,
+      output: buffer,
+      error: buffer
+    )
+
+    if status.success?
+      puts "✅ #{project_name}".colorize.green.bold
+      puts buffer.rewind.gets_to_end if buffer.size > 0
+    else
+      puts "❌ #{project_name}".colorize.red.bold
+      puts buffer.rewind.gets_to_end if buffer.size > 0
+      raise "Failed to run command for project #{project_name} with exit code #{status.exit_code}"
+    end
   end
 ensure
   wg.done if wg
