@@ -17,3 +17,7 @@ dependencies:
     path: ../extensions
   git:
     path: ../git
+crystalline:
+  flags:
+    - preview_mt
+    - execution_context

@@ -1,5 +1,7 @@
 name: semver
 version: 0.1.0
-
 crystalline:
   main: spec/specs.cr
+  flags:
+    - preview_mt
+    - execution_context

@@ -1,6 +1,5 @@
 name: fetch
 version: 0.1.0
-
 dependencies:
   msgpack:
     github: crystal-community/msgpack-crystal
@@ -9,3 +8,7 @@ dependencies:
     path: ../concurrency
   utils:
     path: ../utils
+crystalline:
+  flags:
+    - preview_mt
+    - execution_context

@@ -1,6 +1,5 @@
 name: backend
 version: 0.1.0
-
 dependencies:
   concurrency:
     path: ../concurrency
@@ -10,3 +9,7 @@ dependencies:
     path: ../shared
   extensions:
     path: ../extensions
+crystalline:
+  flags:
+    - preview_mt
+    - execution_context

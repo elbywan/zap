@@ -4,3 +4,7 @@ dependencies:
   crystar:
     github: naqvis/crystar
     version: 0.4.0
+crystalline:
+  flags:
+    - preview_mt
+    - execution_context

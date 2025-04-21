@@ -9,3 +9,7 @@ dependencies:
     path: ../backend
   data:
     path: ../data
+crystalline:
+  flags:
+    - preview_mt
+    - execution_context

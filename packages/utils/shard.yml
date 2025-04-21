@@ -1,6 +1,5 @@
 name: utils
 version: 0.1.0
-
 dependencies:
   crystar:
     github: naqvis/crystar
@@ -16,3 +15,7 @@ dependencies:
     path: ../shared
   extensions:
     path: ../extensions
+crystalline:
+  flags:
+    - preview_mt
+    - execution_context

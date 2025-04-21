@@ -1,6 +1,5 @@
 name: data
 version: 0.1.0
-
 dependencies:
   msgpack:
     github: crystal-community/msgpack-crystal
@@ -17,3 +16,7 @@ dependencies:
     path: ../utils
   # core:
   #   path: ../core
+crystalline:
+  flags:
+    - preview_mt
+    - execution_context
