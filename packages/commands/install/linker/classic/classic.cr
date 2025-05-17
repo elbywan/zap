@@ -74,7 +74,7 @@ class Commands::Install::Linker::Classic < Commands::Install::Linker::Base
         pkg_name = workspace_or_main_package.name
       end
       root = state.lockfile.roots[pkg_name]
-      root.each_dependency(sort: state.lockfile.read_status.not_found?) { |name, version_or_alias|
+      root.each_dependency(sort: state.lockfile.read_status.not_found?) { |name, version_or_alias, type|
         pkg = state.lockfile.get_package?(name, version_or_alias)
         next unless pkg
         dependency_queue << DependencyItem.new(
@@ -82,7 +82,7 @@ class Commands::Install::Linker::Classic < Commands::Install::Linker::Base
           location_node: location,
           ancestors: workspace ? [workspace.package] : [main_package] of Data::Package,
           alias: version_or_alias.is_a?(Data::Package::Alias) ? name : nil,
-          optional: false
+          optional: type.optional_dependency?
         )
       }
     end

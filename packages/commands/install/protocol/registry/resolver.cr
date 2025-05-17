@@ -64,6 +64,7 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
   def store?(metadata : Data::Package, &on_downloading) : Bool
     state.store.with_lock(metadata, state.config) do
       next false if state.store.package_is_cached?(metadata)
+      next false unless metadata.match_os_and_cpu?
 
       yield
 
@@ -98,11 +99,16 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
       # so we need to find the right client pool for it
       pool_key, pool = @clients.find_or_init_pool(tarball_url)
       pool.client do |client|
+        Log.debug { "Downloading tarball from #{tarball_url}…" }
+
         # we also need to relativize the tarball url to the pool base url
         # otherwise some registries (verdaccio for instance) will return a 404
         relative_url = URI.parse(pool_key).relativize(tarball_url).to_s
         client.get("/" + relative_url) do |response|
           raise "Invalid status code from #{tarball_url} (#{response.status_code})" unless response.status_code == 200
+
+          content_length = response.headers["Content-Length"]?
+          Log.debug { "Streaming and unpacking tarball from #{tarball_url}… (size: #{content_length || "?"} bytes)" }
 
           IO::Digest.new(response.body_io, algorithm_instance.call).tap do |io|
             state.store.unpack_and_store_tarball(metadata, io)
