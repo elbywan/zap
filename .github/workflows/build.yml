@@ -32,7 +32,7 @@ jobs:
       - name: Build the binary
         # Statically link most non-system libraries
         run: |
-          env CRYSTAL_LIBRARY_PATH=`pwd`/libs crystal projects.cr build:cli --no-debug --release #-Dpreview_mt -Dexecution_context
+          env CRYSTAL_LIBRARY_PATH=`pwd`/libs crystal projects.cr build:cli --no-debug --release -Dpreview_mt -Dexecution_context
           mkdir bin
           mv ./packages/cli/bin/zap ./bin/zap
       - name: Upload a Build Artifact
@@ -65,7 +65,7 @@ jobs:
           cp $(brew --prefix)/opt/pcre2/lib/libpcre2-8.a ./libs
       - name: Build the binary
         run: |
-          env CRYSTAL_LIBRARY_PATH=`pwd`/libs crystal projects.cr build:cli --no-debug --release #-Dpreview_mt -Dexecution_context
+          env CRYSTAL_LIBRARY_PATH=`pwd`/libs crystal projects.cr build:cli --no-debug --release -Dpreview_mt -Dexecution_context
           mkdir bin
           mv ./packages/cli/bin/zap ./bin/zap
       - name: Upload a Build Artifact
@@ -83,7 +83,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Build the static binary
         run: |
-          crystal projects.cr build:cli --production --release --static --no-debug --stats
+          crystal projects.cr build:cli --production --release --static --no-debug --stats -Dpreview_mt -Dexecution_context
           mkdir bin
           mv ./packages/cli/bin/zap ./bin/zap
       - name: Upload a Build Artifact
