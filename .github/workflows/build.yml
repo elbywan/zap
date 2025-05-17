@@ -81,6 +81,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          apk del openssl-dev openssl-libs-static
+          apk add libressl-dev
       - name: Build the static binary
         run: |
           crystal projects.cr build:cli --production --release --static --no-debug --stats -Dpreview_mt -Dexecution_context
