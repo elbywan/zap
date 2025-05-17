@@ -22,7 +22,7 @@ class Data::Package
     @[JSON::Field(key: "bundleDependencies")]
     @[YAML::Field(ignore: true)]
     @[MessagePack::Field(ignore: true)]
-    getter bundle_dependencies : (Hash(String, String) | Bool)? = nil
+    getter bundle_dependencies : (Hash(String, String) | Bool | Array(String))? = nil
     @[JSON::Field(key: "peerDependencies")]
     property peer_dependencies : Hash(String, String)? = nil
     @[JSON::Field(key: "peerDependenciesMeta")]
