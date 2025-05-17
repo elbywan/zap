@@ -18,6 +18,6 @@ module Commands::Install
     context : Core::Config::InferredContext,
     npmrc : Data::Npmrc,
     registry_clients : RegistryClients,
-    pipeline : Concurrency::Pipeline = Concurrency::Pipeline.new,
+    pipeline : Concurrency::Pipeline,
     reporter : Reporter = Reporter::Interactive.new
 end

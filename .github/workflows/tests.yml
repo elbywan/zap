@@ -21,6 +21,8 @@ jobs:
         run: crystal projects.cr spec
       - name: Run tests (multithreaded)
         run: crystal projects.cr spec -Dpreview_mt
+      - name: Run tests (multithreaded + execution context)
+        run: crystal projects.cr spec -Dpreview_mt -Dexecution_context
   launch:
     name: Build and check if the binary is working
     strategy:

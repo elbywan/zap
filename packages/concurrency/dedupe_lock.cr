@@ -1,7 +1,8 @@
 require "./data_structures/safe_hash"
+require "./mutex"
 
 module Concurrency::DedupeLock(T)
-  @lock = Mutex.new(:unchecked)
+  @lock = Concurrency::Mutex.new(:unchecked)
   @channels = {} of String => Channel(T)
 
   def dedupe(key : String, &block : -> T) : T
@@ -45,7 +46,7 @@ module Concurrency::DedupeLock::Global
     {% name = name_arg.id %}
     @@%sync_channel : Concurrency::SafeHash(String, Channel({{type}})) = Concurrency::SafeHash(String, Channel({{type}})).new
 
-    @@%lock = Mutex.new(:unchecked)
+    @@%lock = Concurrency::Mutex.new(:unchecked)
     @@%channels = Hash(String, Channel({{type}})).new
 
     def self.dedupe_{{name}}(key : String, &block : -> {{type}}) : {{type}}

@@ -173,7 +173,7 @@ module Commands::Install::Linker
       package : Data::Package,
       ancestors : Enumerable(Data::Package | Data::Lockfile::Root),
       *,
-      reverse_ancestors? : Bool = false
+      reverse_ancestors? : Bool = false,
     ) : Data::Package
       if overrides = state.lockfile.overrides
         ancestors = ancestors.to_a.reverse if reverse_ancestors?

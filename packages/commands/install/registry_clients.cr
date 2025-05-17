@@ -1,5 +1,6 @@
 require "./manifest"
 require "fetch"
+require "concurrency/mutex"
 
 # Exposes a pool of http(s) clients for each registry and convenience methods to access the pools.
 #
@@ -8,7 +9,7 @@ class Commands::Install::RegistryClients
   # The pool of clients for each registry
   @@client_pool_by_registry : Hash(String, Fetch(Manifest)) = Hash(String, Fetch(Manifest)).new
   # Lock to synchronize access to the pools
-  @@client_pool_by_registry_lock = Mutex.new
+  @@client_pool_by_registry_lock = Concurrency::Mutex.new
 
   # Initialize a new registry clients pool with the following arguments:
   # - store_path: path to the store where the metadata will be cached
@@ -20,7 +21,7 @@ class Commands::Install::RegistryClients
     @npmrc : Data::Npmrc,
     *,
     @pool_max_size : Int32 = 20,
-    @bypass_staleness_checks : Bool = false
+    @bypass_staleness_checks : Bool = false,
   )
   end
 
@@ -57,7 +58,7 @@ class Commands::Install::RegistryClients
     base_url : String,
     *,
     pool_max_size = @pool_max_size,
-    bypass_staleness_checks = @bypass_staleness_checks
+    bypass_staleness_checks = @bypass_staleness_checks,
   ) : Fetch(Manifest)
     # Cache the metadata in the store
     filesystem_cache = Fetch::Cache::InStore(Manifest).new(

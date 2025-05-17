@@ -1,6 +1,7 @@
 require "msgpack"
 require "utils/directories"
 require "utils/misc"
+require "concurrency/data_structures/safe_hash"
 
 class Fetch(T)
   abstract class Cache(T)
@@ -16,7 +17,7 @@ class Fetch(T)
 
     class InMemory(T) < Cache(T)
       def initialize(@fallback : Cache(T)? = nil)
-        @cache = SafeHash(String, T).new
+        @cache = Concurrency::SafeHash(String, T).new
       end
 
       def get(key_str : String, etag : String? = nil, *, fallback = true) : T?
@@ -103,7 +104,7 @@ class Fetch(T)
         *,
         @serializer : Serializer(T),
         @bypass_staleness_checks : Bool = false,
-        @raise_on_cache_miss : Bool = false
+        @raise_on_cache_miss : Bool = false,
       )
         @path = Path.new(store_path, CACHE_DIR)
         Utils::Directories.mkdir_p(@path)

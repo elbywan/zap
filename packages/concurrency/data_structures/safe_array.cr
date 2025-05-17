@@ -3,7 +3,7 @@
 
   struct Concurrency::SafeArray(T)
     property inner : Array(T)
-    @lock = RWLock.new
+    @lock = Concurrency::RWLock.new
 
     def initialize(*args, **kwargs)
       @inner = Array(T).new(*args, **kwargs)

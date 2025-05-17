@@ -293,7 +293,7 @@ module Commands::Install::Resolver
     # Infer new dependency type based on CLI flags
     type = state.install_config.save_dev ? Data::Package::DependencyType::DevDependency : state.install_config.save_optional ? Data::Package::DependencyType::OptionalDependency : Data::Package::DependencyType::Dependency
     # For each added dependency…
-    pipeline = Pipeline.new
+    pipeline = Pipeline.new(workers: state.install_config.workers)
     state.install_config.added_packages.each do |new_dep|
       pipeline.process do
         # Infer the package.json version from the CLI argument

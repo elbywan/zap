@@ -1,3 +1,6 @@
+# require "sync/rw_lock"
+# alias Concurrency::RWLock = Sync::RWLock
+
 class Concurrency::RWLock
   @writer = Atomic(Int32).new(0)
   @readers = Atomic(Int32).new(0)
@@ -20,7 +23,7 @@ class Concurrency::RWLock
     @readers.sub(1)
   end
 
-  def read
+  def read(&)
     read_lock
     yield
   ensure
@@ -41,7 +44,7 @@ class Concurrency::RWLock
     @writer.set(0)
   end
 
-  def write
+  def write(&)
     write_lock
     yield
   ensure

@@ -46,6 +46,8 @@ struct Commands::Install::Config < Core::CommandConfig
   getter check_peer_dependencies : Bool? = nil
   @[Env]
   getter prefer_offline : Bool = false
+  @[Env]
+  getter workers : Int32 = {System.cpu_count, 8}.min.to_i32
 
   def omit_dev?
     omit.includes?(Omit::Dev)

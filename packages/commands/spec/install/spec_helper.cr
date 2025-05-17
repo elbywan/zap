@@ -10,6 +10,7 @@ module Commands::Install::Protocol::SpecHelper
     install_config = Install::Config.new
     store = Store.new(config.store_path)
     main_package = Data::Package.new
+    pipeline = Concurrency::Pipeline.new(workers: install_config.workers)
     lockfile = Data::Lockfile.new(config.prefix)
     context = Core::Config::InferredContext.new(
       main_package,
@@ -32,7 +33,8 @@ module Commands::Install::Protocol::SpecHelper
       lockfile,
       context,
       npmrc,
-      registry_clients
+      registry_clients,
+      pipeline
     )
     state
   end

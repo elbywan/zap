@@ -3,7 +3,7 @@
 
   struct Concurrency::SafeSet(T)
     property inner : Set(T)
-    getter lock = RWLock.new
+    getter lock = Concurrency::RWLock.new
 
     def initialize(*args, **kwargs)
       @inner = Set(T).new(*args, **kwargs)

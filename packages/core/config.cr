@@ -56,7 +56,7 @@ struct Core::Config
     {% end %}
   )
   @[Env]
-  getter network_concurrency : Int32 = 15
+  getter network_concurrency : Int32 = 16
   @[Env]
   getter lockfile_format : Data::Lockfile::Format? = nil
 

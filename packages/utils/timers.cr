@@ -1,3 +1,5 @@
+require "concurrency/mutex"
+
 module Utils
   # Mimics setTimeout in JavaScript
   struct Timeout
@@ -22,7 +24,7 @@ module Utils
       @interval = interval
       @block = block
       @last = Time.monotonic
-      @lock = Mutex.new
+      @lock = Concurrency::Mutex.new
     end
 
     def call

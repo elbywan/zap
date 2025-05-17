@@ -1,5 +1,4 @@
 require "http/client"
-require "json"
 require "concurrency/data_structures/safe_hash"
 require "concurrency/dedupe_lock"
 require "concurrency/pool"
@@ -15,6 +14,9 @@ class Fetch(T)
 
   getter base_url : String
   @pool : Concurrency::Pool(HTTP::Client)
+  {% if flag?(:preview_mt) && flag?(:execution_context) %}
+    @execution_context : Fiber::ExecutionContext = Fiber::ExecutionContext::SingleThreaded.new("single-threaded-fetch")
+  {% end %}
 
   def initialize(
     @base_url : String,
@@ -34,34 +36,67 @@ class Fetch(T)
     initialize(base_url, max_clients) { }
   end
 
-  def client(retry_attempts = 3, &)
+  {% begin %}
+  def client(retry_attempts = 3, &block : HTTP::Client -> R) forall R
     retry_count = 0
-    @pool.get do |client|
-      loop do
-        retry_count += 1
-        begin
-          break yield client
-        rescue e
-          Log.debug { e.message.colorize.red.to_s + Shared::Constants::NEW_LINE + e.backtrace.map { |line| "\t#{line}" }.join(Shared::Constants::NEW_LINE).colorize.red.to_s }
-          client.close
-          sleep 0.5.seconds * retry_count
-          raise e if retry_count >= retry_attempts
+
+    {% if flag?(:preview_mt) && flag?(:execution_context) %}
+      channel : Channel(R | Exception) = Channel(R | Exception).new
+      @execution_context.spawn do
+        @pool.get do |client|
+          loop do
+            retry_count += 1
+            begin
+              channel.send(block.call client)
+              break
+            rescue e
+              Log.debug { e.message.colorize.red.to_s + Shared::Constants::NEW_LINE + e.backtrace.map { |line| "\t#{line}" }.join(Shared::Constants::NEW_LINE).colorize.red.to_s }
+              client.close
+              sleep 0.5.seconds * retry_count
+              break channel.send(e) if retry_count >= retry_attempts
+            end
+          end
         end
       end
-    end
+
+      result = channel.receive
+      raise result if result.is_a?(Exception)
+      result
+    {% else %}
+      @pool.get do |client|
+        loop do
+          retry_count += 1
+          begin
+            break yield client
+          rescue e
+            Log.debug { e.message.colorize.red.to_s + Shared::Constants::NEW_LINE + e.backtrace.map { |line| "\t#{line}" }.join(Shared::Constants::NEW_LINE).colorize.red.to_s }
+            client.close
+            sleep 0.5.seconds * retry_count
+            raise e if retry_count >= retry_attempts
+          end
+        end
+      end
+    {% end %}
   end
+  {% end %}
 
   def fetch_with_cache(*args, **kwargs, &transform_body : (String -> T)) : T
     url = args[0]
     full_url = @base_url + url
 
+    # Log.debug { "Fetching and caching #{full_url}…" }
+
     # Extract the body from the cache if possible
     if body = @cache.get(full_url)
+      # Log.debug { "Cache hit for #{full_url}" }
       return body
     end
+
+    # Log.debug { "Cache miss for #{full_url}" }
+
     # Dedupe requests by having an inflight channel for each URL
     dedupe(url) do
-      client do |http|
+      manifest_or_body, cache_expiry, cache_etag = client do |http|
         expiry = nil
         cache_control_directives = nil
         etag = nil
@@ -76,7 +111,7 @@ class Fetch(T)
         # Attempt to extract the cached value from the cache again but this time with the etag
         if cached_value
           @cache.set(full_url, cached_value, expiry, etag)
-          next cached_value
+          next {cached_value, expiry, etag}
         end
 
         http.get(*args, **kwargs) do |response|
@@ -92,11 +127,16 @@ class Fetch(T)
             raise "Content-Length mismatch for #{url} (#{content_length} != #{response_body.bytesize})"
           end
 
-          transformed_body = transform_body.call(response_body)
-
-          @cache.set(full_url, transformed_body, expiry, etag)
-          next transformed_body
+          next {response_body, expiry, etag}
         end
+      end
+
+      if manifest_or_body.is_a?(String)
+        manifest = transform_body.call(manifest_or_body)
+        @cache.set(full_url, manifest, cache_expiry, cache_etag)
+        manifest
+      else
+        manifest_or_body
       end
     end
   end

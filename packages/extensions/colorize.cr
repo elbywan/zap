@@ -1,11 +1,12 @@
 {% if flag?("preview_mt") %}
 {% verbatim do %}
 require "colorize"
+require "concurrency/mutex"
 
 # The original Colorize module is not thread safe, so we need to wrap it in a thread safe version.
 # I could not find a way to do this without copy pasting the entire module, so here it is.
 struct Colorize::Object::Sync(T)
-  @@mutex = Mutex.new
+  @@mutex = Concurrency::Mutex.new
 
   # Surrounds *io* by the ANSI escape codes and lets you build colored strings:
   #

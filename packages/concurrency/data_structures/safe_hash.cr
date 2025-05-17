@@ -4,7 +4,7 @@
 
   struct Concurrency::SafeHash(K, V)
     getter inner : Hash(K, V)
-    getter lock = RWLock.new
+    getter lock = Concurrency::RWLock.new
 
     def initialize(*args, **kwargs)
       @inner = Hash(K, V).new(*args, **kwargs)

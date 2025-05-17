@@ -5,7 +5,7 @@ require "extensions/crystar/writer"
 require "./file"
 
 module Utils::TarGzip
-  def self.unpack(io : IO) : Nil
+  def self.unpack(io : IO, &) : Nil
     Compress::Gzip::Reader.open(io) do |gzip|
       Crystar::Reader.open(gzip) do |tar|
         tar.each_entry do |entry|

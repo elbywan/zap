@@ -1,6 +1,7 @@
 require "json"
 require "yaml"
 require "msgpack"
+require "concurrency/mutex"
 
 module Utils::Macros
   macro swallow_error
@@ -25,7 +26,7 @@ module Utils::Macros
     @[JSON::Field(ignore: true)]
     @[YAML::Field(ignore: true)]
     @[MessagePack::Field(ignore: true)]
-    @_{{name.var.id}}_lock = Mutex.new
+    @_{{name.var.id}}_lock = Concurrency::Mutex.new
 
     def {{name.var.id}} : {{name.type}}
       @_{{name.var.id}}_lock.synchronize do
@@ -51,7 +52,7 @@ module Utils::Macros
     @[JSON::Field(ignore: true)]
     @[YAML::Field(ignore: true)]
     @[MessagePack::Field(ignore: true)]
-    @_{{name.var.id}}_lock = Mutex.new
+    @_{{name.var.id}}_lock = Concurrency::Mutex.new
 
     def {{name.var.id}} : {{name.type}}
      @_{{name.var.id}}_lock.synchronize do

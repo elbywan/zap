@@ -5,7 +5,6 @@ require "reporter/reporter"
 require "reporter/null"
 require "reporter/interactive"
 require "store"
-require "extensions/scheduler"
 require "data/package/scripts"
 require "utils/shasum"
 require "./config"
@@ -91,7 +90,8 @@ module Commands::Install
           npmrc,
           pool_max_size: config.network_concurrency,
           bypass_staleness_checks: install_config.prefer_offline
-        )
+        ),
+        pipeline: Concurrency::Pipeline.new(workers: install_config.workers)
       )
 
       Log.debug { "Install configuration: #{state.install_config.pretty_inspect}" }
@@ -176,7 +176,7 @@ module Commands::Install
     unless config.silent
       workers_info = begin
         {% if flag?(:preview_mt) %}
-          " • #{"workers:".colorize.blue} #{Crystal::Scheduler.nb_of_workers}"
+          " • #{"workers:".colorize.blue} #{install_config.workers}"
         {% else %}
           ""
         {% end %}
@@ -297,7 +297,7 @@ module Commands::Install
   end
 
   private def self.resolve_dependencies(state : State)
-    state.pipeline.set_concurrency(state.config.network_concurrency * 3)
+    state.pipeline.set_concurrency(state.config.network_concurrency * 5)
     state.reporter.report_resolver_updates do
       # Resolve overrides
       Log.debug { "• Resolving overrides" }

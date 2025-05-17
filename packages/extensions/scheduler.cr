@@ -1,6 +1,6 @@
 class Crystal::Scheduler
   class_getter nb_of_workers = 1
-  {% if flag?(:preview_mt) %}
+  {% if flag?(:preview_mt) && !flag?(:execution_context) %}
     private def self.worker_count
       env_workers = ENV["CRYSTAL_WORKERS"]? || ENV["ZAP_WORKERS"]?
 

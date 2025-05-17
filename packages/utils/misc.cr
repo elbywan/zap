@@ -1,3 +1,5 @@
+require "concurrency/mutex"
+
 module Utils::Misc
   def self.parse_key(raw_key : String) : {String, String?}
     split_key = raw_key.split('@')
@@ -55,7 +57,7 @@ module Utils::Misc
 
   class STDOUTSync < IO
     def initialize
-      @mutex = Mutex.new
+      @mutex = Concurrency::Mutex.new
       @stdout = STDOUT
     end
 

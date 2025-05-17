@@ -11,3 +11,6 @@ dependencies:
   msgpack:
     github: crystal-community/msgpack-crystal
     version: 1.3.4
+  # sync:
+  #   github: ysbaddaden/sync
+  #   branch: main

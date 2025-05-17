@@ -1,5 +1,6 @@
 require "utils/targzip"
 require "utils/directories"
+require "concurrency/mutex"
 require "data/package"
 require "core/config"
 
@@ -74,7 +75,7 @@ struct Store
     end
   end
 
-  @@global_flock_lock = Mutex.new
+  @@global_flock_lock = Concurrency::Mutex.new
   @@global_flock_counter : Int32 = 0
   @@global_flock : ::File | Nil = nil
 

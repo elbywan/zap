@@ -7,6 +7,7 @@ require "shared/constants"
 require "utils/macros"
 require "utils/converters"
 require "concurrency/rwlock"
+require "concurrency/mutex"
 require "./package/overrides"
 require "./package/fields/utility"
 require "./package/fields/config"
@@ -50,7 +51,7 @@ class Data::Lockfile
   end
 
   # Not serialized
-  internal { @roots_lock = Mutex.new }
+  internal { @roots_lock = Concurrency::Mutex.new }
   internal { getter packages_lock = Concurrency::RWLock.new }
   internal { property read_status : ReadStatus = ReadStatus::NotFound }
   internal { property format : Format = Format::YAML }

@@ -5,8 +5,16 @@ class Concurrency::Pipeline
   @errors = SafeArray(Exception).new
   @end_channel = Channel(SafeArray(Exception)?).new
   @max_fibers_channel : Channel(Nil)? = nil
+  {% if flag?(:preview_mt) && flag?(:execution_context) %}
+    @execution_context : Fiber::ExecutionContext = Fiber::ExecutionContext.default
+  {% end %}
 
-  def initialize
+  def initialize(*, workers : Int32 = 1)
+    {% if flag?(:preview_mt) && flag?(:execution_context) %}
+      if workers > 1
+        @execution_context = Fiber::ExecutionContext::MultiThreaded.new("multi-threaded-pipeline", workers)
+      end
+    {% end %}
   end
 
   def reset
@@ -26,7 +34,7 @@ class Concurrency::Pipeline
     end
   end
 
-  def check_max_fibers
+  def check_max_fibers(&)
     if (max_fibers_channel = @max_fibers_channel).nil?
       yield
     else
@@ -42,10 +50,16 @@ class Concurrency::Pipeline
     end
   end
 
+  {% begin %}
   def process(&block)
     return if @errors.size > 0
     @counter.add(1)
-    spawn do
+    {% if flag?(:preview_mt) && flag?(:execution_context) %}
+      {% spawner = "@execution_context.spawn" %}
+    {% else %}
+      {% spawner = "spawn" %}
+    {% end %}
+    {{ spawner.id }} do
       check_max_fibers do
         next if @errors.size > 0
         block.call
@@ -66,6 +80,7 @@ class Concurrency::Pipeline
       end
     end
   end
+  {% end %}
 
   class PipelineException < Exception
     def initialize(@exceptions : SafeArray(Exception))

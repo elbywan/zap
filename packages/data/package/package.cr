@@ -4,6 +4,7 @@ require "msgpack"
 require "colorize"
 require "semver"
 require "concurrency/data_structures/safe_set"
+require "concurrency/mutex"
 require "utils/macros"
 require "utils/converters"
 # require "core/config"
@@ -98,7 +99,7 @@ class Data::Package
 
   def_equals_and_hash key
 
-  internal { getter lock = Mutex.new }
+  internal { getter lock = Concurrency::Mutex.new }
 
   def add_dependency(name : String, version : String, type : DependencyType)
     @lock.synchronize do

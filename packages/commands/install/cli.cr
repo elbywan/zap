@@ -49,6 +49,11 @@ class Commands::Install::CLI < Commands::CLI
     Helpers.flag("--production", "If true, will not install devDependencies.") do
       command_config.ref = install_config.copy_with(omit: [Commands::Install::Config::Omit::Dev])
     end
+    {% if flag?(:preview_mt) && flag?(:execution_context) %}
+      Helpers.flag("--workers <nb_of_workers>", "Set the number of worker threads to use. #{"[env: ZAP_WORKERS]".colorize.dim}") do |nb_of_workers|
+        command_config.ref = install_config.copy_with(workers: nb_of_workers.to_i32)
+      end
+    {% end %}
 
     Helpers.subSeparator("Strategies")
 

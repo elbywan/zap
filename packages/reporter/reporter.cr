@@ -1,8 +1,9 @@
 require "shared/constants"
+require "concurrency/mutex"
 
 abstract class Reporter
   Log = ::Log.for("zap.reporter")
-  getter io_lock = Mutex.new
+  getter io_lock = Concurrency::Mutex.new
 
   abstract def output : IO
   abstract def output_sync(&block : IO ->) : Nil
