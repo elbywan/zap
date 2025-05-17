@@ -1,13 +1,10 @@
+---
 name: zap
-version: 0.1.1
-
+version: 0.1.2
 authors:
-  - Julien Elbaz <elbywan@hotmail.com>
-
-crystal: ">= 1.6.1, < 2.0"
-
+- Julien Elbaz <elbywan@hotmail.com>
+crystal: '>= 1.6.1, < 2.0'
 license: MIT
-
 crystalline:
   projects:
-    - ./packages/**
+  - ./packages/**

@@ -1,16 +1,12 @@
+---
 name: concurrency
-version: 0.1.0
-
+version: 0.1.2
 crystalline:
   main: spec/specs.cr
   flags:
-    - preview_mt
-    - execution_context
-
+  - preview_mt
+  - execution_context
 dependencies:
   msgpack:
     github: crystal-community/msgpack-crystal
     version: 1.3.4
-  # sync:
-  #   github: ysbaddaden/sync
-  #   branch: main

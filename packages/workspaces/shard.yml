@@ -1,16 +1,17 @@
+---
 name: workspaces
-version: 0.1.0
+version: 0.1.2
 crystalline:
   main: spec/specs.cr
   flags:
-    - preview_mt
-    - execution_context
+  - preview_mt
+  - execution_context
 dependencies:
   data:
-    path: "../data"
+    path: ../data
   utils:
-    path: "../utils"
+    path: ../utils
   semver:
-    path: "../semver"
+    path: ../semver
   shared:
-    path: "../shared"
+    path: ../shared

@@ -1,6 +1,6 @@
 {
   "name": "@zap./zap",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Zap is a package manager for the Javascript language",
   "main": "index.js",
   "repository": {
@@ -23,9 +23,9 @@
     "zap": "bin/zap"
   },
   "optionalDependencies": {
-    "@zap./darwin-arm64": "0.1.1",
-    "@zap./darwin-x64": "0.1.1",
-    "@zap./linux-x64": "0.1.1",
-    "@zap./win32-x64": "0.1.1"
+    "@zap./darwin-arm64": "0.1.2",
+    "@zap./darwin-x64": "0.1.2",
+    "@zap./linux-x64": "0.1.2",
+    "@zap./win32-x64": "0.1.2"
   }
 }

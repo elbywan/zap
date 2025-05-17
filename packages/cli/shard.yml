@@ -1,10 +1,11 @@
+---
 name: cli
-version: 0.1.0
+version: 0.1.2
 crystalline:
   main: zap.cr
   flags:
-    - preview_mt
-    - execution_context
+  - preview_mt
+  - execution_context
 targets:
   zap:
     main: zap.cr
