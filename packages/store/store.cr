@@ -37,7 +37,7 @@ struct Store
   end
 
   def file_path(filename : String)
-    Path.new(@global_package_store_path, filename.gsub("/", "+"))
+    Path.new(@global_package_store_path, sanitize_path(filename))
   end
 
   def store_file(filename : String, contents : IO | String)
@@ -118,7 +118,12 @@ struct Store
   end
 
   private def normalize_path(path : String | Path) : Path
-    Path.new(path.to_s.gsub("/", "+"))
+    Path.new(sanitize_path(path.to_s))
+  end
+
+  private def sanitize_path(path : String) : String
+    # Remove path traversal sequences and replace path separators
+    path.gsub("..", "").gsub("/", "+").gsub("\\", "+")
   end
 
   private def init_package(package : Data::Package)
