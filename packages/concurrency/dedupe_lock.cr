@@ -17,7 +17,15 @@ module Concurrency::DedupeLock(T)
     else
       @channels[key] = Channel(T).new
       @lock.unlock
-      value = yield
+      begin
+        value = yield
+      rescue ex
+        # Clean up the channel on error before re-raising
+        @lock.lock
+        @channels.delete(key).try(&.close)
+        @lock.unlock
+        raise ex
+      end
       @lock.lock
       @channels.delete(key).try do |chan|
         if value.is_a?(T)
@@ -35,9 +43,6 @@ module Concurrency::DedupeLock(T)
       @lock.unlock
       value
     end
-  rescue ex
-    @lock.unlock
-    raise ex
   end
 end
 
@@ -61,7 +66,15 @@ module Concurrency::DedupeLock::Global
       else
         @@%channels[key] = Channel({{type}}).new
         @@%lock.unlock
-        value = yield
+        begin
+          value = yield
+        rescue ex
+          # Clean up the channel on error before re-raising
+          @@%lock.lock
+          @@%channels.delete(key).try(&.close)
+          @@%lock.unlock
+          raise ex
+        end
         @@%lock.lock
         @@%channels.delete(key).try do |chan|
           if value.is_a?({{type}})
@@ -79,9 +92,6 @@ module Concurrency::DedupeLock::Global
         @@%lock.unlock
         value
       end
-    rescue ex
-      @@%lock.unlock
-      raise ex
     end
   end
 end
