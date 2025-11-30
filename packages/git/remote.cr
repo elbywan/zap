@@ -79,17 +79,17 @@ class Git::Remote
   def clone(dest : (String | Path) = nil) : Nil
     temp_dest = dest.to_s + ".tmp"
     FileUtils.rm_rf(temp_dest) if ::File.exists?(temp_dest)
-    self.class.run("git clone --quiet --filter=tree:0 #{@base_url} #{temp_dest}", @output)
-    self.class.run("git checkout --quiet #{resolved_commitish}", @output, chdir: temp_dest.to_s)
+    self.class.run("git", ["clone", "--quiet", "--filter=tree:0", @base_url, temp_dest], @output)
+    self.class.run("git", ["checkout", "--quiet", resolved_commitish], @output, chdir: temp_dest.to_s)
     ::File.rename(temp_dest, dest)
   end
 
   def self.head_commit_hash(dest : Path | String) : String
-    self.run_and_get_output("git rev-parse HEAD", chdir: dest.to_s).chomp
+    self.run_and_get_output("git", ["rev-parse", "HEAD"], chdir: dest.to_s).chomp
   end
 
   def get_tag_for_semver!(semver : String) : String
-    raw_tags_list = self.class.run_and_get_output("git ls-remote --tags --refs -q #{@base_url}")
+    raw_tags_list = self.class.run_and_get_output("git", ["ls-remote", "--tags", "--refs", "-q", @base_url])
     tags = raw_tags_list.each_line.map do |line|
       line.split("\t").last.split("/").last
     end
@@ -109,31 +109,29 @@ class Git::Remote
   end
 
   def get_ref_commit?(ref : String) : String?
-    self.class.run_and_get_output("git ls-remote #{@base_url} #{ref}").split(/\s+/).first?
+    self.class.run_and_get_output("git", ["ls-remote", @base_url, ref]).split(/\s+/).first?
   end
 
   def get_default_branch? : String?
-    result = self.class.run_and_get_output("git ls-remote --symref #{@base_url} HEAD")
+    result = self.class.run_and_get_output("git", ["ls-remote", "--symref", @base_url, "HEAD"])
     result.split(Shared::Constants::NEW_LINE)[0]?.try &.split(/\s+/)[1]?.try &.split("/").last?
   end
 
-  def self.run(command : String, stdio : Process::Stdio? = nil, **extra) : Nil
-    command_and_args = command.split(/\s+/)
+  def self.run(command : String, args : Array(String), stdio : Process::Stdio? = nil, **extra) : Nil
     output = stdio || Process::Redirect::Inherit
-    Log.debug { "Spawning: #{command_and_args} (#{extra})" }
-    status = Process.run(command_and_args[0], **extra, args: command_and_args[1..]? || nil, output: output, error: output)
+    Log.debug { "Spawning: #{command} #{args} (#{extra})" }
+    status = Process.run(command, **extra, args: args, output: output, error: output)
     unless status.success?
       Fiber.yield
-      raise "Command failed: #{command} (#{status.exit_status})"
+      raise "Command failed: #{command} #{args.join(" ")} (#{status.exit_status})"
     end
   end
 
-  def self.run_and_get_output(command, **extra) : String
-    command_and_args = command.split(/\s+/)
+  def self.run_and_get_output(command : String, args : Array(String), **extra) : String
     stderr = IO::Memory.new
     stdout = IO::Memory.new
-    Log.debug { "Spawning: #{command_and_args} (#{extra})" }
-    status = Process.run(command_and_args[0], **extra, args: command_and_args[1..]? || nil, output: stdout, error: stderr)
+    Log.debug { "Spawning: #{command} #{args} (#{extra})" }
+    status = Process.run(command, **extra, args: args, output: stdout, error: stderr)
     unless status.success?
       raise stderr.to_s
     end
