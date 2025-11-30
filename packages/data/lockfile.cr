@@ -68,12 +68,15 @@ class Data::Lockfile
         instance = self.from_msgpack(File.read(lockfile_path))
         instance.read_status = ReadStatus::FromDisk
         instance.format = Format::MessagePack
-      rescue
+      rescue ex_msgpack
         begin
           instance = self.from_yaml(File.read(lockfile_path))
           instance.read_status = ReadStatus::FromDisk
           instance.format = Format::YAML
-        rescue
+        rescue ex_yaml
+          Log.warn { "Failed to parse lockfile at #{lockfile_path}" }
+          Log.debug { "MessagePack parse error: #{ex_msgpack.message}" }
+          Log.debug { "YAML parse error: #{ex_yaml.message}" }
           instance = self.allocate
           instance.read_status = ReadStatus::Error
           instance.format = default_format
