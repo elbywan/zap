@@ -5,6 +5,7 @@ class Concurrency::Pipeline
   @errors = SafeArray(Exception).new
   @end_channel = Channel(SafeArray(Exception)?).new
   @max_fibers_channel : Channel(Nil)? = nil
+  @closing = Atomic(Int32).new(0)
   {% if flag?(:preview_mt) && flag?(:execution_context) %}
     @execution_context : Fiber::ExecutionContext = Fiber::ExecutionContext.default
   {% end %}
@@ -24,6 +25,7 @@ class Concurrency::Pipeline
     @end_channel = Channel(SafeArray(Exception)?).new
     @max_fibers_channel.try { |c| c.close unless c.closed? }
     @max_fibers_channel = nil
+    @closing = Atomic(Int32).new(0)
   end
 
   def set_concurrency(max_fibers : Int32 | Nil)
@@ -69,7 +71,8 @@ class Concurrency::Pipeline
         @errors << ex
       ensure
         counter = @counter.sub(1)
-        if counter <= 1 && !@end_channel.closed?
+        # Use atomic swap to ensure only one fiber closes the channel
+        if counter <= 1 && @closing.swap(1) == 0 && !@end_channel.closed?
           if @errors.size > 0
             select
             when @end_channel.send(@errors)
