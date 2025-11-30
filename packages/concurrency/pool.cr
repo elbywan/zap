@@ -20,10 +20,11 @@ class Concurrency::Pool(T)
   def get : T
     size = @size.add(1)
     # capacity not reached, create new object and add to pool
-    if size < @capacity
-      Log.debug { "Adding instance of #{T} to the pool. Pool size: #{size + 1}. Capacity: #{@capacity}" }
+    if size <= @capacity
+      Log.debug { "Adding instance of #{T} to the pool. Pool size: #{size}. Capacity: #{@capacity}" }
       @initializer.call
     else
+      @size.sub(1)  # Revert the increment since we're waiting for an existing object
       @pool.receive
     end
   end
