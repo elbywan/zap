@@ -113,7 +113,7 @@ run_command = ->(project : {path: String, name: String, shard_yml: YAML::Any}) d
     else
       puts "❌ #{project_name}".colorize.red.bold
       puts buffer.rewind.gets_to_end if buffer.size > 0
-      raise "Failed to run command for project #{project_name} with exit code #{status.exit_code}"
+      raise %(Failed to run command "#{full_command}" for project #{project_name} with exit code #{status.exit_code}")
     end
   end
 ensure

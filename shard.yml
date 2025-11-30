@@ -8,3 +8,6 @@ license: MIT
 crystalline:
   projects:
   - ./packages/**
+  flags:
+    - preview_mt
+    - execution_context

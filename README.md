@@ -240,11 +240,11 @@ On top of that, zap will also try to cache package manifests in order to avoid u
 
 ```bash
 git clone https://github.com/elbywan/zap
-crystal projects.cr spec install
+crystal projects.cr install
 # Run the specs
 crystal projects.cr spec
 # Build locally (-Dpreview_mt might not work on some os/arch)
-crystal projects.cr cli:build --production  --release --progress -Dpreview_mt -Dexecution_context
+crystal projects.cr build:cli --production  --release --progress -Dpreview_mt -Dexecution_context
 # Run the binary
 ./packages/cli/bin/zap --help
 ```
