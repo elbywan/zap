@@ -43,11 +43,12 @@ class Concurrency::Pipeline
       begin
         max_fibers_channel.send(nil)
         yield
-        max_fibers_channel.receive
       rescue Channel::ClosedError
-        # Ignore
-      rescue ex
-        max_fibers_channel.receive
+        # Ignore - pipeline is shutting down
+        return
+      ensure
+        # Always release the semaphore slot, even on exception
+        max_fibers_channel.receive? unless max_fibers_channel.closed?
       end
     end
   end
