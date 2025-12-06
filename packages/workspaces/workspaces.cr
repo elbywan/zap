@@ -22,7 +22,8 @@ class Workspaces
       else
         @inner[base] = [] of String
       end
-      process = Process.new("git diff --name-only #{base}", shell: true, input: Process::Redirect::Inherit, output: Process::Redirect::Pipe, error: Process::Redirect::Inherit)
+      # Use argument array to prevent command injection
+      process = Process.new("git", ["diff", "--name-only", base], input: Process::Redirect::Inherit, output: Process::Redirect::Pipe, error: Process::Redirect::Inherit)
       output = process.output.gets_to_end
       status = process.wait
       unless status.success?
