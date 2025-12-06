@@ -28,7 +28,7 @@ module Commands::Install
     store : ::Store? = nil,
     raise_on_failure : Bool = false,
   )
-    state = uninitialized State
+    state : State? = nil
     reporter ||= config.silent ? Reporter::Null.new : Reporter::Interactive.new
     config = config.check_if_store_is_linkeable
     store ||= ::Store.new(config.store_path)
@@ -147,7 +147,9 @@ module Commands::Install
     end
 
     # Print the report
-    state.reporter.report_done(realtime, memory, state.install_config, unmet_peers: unmet_peers_hash)
+    if s = state
+      s.reporter.report_done(realtime, memory, s.install_config, unmet_peers: unmet_peers_hash)
+    end
   rescue e
     raise e if raise_on_failure
     reporter.try &.error(e)
