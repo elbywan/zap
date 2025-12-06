@@ -21,7 +21,6 @@ class Data::Package
 
     @[JSON::Field(ignore: true)]
     @[YAML::Field(converter: Utils::Converters::OrderedSet(String))]
-    @[YAML::Field(converter: Utils::Converters::OrderedSet(String))]
     property roots : Set(String) do
       Set(String).new
     end

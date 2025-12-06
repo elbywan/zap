@@ -18,7 +18,7 @@
            :concat,
            :delete,
            :rehash,
-           :substract,
+           :subtract,
          ] %}
 
       {% for write_method in write_methods %}
