@@ -4,18 +4,25 @@
 class Concurrency::RWLock
   @writer = Atomic(Int32).new(0)
   @readers = Atomic(Int32).new(0)
+  @writer_waiting = Atomic(Int32).new(0)
 
   def read_lock
     loop do
-      while @writer.get != 0
-        Intrinsics.pause
+      # Wait if a writer is active or waiting (prevents writer starvation)
+      while @writer.get != 0 || @writer_waiting.get != 0
+        Fiber.yield
       end
 
       @readers.add(1)
 
-      break if @writer.get == 0
+      # Double-check: if a writer snuck in, back off and retry
+      if @writer.get != 0
+        @readers.sub(1)
+        Fiber.yield
+        next
+      end
 
-      @readers.sub(1)
+      break
     end
   end
 
@@ -31,12 +38,20 @@ class Concurrency::RWLock
   end
 
   def write_lock
+    # Signal that a writer is waiting (prevents new readers from acquiring)
+    @writer_waiting.add(1)
+
+    # Try to acquire the writer lock
     while @writer.swap(1) != 0
-      Intrinsics.pause
+      Fiber.yield
     end
 
+    # Writer lock acquired, no longer just waiting
+    @writer_waiting.sub(1)
+
+    # Wait for all readers to finish
     while @readers.get != 0
-      Intrinsics.pause
+      Fiber.yield
     end
   end
 
