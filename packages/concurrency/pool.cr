@@ -40,6 +40,11 @@ class Concurrency::Pool(T)
     @pool.send(obj)
   end
 
+  # Returns the number of clients that have been created (not capacity)
+  def size : Int32
+    @size.get
+  end
+
   def close
     @pool.close
   end

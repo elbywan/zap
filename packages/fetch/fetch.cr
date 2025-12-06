@@ -146,10 +146,12 @@ class Fetch(T)
   end
 
   def close
-    @pool_max_size.times do
-      @pool.get.close
-    end
+    # Close only the clients that were actually created, not pool_max_size
+    # Use a non-blocking receive to avoid deadlock if clients are still in-flight
     @pool.close
+    while client = @pool.receive?
+      client.close
+    end
   end
 
   private def extract_cache_headers(response : HTTP::Client::Response)
