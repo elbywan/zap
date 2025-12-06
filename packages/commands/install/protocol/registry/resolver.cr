@@ -68,7 +68,10 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
 
       yield
 
-      dist = metadata.dist.not_nil!.as(Data::Package::Dist::Registry)
+      dist = metadata.dist
+      unless dist.is_a?(Data::Package::Dist::Registry)
+        raise "Expected registry dist for #{metadata.name}@#{metadata.version}, got #{dist.class}"
+      end
       tarball_url = dist.tarball
       integrity = dist.integrity.try &.split(" ")[0]
       shasum = dist.shasum
