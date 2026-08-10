@@ -69,9 +69,9 @@ class Data::Package
     end
 
     def dependencies_size(*, include_dev : Bool = true, include_optional : Bool = true) : Int
-      dependencies.try(&.size) || 0 +
-        (include_dev ? dev_dependencies.try(&.size) || 0 : 0) +
-        (include_optional ? optional_dependencies.try(&.size) || 0 : 0)
+      (dependencies.try(&.size) || 0) +
+        (include_dev ? (dev_dependencies.try(&.size) || 0) : 0) +
+        (include_optional ? (optional_dependencies.try(&.size) || 0) : 0)
     end
 
     def dependency_specifier?(name : String, *, include_dev : Bool = true, include_optional : Bool = true) : (String | Package::Alias)?

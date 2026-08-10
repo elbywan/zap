@@ -1,7 +1,6 @@
 require "log"
 require "term-cursor"
 require "utils/timers"
-require "concurrency/thread"
 require "semver"
 require "./reporter"
 

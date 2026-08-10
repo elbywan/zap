@@ -10,7 +10,7 @@ module Commands::Why
   ANCESTOR_PATH_PREFIX_CHAR     = '├'
   ANCESTOR_PATH_END_PREFIX_CHAR = '└'
 
-  def self.run(config : Core::Config, why_config : Why::Config)
+  def self.run(config : Core::Config, why_config : Why::Config, *, output_io : IO = STDOUT)
     why_config = why_config.from_args(ARGV)
     Log.debug { "Parsed package arguments: #{why_config.packages}" }
 
@@ -57,7 +57,7 @@ module Commands::Why
 
     # sort the final ouput by package key
     output_by_package.sort { |(key1, _), (key2, _)| key1 <=> key2 }.each do |_, output|
-      puts output
+      output_io.puts output
     end
   end
 

@@ -8,7 +8,7 @@ module Commands::Install::Protocol::SpecHelper
   DUMMY_STATE = begin
     config = Core::Config.new
     install_config = Install::Config.new
-    store = Store.new(config.store_path)
+    store = ::Store.new(config.store_path)
     main_package = Data::Package.new
     pipeline = Concurrency::Pipeline.new(workers: install_config.workers)
     lockfile = Data::Lockfile.new(config.prefix)

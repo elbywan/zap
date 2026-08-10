@@ -10,6 +10,3 @@ dependencies:
   utils:
     path: ../utils
 crystalline:
-  flags:
-  - preview_mt
-  - execution_context

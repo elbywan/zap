@@ -45,9 +45,16 @@ struct Commands::Install::Config < Core::CommandConfig
   @[Env]
   getter check_peer_dependencies : Bool? = nil
   @[Env]
-  getter prefer_offline : Bool = false
+  getter engine_strict : Bool = false
   @[Env]
-  getter workers : Int32 = {System.cpu_count, 8}.min.to_i32
+  getter prefer_offline : Bool = false
+  # Single-threaded by default: fetches run in the caller's fiber, so extra
+  # pipeline threads only add overhead (measured ~30% slower cold installs).
+  # Bump with --workers / ZAP_WORKERS when more parallelism pays off.
+  getter workers : Int32 = ENV["ZAP_WORKERS"]?.try(&.to_i?) || 1
+  # When set, resolution errors raise instead of exiting the process
+  # (used by the integration test suite)
+  getter raise_on_failure : Bool = false
 
   def omit_dev?
     omit.includes?(Omit::Dev)

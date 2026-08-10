@@ -43,17 +43,18 @@ class Commands::Install::CLI < Commands::CLI
     Helpers.flag("--peers", "Pass this flag to enable checking for missing peer dependencies. #{"[env: ZAP_INSTALL_CHECK_PEER_DEPENDENCIES]".colorize.dim}") do
       command_config.ref = install_config.copy_with(check_peer_dependencies: true)
     end
+    Helpers.flag("--engine-strict", "If true, fail the install when a package's engines field does not match the current node version. #{"[env: ZAP_INSTALL_ENGINE_STRICT]".colorize.dim}") do
+      command_config.ref = install_config.copy_with(engine_strict: true)
+    end
     Helpers.flag("--prefer-offline", "Bypass staleness checks for package metadata cached from the registry. #{"[env: ZAP_INSTALL_PREFER_OFFLINE]".colorize.dim}") do
       command_config.ref = install_config.copy_with(prefer_offline: true)
     end
     Helpers.flag("--production", "If true, will not install devDependencies.") do
       command_config.ref = install_config.copy_with(omit: [Commands::Install::Config::Omit::Dev])
     end
-    {% if flag?(:preview_mt) && flag?(:execution_context) %}
-      Helpers.flag("--workers <nb_of_workers>", "Set the number of worker threads to use. #{"[env: ZAP_WORKERS]".colorize.dim}") do |nb_of_workers|
-        command_config.ref = install_config.copy_with(workers: nb_of_workers.to_i32)
-      end
-    {% end %}
+    Helpers.flag("--workers <nb_of_workers>", "Set the number of worker threads to use. #{"[env: ZAP_WORKERS]".colorize.dim}") do |nb_of_workers|
+      command_config.ref = install_config.copy_with(workers: nb_of_workers.to_i32)
+    end
 
     Helpers.subSeparator("Strategies")
 

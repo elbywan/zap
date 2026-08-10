@@ -8,7 +8,7 @@ on:
 
 jobs:
   macos_x86_64:
-    runs-on: macos-13
+    runs-on: macos-15-intel
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -20,9 +20,9 @@ jobs:
           # openssl
           cp $(brew --prefix)/opt/openssl@3/lib/libssl.a ./libs
           cp $(brew --prefix)/opt/openssl@3/lib/libcrypto.a ./libs
-          # libevent
-          cp $(brew --prefix)/opt/libevent/lib/libevent_pthreads.a ./libs
-          cp $(brew --prefix)/opt/libevent/lib/libevent.a ./libs
+          # libevent (optional: the default event loop is kqueue on macOS)
+          cp $(brew --prefix)/opt/libevent/lib/libevent_pthreads.a ./libs || true
+          cp $(brew --prefix)/opt/libevent/lib/libevent.a ./libs || true
           # libyaml
           cp $(brew --prefix)/opt/libyaml/lib/libyaml.a ./libs
           # libgc
@@ -32,7 +32,7 @@ jobs:
       - name: Build the binary
         # Statically link most non-system libraries
         run: |
-          env CRYSTAL_LIBRARY_PATH=`pwd`/libs crystal projects.cr build:cli --no-debug --release -Dpreview_mt -Dexecution_context
+          env CRYSTAL_LIBRARY_PATH=`pwd`/libs crystal projects.cr build:cli --no-debug --release
           mkdir bin
           mv ./packages/cli/bin/zap ./bin/zap
       - name: Upload a Build Artifact
@@ -42,7 +42,7 @@ jobs:
           path: ./bin/zap
           if-no-files-found: error
   macos_arm64:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -54,9 +54,9 @@ jobs:
           # openssl
           cp $(brew --prefix)/opt/openssl@3/lib/libssl.a ./libs
           cp $(brew --prefix)/opt/openssl@3/lib/libcrypto.a ./libs
-          # libevent
-          cp $(brew --prefix)/opt/libevent/lib/libevent_pthreads.a ./libs
-          cp $(brew --prefix)/opt/libevent/lib/libevent.a ./libs
+          # libevent (optional: the default event loop is kqueue on macOS)
+          cp $(brew --prefix)/opt/libevent/lib/libevent_pthreads.a ./libs || true
+          cp $(brew --prefix)/opt/libevent/lib/libevent.a ./libs || true
           # libyaml
           cp $(brew --prefix)/opt/libyaml/lib/libyaml.a ./libs
           # libgc
@@ -65,7 +65,7 @@ jobs:
           cp $(brew --prefix)/opt/pcre2/lib/libpcre2-8.a ./libs
       - name: Build the binary
         run: |
-          env CRYSTAL_LIBRARY_PATH=`pwd`/libs crystal projects.cr build:cli --no-debug --release -Dpreview_mt -Dexecution_context
+          env CRYSTAL_LIBRARY_PATH=`pwd`/libs crystal projects.cr build:cli --no-debug --release
           mkdir bin
           mv ./packages/cli/bin/zap ./bin/zap
       - name: Upload a Build Artifact
@@ -87,7 +87,7 @@ jobs:
           apk add libressl-dev
       - name: Build the static binary
         run: |
-          crystal projects.cr build:cli --production --release --static --no-debug --stats -Dpreview_mt -Dexecution_context
+          crystal projects.cr build:cli --production --release --static --no-debug --stats
           mkdir bin
           mv ./packages/cli/bin/zap ./bin/zap
       - name: Upload a Build Artifact

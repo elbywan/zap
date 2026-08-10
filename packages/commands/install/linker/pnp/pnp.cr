@@ -40,7 +40,6 @@ class Commands::Install::Linker::PnP < Commands::Install::Linker::Base
       install_package(
         root,
         ancestors: Ancestors.new,
-        optional: false,
         workspace_or_main_package: workspace_or_main_package
       )
     end
@@ -57,7 +56,6 @@ class Commands::Install::Linker::PnP < Commands::Install::Linker::Base
     package_or_root : Data::Package | Data::Lockfile::Root,
     *,
     ancestors : Ancestors,
-    optional : Bool = false,
     workspace_or_main_package : (Workspaces::Workspace | Data::Package)? = nil
   ) : {reference: PackageReference, path: (Path | String)?}?
     resolved_peers = nil
@@ -72,8 +70,8 @@ class Commands::Install::Linker::PnP < Commands::Install::Linker::Base
 
       Log.debug { "(#{package.key}) Installing package…" }
 
-      # Raise if the architecture is not supported - unless the package is optional
-      check_os_and_cpu!(package, early: :return, optional: optional)
+      # Skip packages that do not match the current os/cpu, like npm/pnpm/yarn
+      check_os_and_cpu!(package, early: :return)
 
       # Shortcut for links, no need to check its dependencies
       if package.kind.link?
@@ -203,7 +201,10 @@ class Commands::Install::Linker::PnP < Commands::Install::Linker::Base
       else
         package_or_root
       end
-    pinned_packages = pinned_packages_origin.map_dependencies do |name, version_or_alias, type|
+    pinned_packages = pinned_packages_origin.map_dependencies(
+      include_dev: !state.install_config.omit_dev?,
+      include_optional: !state.install_config.omit_optional?
+    ) do |name, version_or_alias, type|
       key = version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key
       pkg = state.lockfile.packages[key]
       {
@@ -231,12 +232,11 @@ class Commands::Install::Linker::PnP < Commands::Install::Linker::Base
       # Install the dependency to its own folder
       install_data = install_package(
         dependency,
-        ancestors: ancestors,
-        optional: type.optional_dependency?
+        ancestors: ancestors
       )
       ancestors.shift
 
-      # Skip if the dependency is optional and was not installed
+      # Skip if the package was not installed (e.g. an os/cpu mismatch)
       next unless install_data
       dep_reference = install_data[:reference]
       dep_path = install_data[:path]

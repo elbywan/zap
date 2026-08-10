@@ -13,9 +13,7 @@ class Commands::Install::Linker::Classic < Commands::Install::Linker::Base
     # the list of ancestors of this dependency
     ancestors : Array(Data::Package),
     # eventually the name alias
-    alias : String?,
-    # for optional dependencies
-    optional : Bool = false
+    alias : String?
 
   class Node(T)
     getter value : T
@@ -74,15 +72,20 @@ class Commands::Install::Linker::Classic < Commands::Install::Linker::Base
         pkg_name = workspace_or_main_package.name
       end
       root = state.lockfile.roots[pkg_name]
-      root.each_dependency(sort: state.lockfile.read_status.not_found?) { |name, version_or_alias, type|
+      root.each_dependency(
+        sort: state.lockfile.read_status.not_found?,
+        include_dev: !state.install_config.omit_dev?,
+        include_optional: !state.install_config.omit_optional?
+      ) { |name, version_or_alias, type|
         pkg = state.lockfile.get_package?(name, version_or_alias)
         next unless pkg
+        # Apply overrides to direct dependencies as well (npm parity)
+        pkg = apply_override(state, pkg, workspace ? [workspace.package] : [main_package] of Data::Package)
         dependency_queue << DependencyItem.new(
           dependency: pkg,
           location_node: location,
           ancestors: workspace ? [workspace.package] : [main_package] of Data::Package,
-          alias: version_or_alias.is_a?(Data::Package::Alias) ? name : nil,
-          optional: type.optional_dependency?
+          alias: version_or_alias.is_a?(Data::Package::Alias) ? name : nil
         )
       }
     end
@@ -94,8 +97,8 @@ class Commands::Install::Linker::Classic < Commands::Install::Linker::Base
 
         Log.debug { "(#{dependency.key}) Installing package…" }
 
-        # Raise if the architecture is not supported
-        check_os_and_cpu!(dependency, early: :next, optional: dependency_item.optional)
+        # Skip packages that do not match the current os/cpu, like npm/pnpm/yarn
+        check_os_and_cpu!(dependency, early: :next)
 
         # Install a dependency and get the new cache to pass to the subdeps
         install_location, did_install = install_dependency(
@@ -119,28 +122,41 @@ class Commands::Install::Linker::Classic < Commands::Install::Linker::Base
 
         # Append self to the dependency ancestors
         ancestors = dependency_item.ancestors.dup.push(dependency)
+        # Names whose peer dependency is satisfied by an ancestor - their regular
+        # dependency is skipped so the peer wins (mirrors yarn's behavior)
+        peer_satisfied_names = Set(String).new
+        dependency.peer_dependencies.try &.each do |peer_name, peer_range|
+          if peer_satisfied_by_ancestor?(peer_name, peer_range, dependency_item.ancestors)
+            peer_satisfied_names << peer_name
+          end
+        end
         # Process each child dependency
         dependency.each_dependency(include_dev: false) do |name, version_or_alias, type|
           # Apply override
           pkg = state.lockfile.get_package?(name, version_or_alias)
           next unless pkg
           pkg = apply_override(state, pkg, ancestors)
+          # Skip the regular dependency when the peer is satisfied by an ancestor
+          next if peer_satisfied_names.includes?(name)
           # Queue child dependency
           dependency_queue << DependencyItem.new(
             dependency: pkg,
             location_node: install_location.not_nil!,
             ancestors: ancestors,
-            alias: version_or_alias.is_a?(Data::Package::Alias) ? name : nil,
-            optional: type.optional_dependency?
+            alias: version_or_alias.is_a?(Data::Package::Alias) ? name : nil
           )
         end
       rescue e
-        state.reporter.stop
-        parent_path = dependency_item.location_node.node_modules
-        ancestors_str = dependency_item.ancestors ? dependency_item.ancestors.map { |a| "#{a.name}@#{a.version}" }.join("~>") : ""
-        package_in_error = dependency ? "#{dependency_item.alias.try &.+(":")}#{dependency.name}@#{dependency.version}" : ""
-        state.reporter.error(e, "#{package_in_error.colorize.bold} (#{ancestors_str}) at #{parent_path.colorize.dim}")
-        exit Shared::Constants::ErrorCodes::LINKER_ERROR.to_i32
+        if state.install_config.raise_on_failure
+          raise e
+        else
+          state.reporter.stop
+          parent_path = dependency_item.location_node.node_modules
+          ancestors_str = dependency_item.ancestors ? dependency_item.ancestors.map { |a| "#{a.name}@#{a.version}" }.join("~>") : ""
+          package_in_error = dependency ? "#{dependency_item.alias.try &.+(":")}#{dependency.name}@#{dependency.version}" : ""
+          state.reporter.error(e, "#{package_in_error.colorize.bold} (#{ancestors_str}) at #{parent_path.colorize.dim}")
+          exit Shared::Constants::ErrorCodes::LINKER_ERROR.to_i32
+        end
       end
     end
   end
@@ -181,7 +197,9 @@ class Commands::Install::Linker::Classic < Commands::Install::Linker::Base
     end
 
     # Link binary files if they are declared in the package.json
+    # An empty bin string means no binaries (npm/yarn parity)
     if bin = dependency.bin
+      if !(bin.is_a?(String) && bin.empty?)
       bin_folder_path = state.config.bin_path
       is_direct_dependency = ancestors.size <= 1
       if !is_direct_dependency && state.install_config.strategy.classic_shallow?
@@ -206,6 +224,7 @@ class Commands::Install::Linker::Classic < Commands::Install::Linker::Base
           File.symlink(Path.new(bin).expand(install_folder), bin_path)
           Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
         end
+      end
       end
     end
 

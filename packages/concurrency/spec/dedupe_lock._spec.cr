@@ -67,6 +67,90 @@ describe DedupeLock, tags: {"utils", "utils.concurrency"} do
       end
     end
   end
+
+  it "should retry when the producer fails" do
+    s = Deduped.new
+
+    attempts = Atomic(Int32).new(0)
+    chan = Channel(Nil).new(2)
+    results = Array(Int32).new
+    errors = Array(Exception).new
+
+    # The producer fails after letting the waiter attach to the channel
+    spawn do
+      begin
+        s.dedupe("retry-key") do
+          sleep 0.1.seconds
+          attempts.add(1)
+          raise "producer failure"
+        end
+      rescue ex
+        errors << ex
+      end
+    ensure
+      chan.send(nil)
+    end
+
+    # The waiter retries and becomes the producer
+    spawn do
+      begin
+        results << s.dedupe("retry-key") do
+          attempts.add(1)
+          42
+        end
+      rescue ex
+        errors << ex
+      end
+    ensure
+      chan.send(nil)
+    end
+
+    2.times { chan.receive }
+    # The producer failed, the waiter retried and produced the value
+    errors.size.should eq(1)
+    errors.first.message.should eq("producer failure")
+    attempts.get.should eq(2)
+    results.should eq([42])
+  end
+
+  it "should raise when the retries are exhausted" do
+    s = Deduped.new
+
+    chan = Channel(Nil).new(2)
+    errors = Array(Exception).new
+
+    # The producer fails after letting the waiter attach to the channel
+    spawn do
+      begin
+        s.dedupe("limit-key") do
+          sleep 0.1.seconds
+          raise "producer failure"
+        end
+      rescue ex
+        errors << ex
+      end
+    ensure
+      chan.send(nil)
+    end
+
+    # The waiter is not allowed to retry
+    spawn do
+      begin
+        s.dedupe("limit-key", max_retries: 0) do
+          42
+        end
+      rescue ex
+        errors << ex
+      end
+    ensure
+      chan.send(nil)
+    end
+
+    2.times { chan.receive }
+    errors.size.should eq(2)
+    # The waiter's error is the producer's failure, not the generic message
+    errors.all? { |e| e.message == "producer failure" }.should be_true
+  end
 end
 
 describe DedupeLock::Global, tags: {"utils", "utils.concurrency"} do

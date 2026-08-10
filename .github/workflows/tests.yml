@@ -19,10 +19,6 @@ jobs:
         run: crystal projects.cr install
       - name: Run tests
         run: crystal projects.cr spec
-      - name: Run tests (multithreaded)
-        run: crystal projects.cr spec -Dpreview_mt
-      - name: Run tests (multithreaded + execution context)
-        run: crystal projects.cr spec -Dpreview_mt -Dexecution_context
   launch:
     name: Build and check if the binary is working
     strategy:
@@ -37,6 +33,33 @@ jobs:
       - name: Install dependencies
         run: crystal projects.cr install
       - name: Build
-        run: crystal projects.cr build:cli
+        run: crystal projects.cr build:cli --release
       - name: Print version
         run: ./packages/cli/bin/zap --version
+      - name: Install a dummy project (benchmark)
+        shell: bash
+        run: |
+          set -e
+          mkdir -p "$RUNNER_TEMP/zap-bench"
+          cd "$RUNNER_TEMP/zap-bench"
+          printf '%s' '{"name":"bench","version":"1.0.0","dependencies":{"is-number":"^7.0.0","p-limit":"^5.0.0"}}' > package.json
+          # Node is preinstalled on all runners; the date +%N and timeout
+          # commands are not portable across macOS/Windows bash
+          start=$(node -e "console.log(Date.now())")
+          "$GITHUB_WORKSPACE/packages/cli/bin/zap" i --frozen-lockfile=false &
+          pid=$!
+          deadline=$((SECONDS + 120))
+          while kill -0 $pid 2>/dev/null; do
+            if [ $SECONDS -ge $deadline ]; then
+              kill $pid 2>/dev/null || true
+              echo "install timed out after 120s" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          wait $pid
+          end=$(node -e "console.log(Date.now())")
+          echo "install time: $(( end - start ))ms"
+          # The install must actually have worked on this platform
+          test -d node_modules/is-number
+          test -d node_modules/p-limit

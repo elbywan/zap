@@ -88,5 +88,8 @@ module Zap
     else
       raise "Unknown command config: #{command_config}"
     end
+
+    # Release the registry client pools (no-op when no install ran)
+    Commands::Install::RegistryClients.close
   end
 end

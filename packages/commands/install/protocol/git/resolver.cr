@@ -100,7 +100,7 @@ module Commands::Install::Protocol::Git::Resolver
     )
       Commands::Install.run(
         config,
-        Commands::Install::Config.new(save: false),
+        Commands::Install::Config.new(save: false, frozen_lockfile: false),
         store: @state.store,
         raise_on_failure: true,
         reporter: Reporter::Proxy.new(@state.reporter),

@@ -9,6 +9,3 @@ dependencies:
   core:
     path: ../core
 crystalline:
-  flags:
-  - preview_mt
-  - execution_context

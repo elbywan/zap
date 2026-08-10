@@ -18,8 +18,6 @@ require "./linker/pnp"
 module Commands::Install
   Log = ::Log.for("zap.commands.install")
 
-  alias Pipeline = Concurrency::Pipeline
-
   def self.run(
     config : Core::Config,
     install_config : Install::Config,
@@ -28,8 +26,9 @@ module Commands::Install
     store : ::Store? = nil,
     raise_on_failure : Bool = false,
   )
-    state = uninitialized State
+    state : State? = nil
     reporter ||= config.silent ? Reporter::Null.new : Reporter::Interactive.new
+    install_config = install_config.copy_with(raise_on_failure: raise_on_failure)
     config = config.check_if_store_is_linkeable
     store ||= ::Store.new(config.store_path)
     unmet_peers_hash = nil
@@ -53,7 +52,7 @@ module Commands::Install
       Log.debug { "Install Configuration: #{install_config.pretty_inspect}" }
 
       # Load .npmrc file
-      npmrc = Data::Npmrc.new(config.prefix)
+      npmrc = config.npmrc || Data::Npmrc.new(config.prefix)
       Log.debug { "Npmrc: #{npmrc.pretty_inspect}" }
 
       # Raise if frozen lockfile is set and the lockfile is not found
@@ -105,6 +104,9 @@ module Commands::Install
       # Prune lockfile before installing to cleanup pinned dependencies
       pruned_direct_dependencies = clean_lockfile(state)
 
+      # Check package engines against the current node version (npm parity)
+      check_engines(state)
+
       # Mark transtive and check for missing peer dependencies
       Log.debug { "• Marking transitive peer dependencies" }
       unmet_peers_by_root = state.lockfile.mark_transitive_peers
@@ -147,7 +149,9 @@ module Commands::Install
     end
 
     # Print the report
-    state.reporter.report_done(realtime, memory, state.install_config, unmet_peers: unmet_peers_hash)
+    if s = state
+      s.reporter.report_done(realtime, memory, s.install_config, unmet_peers: unmet_peers_hash)
+    end
   rescue e
     raise e if raise_on_failure
     reporter.try &.error(e)
@@ -174,13 +178,7 @@ module Commands::Install
     workspaces : Workspaces?,
   )
     unless config.silent
-      workers_info = begin
-        {% if flag?(:preview_mt) %}
-          " • #{"workers:".colorize.blue} #{install_config.workers}"
-        {% else %}
-          ""
-        {% end %}
-      end
+      workers_info = " • #{"workers:".colorize.blue} #{install_config.workers}"
       puts <<-TERM
        #{"project:".colorize.blue} #{config.prefix} • #{"store:".colorize.blue} #{config.store_path}#{workers_info}
        #{"lockfile:".colorize.blue} #{lockfile.read_status.from_disk? ? "ok".colorize.green : lockfile.read_status.error? ? "read error".colorize.red : "not found".colorize.red} #{"[#{lockfile.format}]".colorize.italic.dim} • #{"install strategy:".colorize.blue} #{install_config.strategy.to_s.downcase}
@@ -333,7 +331,7 @@ module Commands::Install
           # do not resolve children for overrides
           single_resolution: true
         ) do |metadata|
-          override_list[index] = override.copy_with(specifier: metadata.version)
+          override_list[index] = override.copy_with(specifier: metadata.specifier)
         end
       end
     end
@@ -345,6 +343,19 @@ module Commands::Install
     state.lockfile.set_roots(main_package, workspaces)
     prune_scope = Set.new(state.context.scope_names(:install))
     pruned_dependencies = state.lockfile.prune(prune_scope)
+    # When omitting dev/optional dependencies, also remove their previously
+    # installed folders from node_modules. The lockfile itself keeps the full
+    # graph (npm parity: the lockfile always records dev and optional deps).
+    unless state.install_config.omit.empty?
+      state.lockfile.roots.each do |root_name, root|
+        root.pinned_dependencies.try &.each do |name, version|
+          type = root.find_dependency_type(name)
+          omitted = (type.dev_dependency? && state.install_config.omit_dev?) ||
+                    (type.optional_dependency? && state.install_config.omit_optional?)
+          pruned_dependencies << {name, version, root_name} if omitted
+        end
+      end
+    end
     if state.config.global
       state.install_config.removed_packages.each do |name|
         version = Data::Package.get_pkg_version_from_json(Utils::File.join(state.config.node_modules, name, "package.json"))
@@ -381,6 +392,39 @@ module Commands::Install
         File.write(Path.new(location).join("package.json"), package_json.to_pretty_json)
       end
     end
+  end
+
+  private def self.check_engines(state : State) : Nil
+    # Only spawn `node --version` when a package actually declares engines,
+    # since spawning a process on every install is expensive.
+    return unless state.lockfile.packages.values.any? { |pkg| pkg.engines.try &.["node"]? }
+    return unless node_version = self.node_version
+    state.lockfile.packages.values.sort_by(&.key).each do |pkg|
+      range = pkg.engines.try &.["node"]?
+      next unless range
+      satisfied = begin
+        Semver.parse(range).satisfies?(node_version)
+      rescue
+        # Invalid engine ranges are ignored, like npm
+        true
+      end
+      next if satisfied
+      message = "unsupported engine for #{pkg.key}: wanted #{range} (current: #{node_version})"
+      if state.install_config.engine_strict
+        raise "The install failed because of an engine mismatch: #{message}"
+      else
+        state.reporter.log("warning: #{message}")
+      end
+    end
+  end
+
+  private def self.node_version : String?
+    io = IO::Memory.new
+    status = Process.run("node", ["--version"], output: io)
+    return nil unless status.success?
+    io.to_s.strip.lchop("v")
+  rescue
+    nil
   end
 
   private def self.link_packages(state : State, pruned_direct_dependencies)
@@ -436,6 +480,10 @@ module Commands::Install
       end
 
       state.reporter.errors(error_messages) if error_messages.size > 0
+      unless error_messages.empty?
+        # Mirror npm/yarn/pnpm: a failing lifecycle script fails the install
+        raise error_messages.map(&.[1]).join("\n")
+      end
     end
   end
 

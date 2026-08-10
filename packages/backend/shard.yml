@@ -11,6 +11,3 @@ dependencies:
   extensions:
     path: ../extensions
 crystalline:
-  flags:
-  - preview_mt
-  - execution_context

@@ -32,6 +32,7 @@ class Data::Package
     property scripts : LifecycleScripts? = nil
     getter os : Array(String)? = nil
     getter cpu : Array(String)? = nil
+    getter engines : Hash(String, String)? = nil
     # See: https://github.com/npm/rfcs/blob/main/implemented/0026-workspaces.md
     @[YAML::Field(ignore: true)]
     @[MessagePack::Field(ignore: true)]

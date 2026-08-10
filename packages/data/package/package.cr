@@ -277,9 +277,10 @@ class Data::Package
   # Internal #
   ############
 
-  # Do not crawl the dependencies for linked packages
+  # Workspaces are resolved as install-scope roots; linked folders (file:)
+  # are not, so their dependencies must be resolved through the link.
   def should_resolve_dependencies?(state : Commands::Install::State)
-    !kind.link? && !kind.workspace?
+    !kind.workspace?
   end
 
   internal { getter resolved = Atomic(Int8).new(0_i8) }

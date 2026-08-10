@@ -37,13 +37,13 @@ class Commands::Install::Linker::Classic
     def install : InstallResult
       installation_path = location.value.node_modules / (aliased_name || dependency.name)
       installed = begin
-        Backend.link(dependency: dependency, target: installation_path, store: state.store, backend: state.config.file_backend) {
+        Backend.link(dependency: dependency, target: installation_path, store: state.store, backend: state.config.file_backend, pipeline: state.pipeline) {
           state.reporter.on_linking_package
         }
       rescue ex
         state.reporter.log(%(#{aliased_name.try &.+(":")}#{(dependency.name + '@' + dependency.version).colorize.yellow} Failed to install with #{state.config.file_backend} backend: #{ex.message}))
         # Fallback to the widely supported "plain copy" backend
-        Backend.link(backend: :copy, dependency: dependency, target: installation_path, store: state.store) { }
+        Backend.link(backend: :copy, dependency: dependency, target: installation_path, store: state.store, pipeline: state.pipeline) { }
       end
 
       linker.on_link(dependency, installation_path, state: state, location: location, ancestors: ancestors) if installed
@@ -53,6 +53,11 @@ class Commands::Install::Linker::Classic
     private def skip_hoisting? : Bool
       # Do not hoist aliases
       return true if aliased_name
+
+      # Dependencies of a linked folder must stay nested under the symlink:
+      # node resolves them relative to the link's real path, which lies
+      # outside the project (npm parity).
+      return true if location.value.package.kind.link?
 
       # Check if the package is listed in the nohoist field
       if no_hoist = state.context.workspaces.try &.no_hoist

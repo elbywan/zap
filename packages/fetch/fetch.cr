@@ -14,9 +14,6 @@ class Fetch(T)
 
   getter base_url : String
   @pool : Concurrency::Pool(HTTP::Client)
-  {% if flag?(:preview_mt) && flag?(:execution_context) %}
-    @execution_context : Fiber::ExecutionContext = Fiber::ExecutionContext::SingleThreaded.new("single-threaded-fetch")
-  {% end %}
 
   def initialize(
     @base_url : String,
@@ -36,49 +33,25 @@ class Fetch(T)
     initialize(base_url, max_clients) { }
   end
 
-  {% begin %}
+  # Runs the request in the caller's fiber: the pool hands out a distinct
+  # client per call (exclusive checkout), so requests can safely run in
+  # parallel on the caller's execution context.
   def client(retry_attempts = 3, &block : HTTP::Client -> R) forall R
     retry_count = 0
-
-    {% if flag?(:preview_mt) && flag?(:execution_context) %}
-      channel : Channel(R | Exception) = Channel(R | Exception).new
-      @execution_context.spawn do
-        @pool.get do |client|
-          loop do
-            retry_count += 1
-            begin
-              channel.send(block.call client)
-              break
-            rescue e
-              Log.debug { e.message.colorize.red.to_s + Shared::Constants::NEW_LINE + e.backtrace.map { |line| "\t#{line}" }.join(Shared::Constants::NEW_LINE).colorize.red.to_s }
-              client.close
-              sleep 0.5.seconds * retry_count
-              break channel.send(e) if retry_count >= retry_attempts
-            end
-          end
+    @pool.get do |client|
+      loop do
+        retry_count += 1
+        begin
+          break block.call client
+        rescue e : IO::Error
+          Log.debug { e.message.colorize.red.to_s + Shared::Constants::NEW_LINE + e.backtrace.map { |line| "\t#{line}" }.join(Shared::Constants::NEW_LINE).colorize.red.to_s }
+          client.close
+          sleep 0.5.seconds * retry_count
+          raise e if retry_count >= retry_attempts
         end
       end
-
-      result = channel.receive
-      raise result if result.is_a?(Exception)
-      result
-    {% else %}
-      @pool.get do |client|
-        loop do
-          retry_count += 1
-          begin
-            break yield client
-          rescue e
-            Log.debug { e.message.colorize.red.to_s + Shared::Constants::NEW_LINE + e.backtrace.map { |line| "\t#{line}" }.join(Shared::Constants::NEW_LINE).colorize.red.to_s }
-            client.close
-            sleep 0.5.seconds * retry_count
-            raise e if retry_count >= retry_attempts
-          end
-        end
-      end
-    {% end %}
+    end
   end
-  {% end %}
 
   def fetch_with_cache(*args, **kwargs, &transform_body : (String -> T)) : T
     url = args[0]
@@ -146,9 +119,8 @@ class Fetch(T)
   end
 
   def close
-    @pool_max_size.times do
-      @pool.get.close
-    end
+    # Close the pool, draining and closing every idle client (in-flight
+    # clients are left to the OS to reclaim at process exit).
     @pool.close
   end
 
