@@ -41,5 +41,8 @@ class Concurrency::Pool(T)
 
   def close
     @pool.close
+    while obj = @pool.receive?
+      obj.close
+    end
   end
 end
