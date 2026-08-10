@@ -450,32 +450,28 @@ module Commands::Install
 
   private def self.run_install_hooks(state : State, linker : Linker::Base)
     Log.debug { "• Running install hooks" }
-    if !state.install_config.ignore_scripts && linker.installed_packages_with_hooks.size > 0
+    hooks = linker.installed_packages_with_hooks
+    if !state.install_config.ignore_scripts && hooks.size > 0
       error_messages = [] of {Exception, String}
-      state.pipeline.reset
-      # Process hooks in parallel
-      state.pipeline.set_concurrency(state.config.concurrency)
-      begin
-        state.reporter.report_builder_updates do
-          linker.installed_packages_with_hooks.each do |package, path|
-            package.scripts.try do |scripts|
-              state.pipeline.process do
-                state.reporter.on_building_package
-                output_io = state.config.silent ? File.open(File::NULL, "w") : nil
-                scripts.run_script(:preinstall, path, state.config, output_io: output_io)
-                scripts.run_script(:install, path, state.config, output_io: output_io)
-                scripts.run_script(:postinstall, path, state.config, output_io: output_io)
-              rescue e
-                error_messages << {e, "Error while running install scripts for #{package.name}@#{package.version} at #{path}\n\n#{e.message}"}
-                # raise Exception.new("Error while running install scripts for #{package.name}@#{package.version} at #{path}\n\n#{e.message}", e)
-              ensure
-                output_io.try &.close
-                state.reporter.on_package_built
-              end
+      # Run hooks in dependency order (dependencies before dependents,
+      # npm/yarn/pnpm parity) so a package's scripts see its deps ready.
+      ordered_hooks = hooks.sort_by { |(package, _)| hook_depth(package, state, {} of String => Int32) }
+      state.reporter.report_builder_updates do
+        ordered_hooks.each do |package, path|
+          package.scripts.try do |scripts|
+            state.reporter.on_building_package
+            output_io = state.config.silent ? File.open(File::NULL, "w") : nil
+            begin
+              scripts.run_script(:preinstall, path, state.config, output_io: output_io)
+              scripts.run_script(:install, path, state.config, output_io: output_io)
+              scripts.run_script(:postinstall, path, state.config, output_io: output_io)
+            rescue e
+              error_messages << {e, "Error while running install scripts for #{package.name}@#{package.version} at #{path}\n\n#{e.message}"}
+            ensure
+              output_io.try &.close
+              state.reporter.on_package_built
             end
           end
-
-          state.pipeline.await
         end
       end
 
@@ -485,6 +481,23 @@ module Commands::Install
         raise error_messages.map(&.[1]).join("\n")
       end
     end
+  end
+
+  # Longest dependency chain of a package in the lockfile graph. The memo is
+  # seeded before recursing so circular dependencies do not loop forever.
+  private def self.hook_depth(package : Data::Package, state : State, memo : Hash(String, Int32)) : Int32
+    key = package.key
+    return memo[key] if memo.has_key?(key)
+    memo[key] = 1
+    depth = 1
+    package.dependencies.try &.each do |name, specifier|
+      dep_key = specifier.is_a?(String) ? "#{name}@#{specifier}" : specifier.key
+      if dep = state.lockfile.packages[dep_key]?
+        depth = [depth, 1 + hook_depth(dep, state, memo)].max
+      end
+    end
+    memo[key] = depth
+    depth
   end
 
   private def self.run_own_install_hooks(state : State)
