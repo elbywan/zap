@@ -18,11 +18,14 @@ module Commands::Dlx
     identifier, directory_name, path = get_identifier_and_path(packages, prefix: "zap--dlx-")
     Log.debug { "Using #{path} as the workspace folder" }
     # Override some config options to prevent nonsense
+    # The npmrc is resolved from the caller's project so that the temp
+    # prefix (which has no .npmrc of its own) inherits the registry.
     process_config = config.copy_with(
       prefix: path.to_s,
       global: false,
       silent: dlx_config.quiet,
       no_workspaces: true,
+      npmrc: Data::Npmrc.new(config.prefix),
     )
 
     # If the folder is already sealed, we can skip the installation part
@@ -38,9 +41,11 @@ module Commands::Dlx
       # Write the package.json
       File.write(path / "package.json", pkg_json.to_pretty_json)
       # Install it
+      # The temp prefix has no lockfile, so a frozen install (the default
+      # under CI) would fail before resolving anything.
       Commands::Install.run(
         process_config,
-        Commands::Install::Config.new
+        Commands::Install::Config.new.copy_with(frozen_lockfile: false)
       )
 
       # Line break

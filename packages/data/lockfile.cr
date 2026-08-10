@@ -68,12 +68,15 @@ class Data::Lockfile
         instance = self.from_msgpack(File.read(lockfile_path))
         instance.read_status = ReadStatus::FromDisk
         instance.format = Format::MessagePack
-      rescue
+      rescue ex_msgpack
         begin
           instance = self.from_yaml(File.read(lockfile_path))
           instance.read_status = ReadStatus::FromDisk
           instance.format = Format::YAML
-        rescue
+        rescue ex_yaml
+          Log.warn { "Failed to parse lockfile at #{lockfile_path}" }
+          Log.debug { "MessagePack parse error: #{ex_msgpack.message}" }
+          Log.debug { "YAML parse error: #{ex_yaml.message}" }
           instance = self.allocate
           instance.read_status = ReadStatus::Error
           instance.format = default_format
@@ -399,7 +402,12 @@ class Data::Lockfile
       include_optional : Bool = true,
       &block : (String, String | Package::Alias, DependencyType) -> T
     ) : Array(T) forall T
-      pinned_dependencies.map { |key, val| block.call(key, val, find_dependency_type(key)) }
+      pinned_dependencies.compact_map do |key, val|
+        type = find_dependency_type(key)
+        next if !include_dev && type.dev_dependency?
+        next if !include_optional && type.optional_dependency?
+        block.call(key, val, type)
+      end
     end
 
     def each_dependency(
@@ -409,10 +417,15 @@ class Data::Lockfile
       sort : Bool = false,
       &block : (String, String | Package::Alias, DependencyType) -> T
     ) : Nil forall T
-      (sort ? pinned_dependencies.to_a.sort_by!(&.[0]).to_h : pinned_dependencies).each { |key, val| block.call(key, val, find_dependency_type(key)) }
+      (sort ? pinned_dependencies.to_a.sort_by!(&.[0]).to_h : pinned_dependencies).each do |key, val|
+        type = find_dependency_type(key)
+        next if !include_dev && type.dev_dependency?
+        next if !include_optional && type.optional_dependency?
+        block.call(key, val, type)
+      end
     end
 
-    private def find_dependency_type(name : String)
+    def find_dependency_type(name : String)
       if dependencies.try &.has_key?(name)
         DependencyType::Dependency
       elsif dev_dependencies.try &.has_key?(name)

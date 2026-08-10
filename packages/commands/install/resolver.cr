@@ -13,8 +13,6 @@ require "./protocol"
 module Commands::Install::Resolver
   Log = ::Log.for("zap.commands.install.resolver")
 
-  alias Pipeline = ::Concurrency::Pipeline
-
   Concurrency::DedupeLock::Global.setup(:store, Bool)
   Concurrency::KeyedLock::Global.setup(Data::Package)
 
@@ -50,8 +48,8 @@ module Commands::Install::Resolver
   )
     is_root = ancestors.size == 0
     package.each_dependency(
-      include_dev: is_root && !state.install_config.omit_dev?,
-      include_optional: !state.install_config.omit_optional?
+      include_dev: is_root,
+      include_optional: true
     ) do |name, version_or_alias, type|
       if type.dependency?
         # "Entries in optionalDependencies will override entries of the same name in dependencies"
@@ -225,12 +223,16 @@ module Commands::Install::Resolver
       # Report the package as downloaded if it was stored
       state.reporter.on_package_downloaded if stored
     rescue e
-      if type != :optional_dependencies && !metadata.try(&.optional)
+      if type != Data::Package::DependencyType::OptionalDependency && !metadata.try(&.optional)
         # Error unless the dependency is optional
-        state.reporter.stop
-        package_in_error = "#{name}@#{version}"
-        state.reporter.error(e, package_in_error.colorize.bold.to_s)
-        exit Shared::Constants::ErrorCodes::RESOLVER_ERROR.to_i32
+        if state.install_config.raise_on_failure
+          raise e
+        else
+          state.reporter.stop
+          package_in_error = "#{name}@#{version}"
+          state.reporter.error(e, package_in_error.colorize.bold.to_s)
+          exit Shared::Constants::ErrorCodes::RESOLVER_ERROR.to_i32
+        end
       end
     ensure
       # Report the package as resolved
@@ -250,15 +252,9 @@ module Commands::Install::Resolver
         override.matches_package?(package)
       end
       # Concatenate to the transitive overrides
-      {% if flag?(:preview_mt) %}
-        transitive_overrides.try { |to|
-          (overrides ||= [] of Data::Package::Overrides::Override).concat(to.inner)
-        }
-      {% else %}
-        transitive_overrides.try { |to|
-          (overrides ||= [] of Data::Package::Overrides::Override).concat(to)
-        }
-      {% end %}
+      transitive_overrides.try { |to|
+        (overrides ||= [] of Data::Package::Overrides::Override).concat(to.inner)
+      }
       overrides.try &.each do |override|
         if parents = override.parents
           next if parents.size <= 0
@@ -293,9 +289,8 @@ module Commands::Install::Resolver
     # Infer new dependency type based on CLI flags
     type = state.install_config.save_dev ? Data::Package::DependencyType::DevDependency : state.install_config.save_optional ? Data::Package::DependencyType::OptionalDependency : Data::Package::DependencyType::Dependency
     # For each added dependency…
-    pipeline = Pipeline.new(workers: state.install_config.workers)
     state.install_config.added_packages.each do |new_dep|
-      pipeline.process do
+      state.pipeline.process do
         # Infer the package.json version from the CLI argument
         inferred_version, inferred_name = parse_new_package(new_dep, directory: directory)
         # Resolve the package
@@ -319,9 +314,8 @@ module Commands::Install::Resolver
         end
       end
     end
-    pipeline.await
-  rescue e
-    raise e
+    # Wait for the added packages to be resolved before resolving the root packages
+    state.pipeline.await
   end
 
   private def self.apply_package_extensions(metadata : Data::Package, *, state : Commands::Install::State) : Nil

@@ -25,6 +25,15 @@ class Commands::Install::RegistryClients
   )
   end
 
+  # Closes every client pool. Called once the CLI command has finished;
+  # a no-op when no install ever created a pool.
+  def self.close : Nil
+    @@client_pool_by_registry_lock.synchronize do
+      @@client_pool_by_registry.each_value(&.close)
+      @@client_pool_by_registry.clear
+    end
+  end
+
   # Returns the client pool for the given registry url or creates a new one if it doesn't exist.
   def get_or_init_pool(url : String) : Fetch(Manifest)
     @@client_pool_by_registry_lock.synchronize do

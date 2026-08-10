@@ -105,6 +105,22 @@ module Commands::Install::Linker
       end
     end
 
+    # Returns true when an ancestor provides a version satisfying *peer_range*
+    # for *name*. Mirrors yarn's behavior of preferring a satisfiable peer
+    # over a same-name regular dependency.
+    protected def peer_satisfied_by_ancestor?(name : String, peer_range : String, ancestors : Enumerable(Data::Package | Data::Lockfile::Root)) : Bool
+      range = Semver.parse?(peer_range) || Semver::ANY
+      satisfied = false
+      ancestors.each do |ancestor|
+        ancestor.each_dependency do |ancestor_name, version_or_alias, _|
+          next unless ancestor_name == name
+          pinned_version = version_or_alias.is_a?(String) ? version_or_alias : version_or_alias.version
+          satisfied ||= range.satisfies?(pinned_version)
+        end
+      end
+      satisfied
+    end
+
     # Resolve which peer dependencies should be available to a package given its ancestors
     protected def resolve_peers(package : Data::Package, ancestors : Ancestors) : Set(Data::Package)?
       # Aggregate direct and transitive peer dependencies
@@ -191,15 +207,13 @@ module Commands::Install::Linker
       package
     end
 
-    # Raise if the architecture is not supported. If the package is optional, skip it.
-    macro check_os_and_cpu!(package, *, early, optional = nil)
+    # Skip packages that do not match the current os/cpu, like npm/pnpm/yarn
+    macro check_os_and_cpu!(package, *, early)
       begin
         {{package}}.match_os_and_cpu!
       rescue e
-        # If the package is optional, skip it
-        {{early.id}} if {{optional}}
-        # Raise the error unless the package is an optional dependency
-        raise e
+        # Skip packages that do not match the current os/cpu, like npm/pnpm/yarn
+        {{early.id}}
       end
     end
   end

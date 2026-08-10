@@ -26,7 +26,7 @@ class Data::Package
             specifier == "*" ||
             Semver.parse(version).satisfies?(metadata.version)
         ) &&
-          !Semver.parse(specifier).satisfies?(metadata.version)
+          !(Semver.parse?(specifier).try &.satisfies?(metadata.version))
       end
 
       def matches_ancestors?(ancestors : Iterable(Package | Lockfile::Root)) : Bool

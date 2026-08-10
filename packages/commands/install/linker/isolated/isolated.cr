@@ -22,7 +22,7 @@ class Commands::Install::Linker::Isolated < Commands::Install::Linker::Base
     state,
     *,
     hoist_patterns = state.main_package.zap_config.try(&.hoist_patterns) || Shared::Constants::DEFAULT_HOIST_PATTERNS,
-    public_hoist_patterns = state.main_package.zap_config.try(&.public_hoist_patterns) || Shared::Constants::DEFAULT_PUBLIC_HOIST_PATTERNS
+    public_hoist_patterns = state.main_package.zap_config.try(&.public_hoist_patterns) || Shared::Constants::DEFAULT_PUBLIC_HOIST_PATTERNS,
   )
     super(state)
     @node_modules = Path.new(state.config.node_modules)
@@ -50,8 +50,7 @@ class Commands::Install::Linker::Isolated < Commands::Install::Linker::Base
       install_package(
         root,
         root_path: root_path,
-        ancestors: Ancestors.new,
-        optional: false
+        ancestors: Ancestors.new
       )
     end
   end
@@ -61,7 +60,6 @@ class Commands::Install::Linker::Isolated < Commands::Install::Linker::Base
     *,
     ancestors : Ancestors,
     root_path : Path? = nil,
-    optional : Bool = false
   ) : Path?
     resolved_peers = nil
     overrides = nil
@@ -69,69 +67,77 @@ class Commands::Install::Linker::Isolated < Commands::Install::Linker::Base
     if package.is_a?(Data::Package)
       Log.debug { "(#{package.key}) Installing package…" }
 
-      # Raise if the architecture is not supported - unless the package is optional
-      check_os_and_cpu!(package, early: :return, optional: optional)
+      # Skip packages that do not match the current os/cpu, like npm/pnpm/yarn
+      check_os_and_cpu!(package, early: :return)
 
       # Links/Workspaces are easy, we just need to return the target path
       if package.kind.link?
         root = ancestors.last
         base_path = state.context.workspaces.try(&.find { |w| w.package.name == root.name }.try &.path) || state.config.prefix
-        return Path.new(package.dist.as(Data::Package::Dist::Link).link).expand(base_path)
+        link_source = Path.new(package.dist.as(Data::Package::Dist::Link).link).expand(base_path)
+        # The linked folder's own dependencies are installed into its
+        # node_modules, where node resolves them from the link's real path
+        # (which lies outside the project's store).
+        install_path = link_source / "node_modules"
+        Utils::Directories.mkdir_p(install_path)
+        package_path = link_source
+        resolved_peers = resolve_peers(package, ancestors)
+        resolved_transitive_overrides = resolve_transitive_overrides(package, ancestors)
       elsif package.kind.workspace?
         workspace = state.context.workspaces.not_nil!.find! { |w| w.package.name == package.name }
         return Path.new(workspace.path)
-      end
-
-      resolved_peers = resolve_peers(package, ancestors)
-      resolved_transitive_overrides = resolve_transitive_overrides(package, ancestors)
-
-      package_folder = String.build do |str|
-        str << package.hashed_key
-        if resolved_peers && resolved_peers.size > 0
-          peers_hash = Data::Package.hash_dependencies(resolved_peers)
-          str << "+#{peers_hash}"
-        end
-        if resolved_transitive_overrides && resolved_transitive_overrides.size > 0
-          overrides_hash = Digest::SHA1.hexdigest(resolved_transitive_overrides.map { |p| "#{p.name}@#{p.version}" }.sort.join("+"))
-          str << "+#{overrides_hash}"
-        end
-      end
-
-      install_path = @modules_store / package_folder / "node_modules"
-      package_path = install_path / package.name
-
-      if package.package_extensions_updated
-        Log.debug { "(#{package.key}) Package extensions updated, removing old folder '#{install_path}'…" }
-        FileUtils.rm_rf(install_path)
-      end
-
-      # If the package folder exists, we assume that the package dependencies were already installed too
-      if File.directory?(install_path)
-        # If there is no need to perform a full pass, we can just return the package path and skip the dependencies
-        unless state.install_config.refresh_install
-          Log.debug { "(#{package.name}) Already installed to folder '#{install_path}', skipping…" }
-          return package_path
-        end
-
-        # No need to check dependencies more than once if the package has already been installed once during this run
-        if @installed_packages.includes?(install_path.to_s)
-          Log.debug { "(#{package.name}) Already installed to folder '#{install_path}' during this run, skipping…" }
-          return package_path
-        end
-
-        hoist_package(package, package_path)
       else
-        # Install package
-        Utils::Directories.mkdir_p(install_path)
-        case package.kind
-        when .tarball_file?
-          Writer::File.install(package, package_path, linker: self, state: state)
-        when .tarball_url?
-          Writer::Tarball.install(package, package_path, linker: self, state: state)
-        when .git?
-          Writer::Git.install(package, package_path, linker: self, state: state)
-        when .registry?
-          Writer::Registry.install(package, package_path, linker: self, state: state)
+        resolved_peers = resolve_peers(package, ancestors)
+        resolved_transitive_overrides = resolve_transitive_overrides(package, ancestors)
+
+        package_folder = String.build do |str|
+          str << package.hashed_key
+          if resolved_peers && resolved_peers.size > 0
+            peers_hash = Data::Package.hash_dependencies(resolved_peers)
+            str << "+#{peers_hash}"
+          end
+          if resolved_transitive_overrides && resolved_transitive_overrides.size > 0
+            overrides_hash = Digest::SHA1.hexdigest(resolved_transitive_overrides.map { |p| "#{p.name}@#{p.version}" }.sort.join("+"))
+            str << "+#{overrides_hash}"
+          end
+        end
+
+        install_path = @modules_store / package_folder / "node_modules"
+        package_path = install_path / package.name
+
+        if package.package_extensions_updated
+          Log.debug { "(#{package.key}) Package extensions updated, removing old folder '#{install_path}'…" }
+          FileUtils.rm_rf(install_path)
+        end
+
+        # If the package folder exists, we assume that the package dependencies were already installed too
+        if File.directory?(install_path)
+          # If there is no need to perform a full pass, we can just return the package path and skip the dependencies
+          unless state.install_config.refresh_install
+            Log.debug { "(#{package.name}) Already installed to folder '#{install_path}', skipping…" }
+            return package_path
+          end
+
+          # No need to check dependencies more than once if the package has already been installed once during this run
+          if @installed_packages.includes?(install_path.to_s)
+            Log.debug { "(#{package.name}) Already installed to folder '#{install_path}' during this run, skipping…" }
+            return package_path
+          end
+
+          hoist_package(package, package_path)
+        else
+          # Install package
+          Utils::Directories.mkdir_p(install_path)
+          case package.kind
+          when .tarball_file?
+            Writer::File.install(package, package_path, linker: self, state: state)
+          when .tarball_url?
+            Writer::Tarball.install(package, package_path, linker: self, state: state)
+          when .git?
+            Writer::Git.install(package, package_path, linker: self, state: state)
+          when .registry?
+            Writer::Registry.install(package, package_path, linker: self, state: state)
+          end
         end
       end
     else
@@ -143,7 +149,10 @@ class Commands::Install::Linker::Isolated < Commands::Install::Linker::Base
     @installed_packages << install_path.to_s
 
     # Extract data from the lockfile
-    pinned_packages = package.map_dependencies do |name, version_or_alias, type|
+    pinned_packages = package.map_dependencies(
+      include_dev: !state.install_config.omit_dev?,
+      include_optional: !state.install_config.omit_optional?
+    ) do |name, version_or_alias, type|
       key = version_or_alias.is_a?(String) ? "#{name}@#{version_or_alias}" : version_or_alias.key
       pkg = state.lockfile.packages[key]
       {
@@ -160,6 +169,15 @@ class Commands::Install::Linker::Isolated < Commands::Install::Linker::Base
       pinned_packages
     end.each do |(name, dependency, type)|
       Log.debug { "(#{package.is_a?(Data::Package) ? package.key : package.name}) Processing dependency: #{dependency.key}" }
+
+      # If the package also declares this name as a peer dependency that an
+      # ancestor already satisfies, prefer the peer over the regular
+      # dependency (mirrors yarn's behavior)
+      if (peer_range = package.peer_dependencies.try &.[name]?) && peer_satisfied_by_ancestor?(name, peer_range, ancestors)
+        Log.debug { "(#{package.is_a?(Data::Package) ? package.key : package.name}) Peer dependency #{name} is satisfied by an ancestor, skipping the regular dependency" }
+        next
+      end
+
       # Add to the ancestors
       ancestors.unshift(package)
 
@@ -169,12 +187,11 @@ class Commands::Install::Linker::Isolated < Commands::Install::Linker::Base
       # Install the dependency to its own folder
       source = install_package(
         dependency,
-        ancestors: ancestors,
-        optional: type.optional_dependency?
+        ancestors: ancestors
       )
       ancestors.shift
 
-      # Skip if the dependency is optional and was not installed
+      # Skip if the package was not installed (e.g. an os/cpu mismatch)
       next unless source
 
       # Link it to the parent package
@@ -187,7 +204,7 @@ class Commands::Install::Linker::Isolated < Commands::Install::Linker::Base
     end
 
     if package.is_a?(Data::Package)
-      return install_path / package.name
+      return package_path
     else
       return install_path
     end
@@ -238,6 +255,7 @@ class Commands::Install::Linker::Isolated < Commands::Install::Linker::Base
 
   protected def link_binaries(package : Data::Package, *, package_path : Path, target_node_modules : Path)
     if bin = package.bin
+      return if bin.is_a?(String) && bin.empty?
       base_bin_path = target_node_modules / ".bin"
       Utils::Directories.mkdir_p(base_bin_path)
       if bin.is_a?(Hash)

@@ -29,8 +29,9 @@ class Fetch(T)
           @cache[key] = fb if fb
           fb
         end
-      rescue
-        # cache miss
+      rescue ex
+        Log.debug { "(#{key_str}) In-memory cache miss: #{ex.message}" }
+        nil
       end
 
       def get(key_str : String, *, fallback = true, &etag : -> String?) : T?
@@ -42,8 +43,9 @@ class Fetch(T)
           @cache[key] = fb if fb
           fb
         end
-      rescue
-        # cache miss
+      rescue ex
+        Log.debug { "(#{key_str}) In-memory cache miss: #{ex.message}" }
+        nil
       end
 
       def set(key_str : String, value : T, expiry : Time::Span? = nil, etag : String? = nil, *, fallback = true) : Nil
@@ -51,8 +53,9 @@ class Fetch(T)
         @cache[key] = value
         @fallback.try &.set(key, value, expiry, etag) if fallback
         value
-      rescue
-        # miss
+      rescue ex
+        Log.debug { "(#{key_str}) Failed to set in-memory cache: #{ex.message}" }
+        nil
       end
     end
 

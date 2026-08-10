@@ -20,16 +20,17 @@ class Commands::Install::Linker::Classic
       link_source = Path.new(relative_path).expand(base_path)
       install_folder = aliased_name || dependency.name
       target_path = location.value.node_modules / install_folder
+      install_location = self.class.init_location(dependency, target_path, location)
       exists = ::File.symlink?(target_path) && ::File.realpath(target_path) == link_source.to_s
       if exists
-        {nil, false}
+        {install_location, false}
       else
         state.reporter.on_linking_package
         Utils::Directories.mkdir_p(target_path.dirname)
         FileUtils.rm_rf(target_path) if ::File.directory?(target_path)
         ::File.symlink(link_source, target_path)
         linker.on_link(dependency, target_path, state: state, location: location, ancestors: ancestors)
-        {nil, true}
+        {install_location, true}
       end
     end
 

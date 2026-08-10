@@ -17,12 +17,16 @@ class Workspaces
     getter inner : Hash(String, Array(String)) = Hash(String, Array(String)).new
 
     def get(base : String)
+      # Git refs cannot start with "-", so reject option-like values instead
+      # of letting git interpret them as diff options.
+      raise "Invalid git ref in workspace filter: #{base}" if base.starts_with?("-")
       if result = @inner[base]?
         return result
       else
         @inner[base] = [] of String
       end
-      process = Process.new("git diff --name-only #{base}", shell: true, input: Process::Redirect::Inherit, output: Process::Redirect::Pipe, error: Process::Redirect::Inherit)
+      # Use argument array to prevent command injection
+      process = Process.new("git", ["diff", "--name-only", base], input: Process::Redirect::Inherit, output: Process::Redirect::Pipe, error: Process::Redirect::Inherit)
       output = process.output.gets_to_end
       status = process.wait
       unless status.success?
@@ -102,7 +106,9 @@ class Workspaces
 
   def get!(name : String, version : String) : Workspace
     if workspace = find { |w| w.package.name == name }
-      if version.starts_with?("workspace:") || Semver.parse(version).satisfies?(workspace.package.version)
+      # The workspace: protocol carries the requested range after the prefix
+      range = version.starts_with?("workspace:") ? version[10..] : version
+      if range.empty? || Semver.parse(range).satisfies?(workspace.package.version)
         workspace
       else
         raise "Workspace #{name} does not match version #{version}"
