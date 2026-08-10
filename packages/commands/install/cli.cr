@@ -55,6 +55,15 @@ class Commands::Install::CLI < Commands::CLI
     Helpers.flag("--workers <nb_of_workers>", "Set the number of worker threads to use. #{"[env: ZAP_WORKERS]".colorize.dim}") do |nb_of_workers|
       command_config.ref = install_config.copy_with(workers: nb_of_workers.to_i32)
     end
+    if update_packages
+      # Flags specific to the update command (zap up / zap update / zap upgrade)
+      Helpers.flag("--latest", "Bump direct dependencies outside their declared range and rewrite the package.json specifier (preserving ^, ~, <=, >= and exact). #{"[env: ZAP_INSTALL_UPDATE_LATEST]".colorize.dim}") do
+        command_config.ref = install_config.copy_with(update_latest: true)
+      end
+      Helpers.flag("--recursive", "Also re-resolve transitive dependencies, not only direct ones. #{"[env: ZAP_INSTALL_UPDATE_RECURSIVE]".colorize.dim}") do
+        command_config.ref = install_config.copy_with(update_recursive: true)
+      end
+    end
 
     Helpers.subSeparator("Strategies")
 

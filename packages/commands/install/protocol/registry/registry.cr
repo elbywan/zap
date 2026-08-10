@@ -28,6 +28,13 @@ struct Commands::Install::Protocol::Registry < Commands::Install::Protocol::Base
     Log.debug { "(#{name}@#{specifier}) Resolved as a registry dependency" }
     semver = Semver.parse?(specifier)
     Log.debug { "(#{name}@#{specifier}) Failed to parse semver '#{specifier}', treating as a dist-tag." } unless semver
-    Resolver.new(state, name, semver || specifier, parent, dependency_type, skip_cache)
+    # --latest may only ignore the declared range when it is a simple
+    # rewritable form (^, ~, <=, >=, exact); complex ranges stay in-range and
+    # prerelease-carrying specifiers keep their range so a beta is never
+    # downgraded.
+    latest_eligible = !specifier.includes?("-") &&
+      (specifier.starts_with?("^") || specifier.starts_with?("~") ||
+       !!specifier.matches?(/\A(<=|>=)?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?\z/))
+    Resolver.new(state, name, semver || specifier, parent, dependency_type, skip_cache, latest_eligible)
   end
 end

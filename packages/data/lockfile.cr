@@ -150,7 +150,7 @@ class Data::Lockfile
       Log.debug { "(#{pkg.key}) All roots: #{root_dependents}" }
 
       # Do not prune packages that were marked during the resolution phase
-      (!is_in_scope || !root_dependents.empty?).tap do |kept|
+      (!is_in_scope || !root_dependents.empty? || pkg.prevent_pruning).tap do |kept|
         Log.debug { "(#{pkg.key}) Pruned from lockfile" } unless kept
       end
     end
