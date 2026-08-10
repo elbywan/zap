@@ -10,6 +10,10 @@ on:
         required: true
         default: "next"
 
+permissions:
+  id-token: write # Required for npm trusted publishing (OIDC)
+  contents: read
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -17,10 +21,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Install node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: latest
           registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false # never use caching in release builds
       - name: Download artifacts
         id: download-artifacts
         uses: dawidd6/action-download-artifact@v6
@@ -39,8 +44,8 @@ jobs:
           chmod u+x ./bin/zap_x86_64-pc-win32.exe/zap.exe
           mv ./bin/zap_x86_64-pc-win32.exe/zap.exe ./npm/win32-x64/bin/zap
       - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
+        # Trusted publishing (OIDC): the npm CLI mints a short-lived token
+        # from the workflow's OIDC identity; no long-lived npm token needed.
         run: |
           npm publish ./npm/darwin-x64 --tag ${{ github.event.inputs.dist_tag }} --access public
           npm publish ./npm/darwin-arm64 --tag ${{ github.event.inputs.dist_tag }} --access public
