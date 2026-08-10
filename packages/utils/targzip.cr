@@ -9,7 +9,11 @@ module Utils::TarGzip
     Compress::Gzip::Reader.open(io) do |gzip|
       Crystar::Reader.open(gzip) do |tar|
         tar.each_entry do |entry|
-          file_path = Path.new(entry.name.split("/")[1..-1].join("/"))
+          # Strip the leading directory (usually "package/") and neutralize any
+          # ".", ".." or empty component to prevent directory traversal
+          # from malicious tarballs.
+          components = entry.name.split(/[\/\\]/)[1..-1].reject { |c| c == "." || c == ".." || c.empty? }
+          file_path = Path.new(components.join("/"))
           yield entry, file_path, entry.io
         end
       end
