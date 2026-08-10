@@ -243,11 +243,15 @@ git clone https://github.com/elbywan/zap
 crystal projects.cr install
 # Run the specs
 crystal projects.cr spec
-# Build locally (-Dpreview_mt might not work on some os/arch)
-crystal projects.cr build:cli --production  --release --progress -Dpreview_mt -Dexecution_context
+# Build locally
+crystal projects.cr build:cli --production --release --progress
 # Run the binary
 ./packages/cli/bin/zap --help
 ```
+
+The binary runs on Crystal's execution contexts: installs are single-threaded by default
+and can be parallelized at runtime with `--workers <n>` (or the `ZAP_WORKERS` env var) —
+`--workers 1` is single-threaded, higher values enable multi-threaded resolution:
 
 ## Contributing
 

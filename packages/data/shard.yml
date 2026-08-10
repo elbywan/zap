@@ -14,6 +14,3 @@ dependencies:
   shared:
     path: ../shared
 crystalline:
-  flags:
-  - preview_mt
-  - execution_context

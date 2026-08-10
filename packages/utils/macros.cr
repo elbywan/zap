@@ -19,34 +19,7 @@ module Utils::Macros
     {{ yield }}
   end
 
-  macro safe_getter(name, &block)
-    {% if flag?(:preview_mt) %}
-    @{{name.var.id}} : {{name.type}}?
-
-    @[JSON::Field(ignore: true)]
-    @[YAML::Field(ignore: true)]
-    @[MessagePack::Field(ignore: true)]
-    @_{{name.var.id}}_lock = Concurrency::Mutex.new
-
-    def {{name.var.id}} : {{name.type}}
-      @_{{name.var.id}}_lock.synchronize do
-        temp = begin
-          if (value = @{{name.var.id}}).nil?
-            {{ yield }}
-          else
-            value
-          end
-        end
-        @{{name.var.id}} = temp
-      end
-    end
-    {% else %}
-    getter {{name.var.id}} : {{name.type}} {{block}}
-    {% end %}
-  end
-
   macro safe_property(name, &block)
-    {% if flag?(:preview_mt) %}
     @{{name.var.id}} : {{name.type}}?
 
     @[JSON::Field(ignore: true)]
@@ -74,12 +47,6 @@ module Utils::Macros
         @{{name.var.id}} ||= yield
       end
     end
-    {% else %}
-    property {{name.var.id}} : {{name.type}} {{block}}
-    def {{name.var.id}}_init(&block : Proc({{name.type}}))
-      @{{name.var.id}} ||= yield
-    end
-    {% end %}
   end
 
   macro define_field_accessors

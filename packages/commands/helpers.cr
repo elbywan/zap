@@ -68,11 +68,7 @@ module Commands::Helpers
     end
 
     Commands::Helpers.flag("-v", "--version", "Show version.") do
-      {% if flag?(:preview_mt) %}
-      puts "v#{Zap::VERSION} (multithreaded)"
-      {% else %}
       puts "v#{Zap::VERSION}"
-      {% end %}
       exit
     end
 

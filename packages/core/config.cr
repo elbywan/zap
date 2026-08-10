@@ -6,6 +6,7 @@ require "workspaces/workspace"
 require "backend"
 require "data/lockfile"
 require "data/package"
+require "data/npmrc"
 
 # Global configuration for Zap
 struct Core::Config
@@ -43,6 +44,7 @@ struct Core::Config
   @[Env]
   getter no_workspaces : Bool = false
   getter filters : Array(Workspaces::Filter)? = nil
+  getter npmrc : Data::Npmrc? = nil
   @[Env]
   getter deferred_output : Bool = !!ENV["CI"]?
   @[Env]
