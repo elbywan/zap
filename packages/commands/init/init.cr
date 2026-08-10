@@ -17,7 +17,7 @@ module Commands::Init
   )
     prefix_path = Path.new(config.prefix)
     package_path = prefix_path / "package.json"
-    existing_package = JSON.parse(File.read(package_path)) if File.readable?(package_path)
+    existing_package = JSON.parse(File.read(package_path)) if File::Info.readable?(package_path)
 
     unless init_config.yes
       puts <<-TEXT

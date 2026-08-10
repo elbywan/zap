@@ -44,7 +44,7 @@ module Commands::Install::Linker
       end
     end
 
-    private def prune_workspace_orphans(modules_directory : Path, *, unlink_binaries? : Bool = true)
+    private def prune_workspace_orphans(modules_directory : Path, *, unlink_binaries : Bool = true)
       if Dir.exists?(modules_directory)
         # For each hoisted or direct dependency
         Dir.each_child(modules_directory) do |package_dir|
@@ -52,11 +52,11 @@ module Commands::Install::Linker
 
           if package_dir.starts_with?('@')
             # Scoped package - recurse on children
-            prune_workspace_orphans(package_path, unlink_binaries?: unlink_binaries?)
+            prune_workspace_orphans(package_path, unlink_binaries: unlink_binaries)
           else
             if should_prune_orphan?(package_path)
               Log.debug { "Pruning orphan package: #{package_dir}" }
-              if unlink_binaries?
+              if unlink_binaries
                 package = Data::Package.init?(package_path)
                 if package
                   unlink_binaries(package, package_path)
@@ -77,7 +77,7 @@ module Commands::Install::Linker
     private def should_prune_orphan?(package_path : Path) : Bool
       remove_child = false
       metadata_path = package_path / Shared::Constants::METADATA_FILE_NAME
-      if File.readable?(metadata_path)
+      if File::Info.readable?(metadata_path)
         # Check the metadata file to retrieve the package key
         key = File.read(metadata_path)
         # Check if the lockfile still contains the package
@@ -189,10 +189,10 @@ module Commands::Install::Linker
       package : Data::Package,
       ancestors : Enumerable(Data::Package | Data::Lockfile::Root),
       *,
-      reverse_ancestors? : Bool = false,
+      reverse_ancestors : Bool = false,
     ) : Data::Package
       if overrides = state.lockfile.overrides
-        ancestors = ancestors.to_a.reverse if reverse_ancestors?
+        ancestors = ancestors.to_a.reverse if reverse_ancestors
         if override = overrides.override?(package, ancestors)
           # maybe enable logging with a verbose flag?
           # ancestors_str = ancestors.map { |a| "#{a.name}@#{a.version}" }.join(" > ")

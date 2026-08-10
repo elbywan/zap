@@ -66,7 +66,7 @@ describe "install edge cases", tags: "integration" do
       It.install_project(registry, %({"name":"app","version":"1.0.0","dependencies":{"with-bin":"1.0.0"}})) do |project|
         bin_path = project / "node_modules/.bin/with-bin"
         File.exists?(bin_path).should be_true
-        File.executable?(File.realpath(bin_path)).should be_true
+        File::Info.executable?(File.realpath(bin_path)).should be_true
         `#{bin_path}`.should eq("bin-ok")
       end
     end

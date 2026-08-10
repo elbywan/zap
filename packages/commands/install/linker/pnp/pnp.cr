@@ -227,7 +227,7 @@ class Commands::Install::Linker::PnP < Commands::Install::Linker::Base
       ancestors.unshift(package_or_root)
 
       # Apply override
-      dependency = apply_override(state, dependency, ancestors, reverse_ancestors?: true)
+      dependency = apply_override(state, dependency, ancestors, reverse_ancestors: true)
 
       # Install the dependency to its own folder
       install_data = install_package(
@@ -304,7 +304,7 @@ class Commands::Install::Linker::PnP < Commands::Install::Linker::Base
   end
 
   def prune_orphan_modules
-    prune_workspace_orphans(@modules_store, unlink_binaries?: true)
+    prune_workspace_orphans(@modules_store, unlink_binaries: true)
   end
 
   protected def link_binaries(package : Data::Package, package_path : Path, target : Path)

@@ -182,7 +182,7 @@ class Commands::Install::Linker::Isolated < Commands::Install::Linker::Base
       ancestors.unshift(package)
 
       # Apply override
-      dependency = apply_override(state, dependency, ancestors, reverse_ancestors?: true)
+      dependency = apply_override(state, dependency, ancestors, reverse_ancestors: true)
 
       # Install the dependency to its own folder
       source = install_package(
@@ -248,9 +248,9 @@ class Commands::Install::Linker::Isolated < Commands::Install::Linker::Base
   def prune_orphan_modules
     # Publicly hoisted packages.
     # Note: no need to unlink binaries since they are not created for hoisted modules in isolated mode.
-    prune_workspace_orphans(@node_modules, unlink_binaries?: false)
+    prune_workspace_orphans(@node_modules, unlink_binaries: false)
     # Hoisted packages.
-    prune_workspace_orphans(@hoisted_store, unlink_binaries?: false)
+    prune_workspace_orphans(@hoisted_store, unlink_binaries: false)
   end
 
   protected def link_binaries(package : Data::Package, *, package_path : Path, target_node_modules : Path)
