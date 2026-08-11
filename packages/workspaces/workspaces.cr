@@ -106,9 +106,11 @@ class Workspaces
 
   def get!(name : String, version : String) : Workspace
     if workspace = find { |w| w.package.name == name }
-      # The workspace: protocol carries the requested range after the prefix
+      # The workspace: protocol carries the requested range after the prefix;
+      # a bare operator (workspace:^ / workspace:~) matches any version.
       range = version.starts_with?("workspace:") ? version[10..] : version
-      if range.empty? || Semver.parse(range).satisfies?(workspace.package.version)
+      satisfied = range.empty? || range == "^" || range == "~" || Semver.parse(range).satisfies?(workspace.package.version)
+      if satisfied
         workspace
       else
         raise "Workspace #{name} does not match version #{version}"

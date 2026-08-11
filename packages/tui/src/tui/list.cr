@@ -12,65 +12,152 @@ module Tui
     fun ioctl(fd : Int32, request : UInt64, arg : Void*) : Int32
   end
 
-  # A scrollable multi-select list. The model (items, cursor, selection) is
-  # pure logic; rendering writes ANSI sequences through `Ansi`.
+  # A scrollable multi-select list with a fuzzy search (`/`) and a filter
+  # cycle over item tags (`f`). The model is pure logic; rendering writes
+  # ANSI sequences through `Ansi`.
   class List
     record Item,
       label : String,
       sublabel : String? = nil,
       # ANSI style prefix applied to the sublabel (e.g. italic+dim). The label
       # embeds its own styles.
-      sublabel_style : String = ""
+      sublabel_style : String = "",
+      # Optional tag matched by the filter cycle (e.g. the bump severity).
+      tag : String? = nil
 
-    # Height of the visible window, in item rows (excluding header/footer).
+    # Fallback window height, in item rows (excluding header/footer), when
+    # the terminal size cannot be queried.
     WINDOW_HEIGHT = 10
+
+    private def self.terminal_size : {Int32, Int32}
+      winsize = Winsize.new
+      if LibTui.ioctl(0, 0x5413_u64, pointerof(winsize).as(Void*)) == 0
+        {winsize.ws_row.to_i32, winsize.ws_col.to_i32}
+      else
+        {0, 0}
+      end
+    rescue
+      {0, 0}
+    end
 
     # Terminal width in columns, reported by the kernel when available
     # (COLUMNS is not always kept in sync by shells). Items are truncated to
     # it so they never wrap: a wrapped line would corrupt the frame
     # bookkeeping.
-    private def self.terminal_columns : Int32
-      winsize = Winsize.new
-      if LibTui.ioctl(0, 0x5413_u64, pointerof(winsize).as(Void*)) == 0 && winsize.ws_col > 0
-        winsize.ws_col.to_i32
-      else
-        ENV["COLUMNS"]?.try(&.to_i?) || 80
-      end
-    rescue
-      ENV["COLUMNS"]?.try(&.to_i?) || 80
+    COLUMNS = begin
+      rows, cols = terminal_size
+      cols > 0 ? cols.clamp(20, 500) : (ENV["COLUMNS"]?.try(&.to_i?) || 80).clamp(20, 500)
     end
 
-    COLUMNS = terminal_columns.clamp(20, 500)
+    # Window height in item rows, derived from the terminal height minus the
+    # header, the footer and a margin, so the list adapts to the screen.
+    private def self.terminal_height : Int32
+      rows, _ = terminal_size
+      rows > 0 ? (rows - 4).clamp(3, 40) : WINDOW_HEIGHT
+    end
 
     getter items : Array(Item)
-    getter cursor : Int32 = 0
+    # Position of the cursor within the currently visible subset.
+    property cursor : Int32 = 0
+    # Full item indices, independent of the visible subset.
     getter selected : Set(Int32) = Set(Int32).new
+    property search : String = ""
+    property searching : Bool = false
+    getter active_filter : String? = nil
+    # Item the caret was on when the search started; the caret returns there
+    # when the search is cleared (escape, or backspace on an empty query).
+    property search_anchor : Int32? = nil
 
     def initialize(@items : Array(Item))
     end
 
+    # Enters search mode, remembering the item the caret is on so clearing the
+    # search can bring it back.
+    def start_search : Nil
+      @search_anchor = visible_indices[@cursor]?
+      @search = ""
+      @cursor = 0
+      @searching = true
+    end
+
+    # Leaves search mode and restores the caret to the pre-search item.
+    def clear_search : Nil
+      @searching = false
+      @search = ""
+      @cursor = if anchor = @search_anchor
+                  visible_indices.index(anchor) || 0
+                else
+                  0
+                end
+      @search_anchor = nil
+    end
+
+    # The item indices currently visible (search and filter applied).
+    def visible_indices : Array(Int32)
+      @items.each_index.select { |i| visible?(i) }.to_a
+    end
+
+    private def visible?(index : Int32) : Bool
+      item = @items[index]
+      (@search.empty? || self.class.fuzzy_match?(@search, item.label)) &&
+        (@active_filter.nil? || item.tag == @active_filter)
+    end
+
     def move(delta : Int32) : Nil
-      return if @items.empty?
-      @cursor = (@cursor + delta).clamp(0, @items.size - 1)
+      return if visible_indices.empty?
+      @cursor = (@cursor + delta).clamp(0, visible_indices.size - 1)
     end
 
     # Toggles the item under the cursor.
     def toggle : Nil
-      if @selected.includes?(@cursor)
-        @selected.delete(@cursor)
-      else
-        @selected << @cursor
+      if index = visible_indices[@cursor]?
+        if @selected.includes?(index)
+          @selected.delete(index)
+        else
+          @selected << index
+        end
       end
     end
 
-    # Selects all items when some are unselected, otherwise clears the
-    # selection (the `a` key).
+    # Selects all visible items when some are unselected, otherwise clears
+    # the visible selection (the `a` key).
     def toggle_all : Nil
-      if @selected.size == @items.size
-        @selected.clear
-      else
-        @items.each_index { |i| @selected << i }
+      visible = visible_indices
+      all_selected = visible.all? { |i| @selected.includes?(i) }
+      visible.each do |i|
+        if all_selected
+          @selected.delete(i)
+        else
+          @selected << i
+        end
       end
+    end
+
+    # Cycles the tag filter: none -> first tag -> ... -> last tag -> none.
+    def cycle_filter : Nil
+      tags = @items.compact_map(&.tag).uniq.sort
+      return if tags.empty?
+      index = @active_filter ? tags.index(@active_filter).not_nil! : -1
+      next_index = (index + 1) % (tags.size + 1)
+      @active_filter = next_index < tags.size ? tags[next_index] : nil
+      @cursor = 0
+    end
+
+    # Case-insensitive subsequence match (fuzzy): every query character must
+    # appear in order in the text.
+    def self.fuzzy_match?(query : String, text : String) : Bool
+      return true if query.empty?
+      query_chars = query.downcase.chars
+      text_chars = text.downcase.chars
+      i = 0
+      query_chars.each do |c|
+        while i < text_chars.size && text_chars[i] != c
+          i += 1
+        end
+        return false if i >= text_chars.size
+        i += 1
+      end
+      true
     end
 
     # Runs the selection loop and returns the selected indices (empty when the
@@ -81,7 +168,7 @@ module Tui
       items : Array(Item),
       input : Input,
       io : IO = STDOUT,
-      window_height : Int32 = WINDOW_HEIGHT,
+      window_height : Int32 = terminal_height,
     ) : Set(Int32)
       list = new(items)
       # Render on the alternate screen so the caller's output is restored,
@@ -91,6 +178,11 @@ module Tui
         list.render(io, window_height)
         loop do
           key, byte = input.next_key
+          break if byte == -1 # end of input: stop redrawing
+          if list.searching
+            handle_search_key(list, key, byte, io, window_height)
+            next
+          end
           case key
           in Key::Up
             previous = list.cursor
@@ -108,8 +200,13 @@ module Tui
           in Key::Escape, Key::CtrlC
             return Set(Int32).new
           in Key::Other
-            break if byte == -1 # end of input: stop redrawing
-            if byte == 0x61 # 'a'
+            if byte == 0x2f # '/'
+              list.start_search
+              list.render(io, window_height)
+            elsif byte == 0x66 # 'f'
+              list.cycle_filter
+              list.render(io, window_height)
+            elsif byte == 0x61 # 'a'
               list.toggle_all
               list.render(io, window_height)
             end
@@ -124,6 +221,48 @@ module Tui
       end
     end
 
+    # Handles a key while the search line is active.
+    private def self.handle_search_key(list : List, key : Key, byte : Int32, io : IO, window_height : Int32) : Nil
+      case key
+      in Key::Enter
+        list.searching = false
+        list.search_anchor = nil
+        list.render(io, window_height)
+      in Key::Escape
+        list.clear_search
+        list.render(io, window_height)
+      in Key::Up
+        previous = list.cursor
+        list.move(-1)
+        list.repaint(io, window_height, {previous, list.cursor})
+      in Key::Down
+        previous = list.cursor
+        list.move(1)
+        list.repaint(io, window_height, {previous, list.cursor})
+      in Key::Other
+        if byte == 0x7f # backspace
+          if list.search.empty?
+            list.clear_search
+          else
+            list.search = list.search[0...-1]
+            list.cursor = 0
+          end
+          list.render(io, window_height)
+        elsif byte >= 0x20 && byte <= 0x7e
+          list.search += byte.chr
+          list.cursor = 0
+          list.render(io, window_height)
+        end
+      in Key::Space
+        # Toggle the item under the caret; a literal space in the query is
+        # not worth blocking selection on.
+        list.toggle
+        list.repaint(io, window_height, {list.cursor})
+      in Key::Left, Key::Right, Key::CtrlC
+        # Not used while searching.
+      end
+    end
+
     # Renders the visible window, redrawing over whatever was drawn before.
     def render(io : IO, window_height : Int32 = WINDOW_HEIGHT) : Nil
       # The cursor sits below the previously drawn area; clear it upwards so
@@ -132,39 +271,33 @@ module Tui
       io << Ansi::HIDE_CURSOR
       io << header
       @visible_window = visible_items(window_height)
-      @visible_window.each do |index|
-        io << item_line(index)
+      @visible_window.each_with_index do |index, position|
+        io << item_line(index, position)
       end
       io << footer
+      if @searching
+        query = @search.empty? ? "/" : "/#{@search}"
+        io << "  #{Ansi::BOLD}#{truncate(query, COLUMNS - 3)}#{Ansi::RESET}\r\n"
+      end
       io << Ansi::SHOW_CURSOR
-      @drawn_lines = 2 + @visible_window.size
+      @drawn_lines = 2 + @visible_window.size + (@searching ? 1 : 0)
       io.flush
     end
 
-    # Repaints the given item indices in place; falls back to a full redraw
-    # when the visible window scrolled.
-    def repaint(io : IO, window_height : Int32, indices : Enumerable(Int32)) : Nil
+    # Repaints the given cursor positions in place; falls back to a full
+    # redraw when the visible window scrolled.
+    def repaint(io : IO, window_height : Int32, positions : Enumerable(Int32)) : Nil
       window = visible_items(window_height)
       unless window == @visible_window
         render(io, window_height)
         return
       end
-      indices.each do |index|
-        if position = window.index(index)
-          # Frame rows: header at 0, items at 1..N, footer at N+1.
-          draw_row(io, position + 1)
-        end
+      positions.each do |position|
+        row = position - @first + 1
+        draw_row(io, row) if row >= 1 && row <= window.size
       end
       # The footer carries the selection count, which toggles change.
       draw_row(io, @visible_window.size + 1)
-      io.flush
-    end
-
-    # Removes the frame from the terminal, leaving the cursor below it.
-    def clear(io : IO) : Nil
-      return if @drawn_lines == 0
-      io << Ansi.clear_lines_up(@drawn_lines)
-      @drawn_lines = 0
       io.flush
     end
 
@@ -172,28 +305,32 @@ module Tui
 
     @drawn_lines = 0
     @visible_window = [] of Int32
+    @first = 0
 
     private def header : String
-      visible = "Select packages to update  (up/down move, space select, a all/none, enter upgrade, esc cancel)"
-      # CRLF: in raw mode the output newline translation is off, so a bare \n
-      # moves down without returning to column 0.
+      visible = "Select packages to update  (up/down move, space select, a all/none, / search, f filter, enter upgrade, esc cancel)"
       "  #{Ansi::BOLD}#{truncate(visible, COLUMNS - 3)}#{Ansi::RESET}\r\n"
     end
 
     private def footer : String
-      "#{Ansi::DIM}#{@selected.size} of #{@items.size} selected#{Ansi::RESET}\r\n"
+      visible_count = visible_indices.size
+      filter = @active_filter ? " (#{@active_filter})" : ""
+      "#{Ansi::DIM}#{@selected.size} of #{@items.size} selected#{filter}#{Ansi::RESET}\r\n"
     end
 
     private def visible_items(window_height : Int32) : Array(Int32)
-      size = @items.size
-      window = Math.min(window_height, size)
-      first = (@cursor - window // 2).clamp(0, size - window)
-      (first...first + window).to_a
+      visible = visible_indices
+      window = Math.min(window_height, visible.size)
+      @first = (@cursor - window // 2).clamp(0, visible.size - window)
+      visible[@first, window]
     end
 
-    private def item_line(index : Int32) : String
+    private def item_line(index : Int32, position : Int32) : String
       item = @items[index]
-      marker = @cursor == index ? "> " : "  "
+      # The caret row is the cursor's visible-subset position offset by the
+      # window start; comparing against the raw cursor would drift off the
+      # bottom once the window scrolls.
+      marker = position == @cursor - @first ? "> " : "  "
       check = @selected.includes?(index) ? "[x]" : "[ ]"
       prefix = "#{marker}#{check} "
       label = truncate(item.label, COLUMNS - prefix.size - 2)
@@ -225,7 +362,7 @@ module Tui
       when @visible_window.size + 1
         footer.chomp("\r\n")
       else
-        item_line(@visible_window[row - 1]).chomp("\r\n")
+        item_line(@visible_window[row - 1], row - 1).chomp("\r\n")
       end
     end
 

@@ -48,6 +48,9 @@ struct Commands::Install::Protocol::Alias < Commands::Install::Protocol::Base
       end
     }
 
-    Registry::Resolver.new(state, Aliased.new(name: package_name, alias: name), final_specifier, parent, dependency_type, skip_cache)
+    # --latest applies to aliases too: the aliased specifier's eligibility
+    # is computed the same way as a plain registry dependency.
+    latest_eligible = package_specifier.try { |s| Utils::Misc.latest_eligible_specifier?(s) } || false
+    Registry::Resolver.new(state, Aliased.new(name: package_name, alias: name), final_specifier, parent, dependency_type, skip_cache, latest_eligible)
   end
 end

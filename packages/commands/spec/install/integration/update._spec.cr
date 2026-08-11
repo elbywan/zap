@@ -747,4 +747,229 @@ describe "update semantics", tags: "integration" do
     end
   end
 
+  # Ports from yarn berry (up.test.ts) and pnpm (installing/commands/test/update).
+  it "upgrades all dependencies matching a glob pattern (yarn berry port)" do
+    It.with_registry do |registry|
+      registry.add("@scope/alpha", "1.0.0", It.pkg("@scope/alpha", "1.0.0"), {"index.js" => "1.0.0"})
+      registry.add("@scope/beta", "1.0.0", It.pkg("@scope/beta", "1.0.0"), {"index.js" => "1.0.0"})
+      registry.add("plain", "1.0.0", It.pkg("plain", "1.0.0"), {"index.js" => "1.0.0"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"@scope/alpha":"^1.0.0","@scope/beta":"^1.0.0","plain":"^1.0.0"}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        registry.add("@scope/alpha", "2.0.0", It.pkg("@scope/alpha", "2.0.0"), {"index.js" => "2.0.0"})
+        registry.add("@scope/beta", "2.0.0", It.pkg("@scope/beta", "2.0.0"), {"index.js" => "2.0.0"})
+        registry.add("plain", "2.0.0", It.pkg("plain", "2.0.0"), {"index.js" => "2.0.0"})
+
+        up = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true, update_latest: true, updated_packages: ["@scope/*"])
+        Commands::Install.run(config, up, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        pkg = JSON.parse(File.read(tmpdir / "package.json"))
+        pkg["dependencies"]["@scope/alpha"].as_s.should eq("^2.0.0")
+        pkg["dependencies"]["@scope/beta"].as_s.should eq("^2.0.0")
+        pkg["dependencies"]["plain"].as_s.should eq("^1.0.0")
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "upgrades all dependencies matching a glob pattern with a range (yarn berry port)" do
+    It.with_registry do |registry|
+      registry.add("@scope/alpha", "1.0.0", It.pkg("@scope/alpha", "1.0.0"), {"index.js" => "1.0.0"})
+      registry.add("@scope/alpha", "2.0.0", It.pkg("@scope/alpha", "2.0.0"), {"index.js" => "2.0.0"})
+      registry.add("@scope/beta", "1.0.0", It.pkg("@scope/beta", "1.0.0"), {"index.js" => "1.0.0"})
+      registry.add("@scope/beta", "2.0.0", It.pkg("@scope/beta", "2.0.0"), {"index.js" => "2.0.0"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"@scope/alpha":"^2.0.0","@scope/beta":"^2.0.0"}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        up = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true, updated_packages: ["@scope/*@1.0.0"])
+        Commands::Install.run(config, up, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        pkg = JSON.parse(File.read(tmpdir / "package.json"))
+        pkg["dependencies"]["@scope/alpha"].as_s.should eq("1.0.0")
+        pkg["dependencies"]["@scope/beta"].as_s.should eq("1.0.0")
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "updates everything except a negated glob pattern (pnpm port)" do
+    It.with_registry do |registry|
+      registry.add("peer-a", "1.0.0", It.pkg("peer-a", "1.0.0"), {"index.js" => "1.0.0"})
+      registry.add("foo", "1.0.0", It.pkg("foo", "1.0.0"), {"index.js" => "1.0.0"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"peer-a":"1.0.0","foo":"1.0.0"}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        registry.add("peer-a", "2.0.0", It.pkg("peer-a", "2.0.0"), {"index.js" => "2.0.0"})
+        registry.add("foo", "2.0.0", It.pkg("foo", "2.0.0"), {"index.js" => "2.0.0"})
+
+        up = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true, update_latest: true, updated_packages: ["!peer-a"])
+        Commands::Install.run(config, up, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        pkg = JSON.parse(File.read(tmpdir / "package.json"))
+        pkg["dependencies"]["peer-a"].as_s.should eq("1.0.0")
+        # the exact specifier stays exact (zap preserves the modifier)
+        pkg["dependencies"]["foo"].as_s.should eq("2.0.0")
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "mixes positive and negated patterns: only the positives update (pnpm port)" do
+    It.with_registry do |registry|
+      registry.add("peer-a", "1.0.0", It.pkg("peer-a", "1.0.0"), {"index.js" => "1.0.0"})
+      registry.add("other", "1.0.0", It.pkg("other", "1.0.0"), {"index.js" => "1.0.0"})
+      registry.add("foo", "1.0.0", It.pkg("foo", "1.0.0"), {"index.js" => "1.0.0"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"peer-a":"1.0.0","other":"1.0.0","foo":"1.0.0"}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        registry.add("peer-a", "2.0.0", It.pkg("peer-a", "2.0.0"), {"index.js" => "2.0.0"})
+        registry.add("other", "2.0.0", It.pkg("other", "2.0.0"), {"index.js" => "2.0.0"})
+        registry.add("foo", "2.0.0", It.pkg("foo", "2.0.0"), {"index.js" => "2.0.0"})
+
+        up = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true, update_latest: true, updated_packages: ["foo", "!peer-a"])
+        Commands::Install.run(config, up, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        pkg = JSON.parse(File.read(tmpdir / "package.json"))
+        pkg["dependencies"]["foo"].as_s.should eq("2.0.0")
+        pkg["dependencies"]["peer-a"].as_s.should eq("1.0.0")
+        pkg["dependencies"]["other"].as_s.should eq("1.0.0")
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "does not touch the manifest or lockfile with save disabled (pnpm port)" do
+    It.with_registry do |registry|
+      registry.add("pinned", "1.0.0", It.pkg("pinned", "1.0.0"), {"index.js" => "1.0.0"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        manifest = %({"name":"app","version":"1.0.0","dependencies":{"pinned":"^1.0.0"}})
+        File.write(tmpdir / "package.json", manifest)
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+        lockfile_before = File.read(tmpdir / "zap.lock")
+
+        registry.add("pinned", "2.0.0", It.pkg("pinned", "2.0.0"), {"index.js" => "2.0.0"})
+        no_save = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: false, update_all: true, update_latest: true)
+        Commands::Install.run(config, no_save, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        File.read(tmpdir / "package.json").should eq(manifest)
+        File.read(tmpdir / "zap.lock").should eq(lockfile_before)
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "resolves an npm: alias to the latest of the aliased package with --latest (pnpm port)" do
+    It.with_registry do |registry|
+      registry.add("real", "1.0.0", It.pkg("real", "1.0.0"), {"index.js" => "1.0.0"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"foo-alias":"npm:real@~1.0.0"}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        registry.add("real", "100.1.0", It.pkg("real", "100.1.0"), {"index.js" => "100.1.0"})
+        up = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true, update_all: true, update_latest: true)
+        Commands::Install.run(config, up, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        pkg = JSON.parse(File.read(tmpdir / "package.json"))
+        pkg["dependencies"]["foo-alias"].as_s.should eq("npm:real@~100.1.0")
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "does not update dist-tag specifiers without --latest (pnpm port)" do
+    It.with_registry do |registry|
+      registry.add("tagged", "1.0.0", It.pkg("tagged", "1.0.0"), {"index.js" => "1.0.0"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        manifest = %({"name":"app","version":"1.0.0","dependencies":{"tagged":"latest"}})
+        File.write(tmpdir / "package.json", manifest)
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        registry.add("tagged", "2.0.0", It.pkg("tagged", "2.0.0"), {"index.js" => "2.0.0"})
+        up = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true, update_all: true)
+        Commands::Install.run(config, up, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        File.read(tmpdir / "package.json").should eq(manifest)
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "updates dependencies with an empty declared specifier (pnpm port)" do
+    It.with_registry do |registry|
+      registry.add("foo", "1.0.0", It.pkg("foo", "1.0.0"), {"index.js" => "1.0.0"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","devDependencies":{"foo":""}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        registry.add("foo", "2.0.0", It.pkg("foo", "2.0.0"), {"index.js" => "2.0.0"})
+        up = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true, update_all: true, update_latest: true)
+        Commands::Install.run(config, up, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        lockfile = Data::Lockfile.new(tmpdir)
+        lockfile.packages.keys.should contain("foo@2.0.0")
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
 end

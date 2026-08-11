@@ -51,7 +51,6 @@ describe "interactive update", tags: "integration" do
         pinned = updateable.find { |u| u.name == "pinned" }.not_nil!
         pinned.current.should eq("1.0.0")
         pinned.target.should eq("1.5.0")
-        pinned.range.should eq("^1.0.0")
       ensure
         FileUtils.rm_rf(tmpdir)
       end
@@ -141,6 +140,37 @@ describe "interactive update", tags: "integration" do
         latest.first.target.should eq("2.0.0")
       ensure
         FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "scans the updateable dependencies of every workspace, deduplicated by name" do
+    It.with_registry do |registry|
+      registry.add("pinned", "1.0.0", It.pkg("pinned", "1.0.0"), {"index.js" => "1.0.0"})
+
+      ws_root = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(ws_root / "packages/a")
+        Dir.mkdir_p(ws_root / "packages/b")
+        File.write(ws_root / "package.json", %({"name":"ws-root","version":"1.0.0","workspaces":["packages/*"]}))
+        File.write(ws_root / ".npmrc", "registry=#{registry.base_url}/\n")
+        File.write(ws_root / "packages/a/package.json", %({"name":"ws-a","version":"1.0.0","dependencies":{"pinned":"^1.0.0"}}))
+        File.write(ws_root / "packages/a/index.js", "a")
+        File.write(ws_root / "packages/b/package.json", %({"name":"ws-b","version":"1.0.0","dependencies":{"pinned":"^1.0.0"}}))
+        File.write(ws_root / "packages/b/index.js", "b")
+
+        config = Core::Config.new.copy_with(prefix: ws_root.to_s, store_path: (ws_root / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        registry.add("pinned", "1.5.0", It.pkg("pinned", "1.5.0"), {"index.js" => "1.5.0"})
+        updateable = Commands::Install::Interactive.scan(ItState.build(config, ic))
+        # One entry for the dep shared by both workspaces.
+        updateable.map(&.name).should eq(["pinned"])
+        updateable.first.current.should eq("1.0.0")
+        updateable.first.target.should eq("1.5.0")
+      ensure
+        FileUtils.rm_rf(ws_root)
       end
     end
   end

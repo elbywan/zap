@@ -12,7 +12,7 @@ module Commands::Install
 
     # A direct dependency that can be upgraded: the target is the newest
     # version satisfying the declared range (yarn upgrade-interactive parity).
-    record Updateable, name : String, current : String, target : String, range : String
+    record Updateable, name : String, current : String, target : String
 
     # Runs the interactive selection and returns the state with the chosen
     # packages queued for update. A cancelled or empty selection is a no-op.
@@ -32,6 +32,7 @@ module Commands::Install
         # target in bold + bump color: the version you get is the eye-catcher.
         Tui::List::Item.new(
           label: "#{color}■#{Tui::Ansi::RESET} #{u.name}  #{Tui::Ansi::DIM}#{u.current} →#{Tui::Ansi::RESET} #{Tui::Ansi::BOLD}#{color}#{u.target}#{Tui::Ansi::RESET}",
+          tag: bump_type(u.current, u.target),
         )
       }
       input = Tui::Input.new
@@ -44,17 +45,27 @@ module Commands::Install
       with_config(state, state.install_config.copy_with(update_all: false, updated_packages: names))
     end
 
-    # The color of the version arrow, by bump severity: red for a major bump,
-    # yellow for a minor, green for a patch.
-    def self.bump_color(current : String, target : String) : String
+    # The bump class of a version jump, used to color the arrow and as the
+    # list's filter tag.
+    def self.bump_type(current : String, target : String) : String
       current_version = Semver::Version.parse(current)
       target_version = Semver::Version.parse(target)
       if current_version.major != target_version.major
-        Tui::Ansi::RED
+        "major"
       elsif current_version.minor != target_version.minor
-        Tui::Ansi::YELLOW
+        "minor"
       else
-        Tui::Ansi::GREEN
+        "patch"
+      end
+    end
+
+    # The color of the version arrow, by bump severity: red for a major bump,
+    # yellow for a minor, green for a patch.
+    def self.bump_color(current : String, target : String) : String
+      case bump_type(current, target)
+      when "major" then Tui::Ansi::RED
+      when "minor" then Tui::Ansi::YELLOW
+      else              Tui::Ansi::GREEN
       end
     end
 
@@ -90,7 +101,7 @@ module Commands::Install
             if target = newest_satisfying(state, name, range)
               current = state.lockfile.roots[package.name]?.try(&.dependency_specifier?(name))
               if current.is_a?(String) && target != current && Semver::Version.parse(target) > Semver::Version.parse(current)
-                result << Updateable.new(name: name, current: current, target: target, range: declared)
+                result << Updateable.new(name: name, current: current, target: target)
               end
             end
           rescue ex
@@ -100,12 +111,13 @@ module Commands::Install
         end
       end
       state.pipeline.await
-      result.inner.sort_by!(&.name)
+      result.inner.sort_by!(&.name).uniq(&.name)
     end
 
-    # Yields every registry-backed direct dependency of the command scope.
+    # Yields every registry-backed direct dependency of every workspace (the
+    # install scope), deduplicated by package name in the scan.
     private def self.each_direct_dependency(state : State, &block : (Data::Package, String, String) -> Nil)
-      state.context.scope_packages(:command).each do |package|
+      state.context.scope_packages(:install).each do |package|
         package.each_dependency(include_dev: true, include_optional: true) do |name, declared, _type|
           next unless declared.is_a?(String)
           # Only registry ranges are comparable; git/workspace/tarball

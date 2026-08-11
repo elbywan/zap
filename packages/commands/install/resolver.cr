@@ -66,10 +66,10 @@ module Commands::Install::Resolver
       # Bust the lockfile cache for the packages being updated. With
       # --recursive the whole transitive tree under a matched package is
       # re-resolved too (an ancestor match propagates the bust downwards).
-      bust_pinned_cache = (is_root || config.update_recursive) && (config.update_all || config.updated_packages.any? do |pattern|
+      bust_pinned_cache = (is_root || config.update_recursive) && (config.update_all || update_target?(config.updated_packages, name) || (config.update_recursive && config.updated_packages.any? do |pattern|
         name_pattern, _range = Utils::Misc.parse_key(pattern)
-        ::File.match?(name_pattern, name) || (config.update_recursive && ancestors.any? { |a| ::File.match?(name_pattern, a.name) })
-      end)
+        !name_pattern.starts_with?('!') && ancestors.any? { |a| ::File.match?(name_pattern, a.name) }
+      end))
 
       if version_or_alias.is_a?(Data::Package::Alias)
         version = version_or_alias.to_s
@@ -89,6 +89,26 @@ module Commands::Install::Resolver
       )
     end
     changed
+  end
+
+  # Whether a dependency is targeted by the update patterns (pnpm parity):
+  # a leading "!" negates a pattern and excludes a matching package, mixed
+  # patterns only target their positive matches, and negation-only patterns
+  # target everything else.
+  private def self.update_target?(patterns : Array(String), name : String) : Bool
+    return false if patterns.empty?
+    has_positive = false
+    positive_match = false
+    patterns.each do |pattern|
+      name_pattern, _range = Utils::Misc.parse_key(pattern)
+      if name_pattern.starts_with?('!')
+        return false if ::File.match?(name_pattern[1..], name)
+      else
+        has_positive = true
+        positive_match = true if ::File.match?(name_pattern, name)
+      end
+    end
+    !has_positive || positive_match
   end
 
   # Applies `zap up pkg@<range>` arguments: the declared specifier of the
@@ -133,13 +153,22 @@ module Commands::Install::Resolver
     package.each_dependency_hash(include_dev: true, include_optional: true) do |deps, type|
       next unless deps
       deps.each do |name, declared|
-        next unless declared.is_a?(String)
         # Only touch the packages actually being updated; pins and declared
         # ranges always differ, so a pin comparison alone is not enough.
-        next unless config.update_all || config.updated_packages.any? do |pattern|
-          name_pattern, _range = Utils::Misc.parse_key(pattern)
-          ::File.match?(name_pattern, name)
+        next unless config.update_all || update_target?(config.updated_packages, name)
+        if alias_info = alias_specifier(declared)
+          # npm: aliases: preserve the modifier and bump the aliased version.
+          resolved = state.lockfile.roots[package.name]?.try(&.dependency_specifier?(name))
+          resolved_version = resolved.is_a?(Data::Package::Alias) ? resolved.version : (resolved.is_a?(String) ? alias_specifier(resolved).try(&.[1]) : nil)
+          if resolved_version && (modifier = range_modifier(alias_info[1]))
+            new_version = "#{modifier}#{resolved_version}"
+            next if new_version == alias_info[1]
+            package.dependency_specifier(name, Data::Package::Alias.new(alias_info[0], new_version), type)
+            changed = true
+          end
+          next
         end
+        next unless declared.is_a?(String)
         resolved = state.lockfile.roots[package.name]?.try(&.dependency_specifier?(name))
         next unless resolved
         if modifier = range_modifier(declared)
@@ -151,6 +180,17 @@ module Commands::Install::Resolver
       end
     end
     changed
+  end
+
+  # For npm: aliases (either an Alias record or a "npm:name@spec" string),
+  # returns {aliased_name, aliased_specifier}.
+  private def self.alias_specifier(declared : String | Data::Package::Alias) : {String, String}?
+    if declared.is_a?(Data::Package::Alias)
+      {declared.name, declared.version}
+    elsif declared.starts_with?("npm:")
+      name, spec = Utils::Misc.parse_key(declared[4..])
+      {name, spec || "latest"}
+    end
   end
 
   private def self.range_modifier(declared : String) : String?

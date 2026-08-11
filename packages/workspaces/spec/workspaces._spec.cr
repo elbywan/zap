@@ -157,4 +157,18 @@ describe Workspaces, tags: "workspaces" do
     workspaces.filter("...^[origin/develop]").should eq [WORKSPACE_A]
     workspaces.filter("[origin/develop]^...").should eq [WORKSPACE_B, WORKSPACE_C, WORKSPACE_D]
   end
+  it "accepts bare workspace:^ and workspace:~ specifiers (any version)" do
+    workspaces = Workspaces.new([WORKSPACE_A, WORKSPACE_B])
+    workspaces.get!("a", "workspace:^").should eq(WORKSPACE_A)
+    workspaces.get!("b", "workspace:~").should eq(WORKSPACE_B)
+    workspaces.get!("b", "workspace:").should eq(WORKSPACE_B)
+  end
+
+  it "rejects a workspace: range that does not match the workspace version" do
+    workspaces = Workspaces.new([WORKSPACE_A])
+    expect_raises(Exception, /does not match version/) do
+      workspaces.get!("a", "workspace:^2.0.0")
+    end
+  end
+
 end
