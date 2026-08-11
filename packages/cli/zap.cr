@@ -20,7 +20,7 @@ require "commands/why/cli"
 require "commands/why"
 
 module Zap
-  Colorize.on_tty_only!
+  # Colorize is tty-only by default since Crystal 1.17; no explicit call needed.
   Zap.run
 
   VERSION = {{ `shards version`.stringify }}.chomp

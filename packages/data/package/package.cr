@@ -283,18 +283,6 @@ class Data::Package
     !kind.workspace?
   end
 
-  internal { getter resolved = Atomic(Int8).new(0_i8) }
-
-  # For some dependencies, we need to remember when they have already been resolved
-  # This is to prevent infinite loops when crawling the dependency tree
-  def already_resolved?(state : Commands::Install::State) : Bool
-    if should_resolve_dependencies?(state)
-      !@resolved.compare_and_set(0, 1)[1]
-    else
-      false
-    end
-  end
-
   def self.check_os_cpu_array(field : Array(String)?, value : String)
     # No os/cpu field, no problem
     !field ||

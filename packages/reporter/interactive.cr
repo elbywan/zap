@@ -1,5 +1,4 @@
 require "log"
-require "term-cursor"
 require "utils/timers"
 require "semver"
 require "./reporter"
@@ -25,9 +24,18 @@ class Reporter::Interactive < Reporter
     @built_packages = Atomic(Int32).new(0)
     @added_packages = Concurrency::SafeSet(String).new
     @removed_packages = Concurrency::SafeSet(String).new
-    @cursor = Term::Cursor
     @debounced_update = Utils::Debounce.new(0.05.seconds) do
       @action.try &.call
+    end
+  end
+
+  # In-house ANSI helpers (replaces the term-cursor shard).
+  private def clear_lines_up(n : Int32) : String
+    String.build do |str|
+      n.times do |i|
+        str << "\e[2K\r"
+        str << "\e[1A" unless i == n - 1
+      end
     end
   end
 
@@ -120,7 +128,7 @@ class Reporter::Interactive < Reporter
 
   def info(str : String) : Nil
     @io_lock.synchronize do
-      @out << %( ℹ #{str.colorize(:blue)}) << Shared::Constants::NEW_LINE
+      @out << %( 💡 #{str.colorize(:blue)}) << Shared::Constants::NEW_LINE
     end
   end
 
@@ -158,7 +166,7 @@ class Reporter::Interactive < Reporter
 
   def prepend(bytes : Bytes) : Nil
     @io_lock.synchronize do
-      @out << @cursor.clear_lines(@lines.get, :up)
+      @out << clear_lines_up(@lines.get)
       @out << String.new(bytes)
       @out << Shared::Constants::NEW_LINE
       @out.flush
@@ -168,7 +176,7 @@ class Reporter::Interactive < Reporter
 
   def prepend(str : String) : Nil
     @io_lock.synchronize do
-      @out << @cursor.clear_lines(@lines.get, :up)
+      @out << clear_lines_up(@lines.get)
       @out << str
       @out << Shared::Constants::NEW_LINE
       @out.flush
@@ -190,7 +198,7 @@ class Reporter::Interactive < Reporter
     packing_header = header("🎁", "Packing…")
     @action = -> do
       output = String.build do |str|
-        str << @cursor.clear_lines(@lines.get, :up)
+        str << clear_lines_up(@lines.get)
         str << resolving_header
         str << %([#{@resolved_packages.get}/#{@resolving_packages.get}])
         @lines.set(1)
@@ -225,7 +233,7 @@ class Reporter::Interactive < Reporter
     @action = -> do
       if @installing_packages.get > 0
         output_sync_unless_stopped do
-          @out << @cursor.clear_line
+          @out << "\e[2K\r"
           @out << installing_header
           @out << %([#{@installed_packages.get}/#{@installing_packages.get}])
           @out.flush
@@ -242,7 +250,7 @@ class Reporter::Interactive < Reporter
     building_header = header("🧱", "Building…", :light_red)
     @action = -> do
       output_sync_unless_stopped do
-        @out << @cursor.clear_line
+        @out << "\e[2K\r"
         @out << building_header
         @out << %([#{@built_packages.get}/#{@building_packages.get}])
         @out.flush

@@ -16,4 +16,6 @@ dependencies:
     path: ../reporter
   git:
     path: ../git
+  tui:
+    path: ../tui
 crystalline:

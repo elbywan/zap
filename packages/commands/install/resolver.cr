@@ -43,10 +43,14 @@ module Commands::Install::Resolver
     *,
     state : Commands::Install::State,
     ancestors : Deque(Data::Package) = Deque(Data::Package).new,
-    disable_cache_for_packages : Array(String)? = nil,
-    disable_cache : Bool = false,
   )
     is_root = ancestors.size == 0
+    config = state.install_config
+
+    # zap up pkg@<range>: write the requested range into the manifest first,
+    # so the dependency resolves (and saves) against it.
+    changed = is_root && config.updated_packages.size > 0 ? apply_updated_ranges(package, config) : false
+
     package.each_dependency(
       include_dev: is_root,
       include_optional: true
@@ -59,12 +63,13 @@ module Commands::Install::Resolver
         end
       end
 
-      # Check if the package is in the no_cache_packages set and bust the lockfile cache if needed
-      bust_pinned_cache = is_root && (disable_cache || begin
-        disable_cache_for_packages.try &.any? do |pattern|
-          ::File.match?(pattern, name)
-        end || false
-      end)
+      # Bust the lockfile cache for the packages being updated. With
+      # --recursive the whole transitive tree under a matched package is
+      # re-resolved too (an ancestor match propagates the bust downwards).
+      bust_pinned_cache = (is_root || config.update_recursive) && (config.update_all || update_target?(config.updated_packages, name) || (config.update_recursive && config.updated_packages.any? do |pattern|
+        name_pattern, _range = Utils::Misc.parse_key(pattern)
+        !name_pattern.starts_with?('!') && ancestors.any? { |a| ::File.match?(name_pattern, a.name) }
+      end))
 
       if version_or_alias.is_a?(Data::Package::Alias)
         version = version_or_alias.to_s
@@ -82,6 +87,121 @@ module Commands::Install::Resolver
         ancestors: Deque(Data::Package).new(ancestors.size + 1).concat(ancestors).push(package),
         bust_pinned_cache: bust_pinned_cache
       )
+    end
+    changed
+  end
+
+  # Whether a dependency is targeted by the update patterns (pnpm parity):
+  # a leading "!" negates a pattern and excludes a matching package, mixed
+  # patterns only target their positive matches, and negation-only patterns
+  # target everything else.
+  private def self.update_target?(patterns : Array(String), name : String) : Bool
+    return false if patterns.empty?
+    has_positive = false
+    positive_match = false
+    patterns.each do |pattern|
+      name_pattern, _range = Utils::Misc.parse_key(pattern)
+      if name_pattern.starts_with?('!')
+        return false if ::File.match?(name_pattern[1..], name)
+      else
+        has_positive = true
+        positive_match = true if ::File.match?(name_pattern, name)
+      end
+    end
+    !has_positive || positive_match
+  end
+
+  # Applies `zap up pkg@<range>` arguments: the declared specifier of the
+  # matching dependency is replaced with the requested range.
+  private def self.apply_updated_ranges(package : Data::Package, config : Commands::Install::Config) : Bool
+    changed = false
+    config.updated_packages.each do |arg|
+      name, range = Utils::Misc.parse_key(arg)
+      next unless name && range
+      package.dependencies.try &.each_key do |dep_name|
+        next unless ::File.match?(name, dep_name)
+        next if package.dependency_specifier?(dep_name) == range
+        package.dependency_specifier(dep_name, range, Data::Package::DependencyType::Dependency)
+        changed = true
+      end
+      package.dev_dependencies.try &.each_key do |dep_name|
+        next unless ::File.match?(name, dep_name)
+        # Compare against the dev entry itself: dependency_specifier? merges
+        # the hashes, so a dep declared in both would skip the dev update.
+        next if package.dev_dependencies.not_nil![dep_name].to_s == range
+        package.dependency_specifier(dep_name, range, Data::Package::DependencyType::DevDependency)
+        changed = true
+      end
+      package.optional_dependencies.try &.each_key do |dep_name|
+        next unless ::File.match?(name, dep_name)
+        next if package.optional_dependencies.not_nil![dep_name].to_s == range
+        package.dependency_specifier(dep_name, range, Data::Package::DependencyType::OptionalDependency)
+        changed = true
+      end
+    end
+    changed
+  end
+
+  # With --latest, rewrites the declared specifier of updated direct
+  # dependencies to the resolved version, preserving the range modifier
+  # (^, ~, <=, >= or exact). Complex ranges are left untouched.
+  def self.rewrite_latest_specifiers(package : Data::Package, state : Commands::Install::State) : Bool
+    config = state.install_config
+    return false unless config.update_latest
+    return false unless config.update_all || config.updated_packages.size > 0
+    changed = false
+    package.each_dependency_hash(include_dev: true, include_optional: true) do |deps, type|
+      next unless deps
+      deps.each do |name, declared|
+        # Only touch the packages actually being updated; pins and declared
+        # ranges always differ, so a pin comparison alone is not enough.
+        next unless config.update_all || update_target?(config.updated_packages, name)
+        if alias_info = alias_specifier(declared)
+          # npm: aliases: preserve the modifier and bump the aliased version.
+          resolved = state.lockfile.roots[package.name]?.try(&.dependency_specifier?(name))
+          resolved_version = resolved.is_a?(Data::Package::Alias) ? resolved.version : (resolved.is_a?(String) ? alias_specifier(resolved).try(&.[1]) : nil)
+          if resolved_version && (modifier = range_modifier(alias_info[1]))
+            new_version = "#{modifier}#{resolved_version}"
+            next if new_version == alias_info[1]
+            package.dependency_specifier(name, Data::Package::Alias.new(alias_info[0], new_version), type)
+            changed = true
+          end
+          next
+        end
+        next unless declared.is_a?(String)
+        resolved = state.lockfile.roots[package.name]?.try(&.dependency_specifier?(name))
+        next unless resolved
+        if modifier = range_modifier(declared)
+          new_specifier = "#{modifier}#{resolved}"
+          next if new_specifier == declared
+          package.dependency_specifier(name, new_specifier, type)
+          changed = true
+        end
+      end
+    end
+    changed
+  end
+
+  # For npm: aliases (either an Alias record or a "npm:name@spec" string),
+  # returns {aliased_name, aliased_specifier}.
+  private def self.alias_specifier(declared : String | Data::Package::Alias) : {String, String}?
+    if declared.is_a?(Data::Package::Alias)
+      {declared.name, declared.version}
+    elsif declared.starts_with?("npm:")
+      name, spec = Utils::Misc.parse_key(declared[4..])
+      {name, spec || "latest"}
+    end
+  end
+
+  private def self.range_modifier(declared : String) : String?
+    if declared.starts_with?("^")
+      "^"
+    elsif declared.starts_with?("~")
+      "~"
+    elsif (match = declared.match(/\A(<=|>=)\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?\z/))
+      match[1]
+    elsif declared.matches?(/\A\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?\z/)
+      ""
     end
   end
 
@@ -157,8 +277,15 @@ module Commands::Install::Resolver
           state.lockfile.packages[metadata_key]?
         end
         lockfile_cached = !!lockfile_metadata
-        _metadata = lockfile_metadata || metadata_ref
-        already_resolved = _metadata.already_resolved?(state)
+        # In update contexts the lockfile entry is stale (its dependency pins
+        # are resolved versions, not declared ranges), so the freshly resolved
+        # metadata drives the subtree resolution.
+        _metadata = (state.install_config.update_recursive ? metadata_ref : (lockfile_metadata || metadata_ref))
+        # The infinite-loop guard is per key, tracked on the state: the fresh
+        # metadata is a new object on every visit (with --recursive), so a
+        # flag on the package itself would never trip, re-resolving the same
+        # subtree forever.
+        already_resolved = !state.resolved_keys.add?(metadata_key)
 
         # Forcefully fetch the metadata from the registry if the force_metadata_retrieval option is enabled
         if (forced_retrieval = lockfile_cached && force_metadata_retrieval && !already_resolved)
@@ -168,15 +295,19 @@ module Commands::Install::Resolver
         end
 
         # Apply package extensions unless the package is already in the lockfile
-        apply_package_extensions(_metadata, state: state) if forced_retrieval || !lockfile_metadata
+        apply_package_extensions(_metadata, state: state) if forced_retrieval || !lockfile_metadata || state.install_config.update_recursive
         # Flag transitive overrides
         flag_transitive_overrides(_metadata, ancestors, state)
         # Mark the package and store its parents
         # Used to prevent packages being pruned in the lockfile
         _metadata.dependents << package if package
 
-        # Mutate only if the package is not already in the lockfile
-        if !lockfile_metadata || forced_retrieval
+        # Mutate only if the package is not already in the lockfile, or when
+        # an update re-resolved it for the first time in this run. The
+        # dependency pins are written after this store (as the children
+        # resolve), so re-storing a fresh manifest on a later visit would
+        # wipe them and replace them with the declared ranges.
+        if !lockfile_metadata || forced_retrieval || (state.install_config.update_recursive && !already_resolved)
           Log.debug { "(#{metadata_key}) Saving package metadata in the lockfile #{(package ? "[parent: #{package.key}]" : "")}" }
           # Remove dev dependencies
           _metadata.dev_dependencies = nil

@@ -10,6 +10,7 @@ require "utils/shasum"
 require "./config"
 require "./state"
 require "./resolver"
+require "./interactive"
 require "./linker"
 require "./linker/classic"
 require "./linker/isolated"
@@ -98,8 +99,13 @@ module Commands::Install
       # Remove packages if specified from the CLI
       remove_packages(state)
 
+      # Interactive update: let the user pick the packages to upgrade
+      if state.install_config.interactive
+        state = Commands::Install::Interactive.run(state)
+      end
+
       # Resolve all dependencies
-      resolve_dependencies(state)
+      update_changed = resolve_dependencies(state)
 
       # Prune lockfile before installing to cleanup pinned dependencies
       pruned_direct_dependencies = clean_lockfile(state)
@@ -135,7 +141,7 @@ module Commands::Install
         state.lockfile.write(format: config.lockfile_format)
 
         # Edit and write the package.json files if the flags have been set in the config
-        write_package_json_files(state)
+        write_package_json_files(state, update_changed)
       end
 
       # Install dependencies to the appropriate node_modules folder
@@ -307,15 +313,17 @@ module Commands::Install
       end
       Log.debug { "• Resolving dependencies" }
       # Resolve and store dependencies
-      state.context.scope_packages(:install).each do |package|
-        Resolver.resolve_dependencies_of(
-          package,
-          state: state,
-          disable_cache_for_packages: state.install_config.updated_packages,
-          disable_cache: state.install_config.update_all
-        )
+      update_changed = state.context.scope_packages(:install).reduce(false) do |acc, package|
+        # Note: the call must always run (it mutates the lockfile), so the
+        # accumulated value is OR'd after it, never short-circuited.
+        Resolver.resolve_dependencies_of(package, state: state) || acc
       end
       state.pipeline.await
+      # Rewrite direct dependency specifiers when --latest bumped them
+      update_changed = state.context.scope_packages(:install).reduce(update_changed) do |acc, package|
+        Resolver.rewrite_latest_specifiers(package, state) || acc
+      end
+      update_changed
     end
   end
 
@@ -369,29 +377,43 @@ module Commands::Install
     pruned_dependencies
   end
 
-  private def self.write_package_json_files(state : State)
+  private def self.write_package_json_files(state : State, update_changed : Bool = false)
     Log.debug { "• Writing package.json file(s)" }
-    if state.install_config.added_packages.size > 0 || state.install_config.removed_packages.size > 0
-      [*state.context.scope_packages_and_paths(:command)].each do |package, location|
+    if state.install_config.added_packages.size > 0 || state.install_config.removed_packages.size > 0 || update_changed
+      # Adds/removes mutate the command scope; updates mutate the install
+      # scope (all workspaces), which the command scope does not cover.
+      packages_to_write =
+        if update_changed && (state.install_config.added_packages.size > 0 || state.install_config.removed_packages.size > 0)
+          (state.context.scope_packages_and_paths(:command) + state.context.scope_packages_and_paths(:install)).uniq
+        elsif update_changed
+          state.context.scope_packages_and_paths(:install)
+        else
+          state.context.scope_packages_and_paths(:command)
+        end
+      packages_to_write.each do |package, location|
         package_json = JSON.parse(File.read(Path.new(location).join("package.json"))).as_h
         if (deps = package.dependencies) && deps.size > 0
-          package_json["dependencies"] = JSON::Any.new(deps.transform_values { |v| JSON::Any.new(v.as(String)) })
+          package_json["dependencies"] = JSON::Any.new(deps.transform_values { |v| JSON::Any.new(v.is_a?(Data::Package::Alias) ? v.to_s : v.as(String)) })
         else
           package_json.delete("dependencies")
         end
         if (dev_deps = package.dev_dependencies) && dev_deps.size > 0
-          package_json["devDependencies"] = JSON::Any.new(dev_deps.transform_values { |v| JSON::Any.new(v.as(String)) })
+          package_json["devDependencies"] = JSON::Any.new(dev_deps.transform_values { |v| JSON::Any.new(v.is_a?(Data::Package::Alias) ? v.to_s : v.as(String)) })
         else
           package_json.delete("devDependencies")
         end
         if (opt_deps = package.optional_dependencies) && opt_deps.size > 0
-          package_json["optionalDependencies"] = JSON::Any.new(opt_deps.transform_values { |v| JSON::Any.new(v.as(String)) })
+          package_json["optionalDependencies"] = JSON::Any.new(opt_deps.transform_values { |v| JSON::Any.new(v.is_a?(Data::Package::Alias) ? v.to_s : v.as(String)) })
         else
           package_json.delete("optionalDependencies")
         end
         File.write(Path.new(location).join("package.json"), package_json.to_pretty_json)
       end
     end
+  end
+
+  private def self.json_specifier(specifier : String | Data::Package::Alias) : JSON::Any
+    JSON::Any.new(specifier.is_a?(Data::Package::Alias) ? specifier.to_s : specifier)
   end
 
   private def self.check_engines(state : State) : Nil

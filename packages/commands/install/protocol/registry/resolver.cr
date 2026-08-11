@@ -24,8 +24,9 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
     parent = nil,
     dependency_type = nil,
     skip_cache = false,
+    @latest_eligible : Bool = false,
   )
-    super
+    super(state, name, specifier, parent, dependency_type, skip_cache)
 
     package_name = name.is_a?(Aliased) ? name.name : name
     return nil if package_name.nil?
@@ -145,7 +146,20 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
         Manifest.new(http.get(metadata_url, Shared::Constants::HEADERS).body)
       } : @client_pool.fetch_with_cache(metadata_url, Shared::Constants::HEADERS) { |body| Manifest.new(body) }
       Log.debug { "(#{@name}@#{@specifier}) Checking the registry metadata for a match against the version/dist-tag" }
-      raw_metadata = manifest.get_raw_metadata?(pinned_version ? Semver.parse(pinned_version) : self.specifier)
+      # With --latest the declared range is ignored and the newest version is
+      # picked; the resolved version is still pinned to the lockfile. Only
+      # direct dependencies (parent: the lockfile root) and overrides (no
+      # parent) qualify: transitives always stay within their declared range,
+      # even when combined with --recursive.
+      version_for_selection =
+        if @latest_eligible && state.install_config.update_latest && (state.install_config.update_all || state.install_config.updated_packages.size > 0) && (@parent.nil? || @parent.is_a?(Data::Lockfile::Root))
+          Semver.parse("*")
+        elsif pinned_version
+          Semver.parse(pinned_version)
+        else
+          self.specifier
+        end
+      raw_metadata = manifest.get_raw_metadata?(version_for_selection)
       unless raw_metadata
         raise "No version matching range or dist-tag #{specifier} for package #{@name} found in the module registry"
       end

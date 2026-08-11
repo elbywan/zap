@@ -1,6 +1,15 @@
 require "concurrency/mutex"
 
 module Utils::Misc
+  # True when --latest may ignore the declared range: a simple rewritable
+  # form (^, ~, <=, >= or exact) without a prerelease. Complex ranges and
+  # prerelease-carrying specifiers stay in-range so a beta is never downgraded.
+  def self.latest_eligible_specifier?(specifier : String) : Bool
+    !specifier.includes?("-") &&
+      (specifier.starts_with?("^") || specifier.starts_with?("~") ||
+       !!specifier.matches?(/\A(<=|>=)?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?\z/))
+  end
+
   def self.parse_key(raw_key : String) : {String, String?}
     split_key = raw_key.split('@')
     if raw_key.starts_with?("@")

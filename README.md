@@ -47,7 +47,7 @@ zap --help
 | `zap run`     | `r`                   | Run a script defined in package.json                   | ✅       |
 | `zap rebuild` | `rb`                  | Rebuild installed native node addons                   | ✅       |
 | `zap exec`    | `e`                   | Execute a shell command in the scope of the project    | ✅       |
-| `zap update`  | `up` `upgrade`        | Update the lockfile with the newest package versions   | ⏳ _WIP_ |
+| `zap update`  | `up` `upgrade`        | Update dependencies                                    | ✅ |
 | `zap why`     | `y`                   | Show information about why a package is installed      | ✅       |
 
 #### Check the [project board](https://github.com/users/elbywan/projects/1/views/1) for the current status of the project.
@@ -128,6 +128,21 @@ zap -r test
 zap -F "my_app^..." --deferred-output run build
 # Disregard the topological ordering and run the scripts in parallel.
 zap run --parallel -r build
+```
+
+- **Dependency updates**
+
+```bash
+# Update everything within declared ranges
+zap up
+# Bump direct dependencies to their latest version, rewriting package.json
+zap up --latest
+# Re-resolve transitive dependencies too
+zap up --latest --recursive
+# Update specific packages, optionally to a range
+zap up react react-dom@^18.0.0
+# Pick packages interactively (/ searches, f filters by bump severity)
+zap up --interactive
 ```
 
 - **[Private registries](https://docs.npmjs.com/cli/v10/configuring-npm/npmrc#auth-related-configuration)**

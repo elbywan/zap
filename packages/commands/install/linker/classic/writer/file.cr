@@ -21,7 +21,7 @@ class Commands::Install::Linker::Classic
       install_folder = aliased_name || dependency.name
       target_path = location.value.node_modules / install_folder
       install_location = self.class.init_location(dependency, target_path, location)
-      exists = ::File.symlink?(target_path) && ::File.realpath(target_path) == link_source.to_s
+      exists = ::File.symlink?(target_path) && ::File.realpath(target_path) == ::File.realpath(link_source)
       if exists
         {install_location, false}
       else

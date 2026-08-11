@@ -24,8 +24,17 @@ struct Commands::Install::Config < Core::CommandConfig
   getter updated_packages : Array(String) = Array(String).new
   @[Env]
   getter update_all : Bool = false
+  # --latest: bump direct dependencies outside their declared range, rewriting
+  # the package.json specifier while preserving the range modifier
   @[Env]
-  getter update_to_latest : Bool = false
+  getter update_latest : Bool = false
+  # --recursive: also re-resolve transitive dependencies instead of only
+  # busting the lockfile cache for direct dependencies
+  @[Env]
+  getter update_recursive : Bool = false
+  # --interactive: let the user pick the packages to update from a list
+  # (requires a TTY, hence no env var)
+  getter interactive : Bool = false
   @[Env]
   getter save : Bool = true
   @[Env]
