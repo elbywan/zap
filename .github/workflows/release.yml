@@ -32,6 +32,14 @@ jobs:
         with:
           run_id: ${{ github.event.inputs.workflow_run_id }}
           path: ./bin
+      - name: Sync the npm package versions
+        # The npm wrappers carry their own package.json version, which is
+        # otherwise only bumped by hand: derive it from the root shard.yml
+        # (the version the binaries were built with) so publishing never
+        # re-uses a stale version.
+        run: |
+          VERSION=$(grep -m1 '^version:' shard.yml | awk '{print $2}')
+          node npm/set-version.js "$VERSION"
       - name: Prepare the binaries
         run: |
           ls -al ./bin
