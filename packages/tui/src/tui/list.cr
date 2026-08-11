@@ -1,6 +1,9 @@
 module Tui
   # `struct winsize` and the ioctl syscall (TIOCGWINSZ), not bound by the
-  # stdlib; used to query the real terminal size.
+  # stdlib; used to query the real terminal size. POSIX-only: on Windows the
+  # ioctl symbol does not exist, so the size falls back to the COLUMNS
+  # environment variable and the default window height.
+  {% unless flag?(:win32) %}
   struct Winsize
     getter ws_row : UInt16 = 0_u16
     getter ws_col : UInt16 = 0_u16
@@ -11,6 +14,7 @@ module Tui
   lib LibTui
     fun ioctl(fd : Int32, request : UInt64, arg : Void*) : Int32
   end
+  {% end %}
 
   # A scrollable multi-select list with a fuzzy search (`/`) and a filter
   # cycle over item tags (`f`). The model is pure logic; rendering writes
@@ -30,12 +34,16 @@ module Tui
     WINDOW_HEIGHT = 10
 
     private def self.terminal_size : {Int32, Int32}
-      winsize = Winsize.new
-      if LibTui.ioctl(0, 0x5413_u64, pointerof(winsize).as(Void*)) == 0
-        {winsize.ws_row.to_i32, winsize.ws_col.to_i32}
-      else
+      {% if flag?(:win32) %}
         {0, 0}
-      end
+      {% else %}
+        winsize = Winsize.new
+        if LibTui.ioctl(0, 0x5413_u64, pointerof(winsize).as(Void*)) == 0
+          {winsize.ws_row.to_i32, winsize.ws_col.to_i32}
+        else
+          {0, 0}
+        end
+      {% end %}
     rescue
       {0, 0}
     end
