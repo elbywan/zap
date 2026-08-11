@@ -32,9 +32,7 @@ struct Commands::Install::Protocol::Registry < Commands::Install::Protocol::Base
     # rewritable form (^, ~, <=, >=, exact); complex ranges stay in-range and
     # prerelease-carrying specifiers keep their range so a beta is never
     # downgraded.
-    latest_eligible = !specifier.includes?("-") &&
-      (specifier.starts_with?("^") || specifier.starts_with?("~") ||
-       !!specifier.matches?(/\A(<=|>=)?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?\z/))
+    latest_eligible = Utils::Misc.latest_eligible_specifier?(specifier)
     Resolver.new(state, name, semver || specifier, parent, dependency_type, skip_cache, latest_eligible)
   end
 end

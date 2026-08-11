@@ -10,6 +10,7 @@ require "utils/shasum"
 require "./config"
 require "./state"
 require "./resolver"
+require "./interactive"
 require "./linker"
 require "./linker/classic"
 require "./linker/isolated"
@@ -97,6 +98,11 @@ module Commands::Install
 
       # Remove packages if specified from the CLI
       remove_packages(state)
+
+      # Interactive update: let the user pick the packages to upgrade
+      if state.install_config.interactive
+        state = Commands::Install::Interactive.run(state)
+      end
 
       # Resolve all dependencies
       update_changed = resolve_dependencies(state)

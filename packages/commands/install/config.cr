@@ -32,6 +32,9 @@ struct Commands::Install::Config < Core::CommandConfig
   # busting the lockfile cache for direct dependencies
   @[Env]
   getter update_recursive : Bool = false
+  # --interactive: let the user pick the packages to update from a list
+  # (requires a TTY, hence no env var)
+  getter interactive : Bool = false
   @[Env]
   getter save : Bool = true
   @[Env]

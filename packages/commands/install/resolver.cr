@@ -241,7 +241,11 @@ module Commands::Install::Resolver
         # are resolved versions, not declared ranges), so the freshly resolved
         # metadata drives the subtree resolution.
         _metadata = (state.install_config.update_recursive ? metadata_ref : (lockfile_metadata || metadata_ref))
-        already_resolved = _metadata.already_resolved?(state)
+        # The infinite-loop guard is per key, tracked on the state: the fresh
+        # metadata is a new object on every visit (with --recursive), so a
+        # flag on the package itself would never trip, re-resolving the same
+        # subtree forever.
+        already_resolved = !state.resolved_keys.add?(metadata_key)
 
         # Forcefully fetch the metadata from the registry if the force_metadata_retrieval option is enabled
         if (forced_retrieval = lockfile_cached && force_metadata_retrieval && !already_resolved)

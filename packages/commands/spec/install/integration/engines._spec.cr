@@ -35,4 +35,25 @@ describe "engines", tags: "integration" do
       end
     end
   end
+  it "tolerates malformed engines metadata (engines published as an array)" do
+    It.with_registry do |registry|
+      # ansi-html-community@0.0.8 publishes `"engines": ["node >= 0.8.0"]`
+      manifest = It.pkg("weird-engines", "1.0.0").merge({"engines" => JSON.parse(%(["node >= 0.8.0"]))})
+      registry.add("weird-engines", "1.0.0", manifest, {"index.js" => "w"})
+      It.install_project(registry, %({"name":"app","version":"1.0.0","dependencies":{"weird-engines":"^1.0.0"}})) do |project|
+        File.read(project / "node_modules/weird-engines/index.js").should eq("w")
+      end
+    end
+  end
+
+  it "tolerates malformed os metadata (os published as a string)" do
+    It.with_registry do |registry|
+      manifest = It.pkg("weird-os", "1.0.0").merge({"os" => JSON.parse(%("linux"))})
+      registry.add("weird-os", "1.0.0", manifest, {"index.js" => "o"})
+      It.install_project(registry, %({"name":"app","version":"1.0.0","dependencies":{"weird-os":"^1.0.0"}})) do |project|
+        File.read(project / "node_modules/weird-os/index.js").should eq("o")
+      end
+    end
+  end
+
 end

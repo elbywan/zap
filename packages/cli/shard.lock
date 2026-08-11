@@ -56,9 +56,9 @@ shards:
     path: ../store
     version: 0.0.1
 
-  term-cursor:
-    git: https://github.com/crystal-term/cursor.git
-    version: 0.1.0+git.commit.8805d5f686d153db92cf2ce3333433f8ed3708d0
+  tui:
+    path: ../tui
+    version: 0.1.3
 
   utils:
     path: ../utils

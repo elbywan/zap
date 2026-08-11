@@ -63,6 +63,9 @@ class Commands::Install::CLI < Commands::CLI
       Helpers.flag("--recursive", "Also re-resolve transitive dependencies, not only direct ones. #{"[env: ZAP_INSTALL_UPDATE_RECURSIVE]".colorize.dim}") do
         command_config.ref = install_config.copy_with(update_recursive: true)
       end
+      Helpers.flag("--interactive", "Show a list of updateable packages and pick which ones to upgrade.") do
+        command_config.ref = install_config.copy_with(interactive: true)
+      end
     end
 
     Helpers.subSeparator("Strategies")
@@ -125,6 +128,9 @@ class Commands::Install::CLI < Commands::CLI
       if remove_packages
         install_config.removed_packages.concat(pkgs)
       elsif update_packages
+        if install_config.interactive && pkgs.size > 0
+          raise "Cannot combine package arguments with --interactive: the packages to upgrade are picked from the list."
+        end
         command_config.ref = install_config.copy_with(update_all: pkgs.size == 0)
         install_config.updated_packages.concat(pkgs)
       else

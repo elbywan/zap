@@ -19,5 +19,10 @@ module Commands::Install
     npmrc : Data::Npmrc,
     registry_clients : RegistryClients,
     pipeline : Concurrency::Pipeline,
-    reporter : Reporter = Reporter::Interactive.new
+    reporter : Reporter = Reporter::Interactive.new,
+    # Keys of packages whose dependency subtree is currently being resolved
+    # this run; guards the recursive dependency crawl against infinite loops
+    # (a fresh object is used for the metadata on every visit, so the flag
+    # cannot live on the package itself).
+    resolved_keys : Concurrency::SafeSet(String) = Concurrency::SafeSet(String).new
 end

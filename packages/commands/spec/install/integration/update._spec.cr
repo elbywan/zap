@@ -719,4 +719,32 @@ describe "update semantics", tags: "integration" do
     end
   end
 
+  it "does not loop forever on a diamond dependency graph with --recursive" do
+    It.with_registry do |registry|
+      registry.add("d", "1.0.0", It.pkg("d", "1.0.0"), {"index.js" => "d"})
+      registry.add("b", "1.0.0", It.pkg("b", "1.0.0", dependencies: {"d" => "^1.0.0"}), {"index.js" => "b"})
+      registry.add("c", "1.0.0", It.pkg("c", "1.0.0", dependencies: {"d" => "^1.0.0"}), {"index.js" => "c"})
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0", dependencies: {"b" => "^1.0.0", "c" => "^1.0.0"}), {"index.js" => "a"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"a":"1.0.0"}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        registry.add("d", "1.5.0", It.pkg("d", "1.5.0"), {"index.js" => "d2"})
+        recursive = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true, update_all: true, update_recursive: true)
+        Commands::Install.run(config, recursive, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        # The recursion guard must trip on the shared transitive, not loop
+        File.read(tmpdir / "node_modules/d/index.js").should eq("d2")
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
 end

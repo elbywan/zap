@@ -28,10 +28,6 @@ shards:
     path: ../shared
     version: 0.1.0
 
-  term-cursor:
-    git: https://github.com/crystal-term/cursor.git
-    version: 0.1.0+git.commit.8805d5f686d153db92cf2ce3333433f8ed3708d0
-
   utils:
     path: ../utils
     version: 0.1.0

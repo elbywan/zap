@@ -6,6 +6,41 @@ require "../alias"
 require "../lifecycle_scripts"
 require "../overrides"
 
+# Tolerant parsers for package.json fields that npm's registry sometimes
+# publishes malformed (e.g. `engines` as an array instead of an object).
+# Malformed values are ignored, like npm does, instead of failing the install.
+module Data::Package::TolerantHash
+
+  def self.from_json(value : JSON::PullParser) : Hash(String, String)?
+    if value.kind.begin_object?
+      JSON.parse(value.read_raw).as_h.transform_values(&.to_s)
+    else
+      value.skip
+      nil
+    end
+  end
+
+  def self.to_json(value : Hash(String, String)?, json : JSON::Builder) : Nil
+    value.to_json(json)
+  end
+end
+
+module Data::Package::TolerantArray
+
+  def self.from_json(value : JSON::PullParser) : Array(String)?
+    if value.kind.begin_array?
+      JSON.parse(value.read_raw).as_a.map(&.to_s)
+    else
+      value.skip
+      nil
+    end
+  end
+
+  def self.to_json(value : Array(String)?, json : JSON::Builder) : Nil
+    value.to_json(json)
+  end
+end
+
 class Data::Package
   # Package.json fields #
   # Ref: https://docs.npmjs.com/cli/v9/configuring-npm/package-json
@@ -30,8 +65,11 @@ class Data::Package
     @[YAML::Field(ignore: true)]
     @[MessagePack::Field(ignore: true)]
     property scripts : LifecycleScripts? = nil
+    @[JSON::Field(converter: Data::Package::TolerantArray)]
     getter os : Array(String)? = nil
+    @[JSON::Field(converter: Data::Package::TolerantArray)]
     getter cpu : Array(String)? = nil
+    @[JSON::Field(converter: Data::Package::TolerantHash)]
     getter engines : Hash(String, String)? = nil
     # See: https://github.com/npm/rfcs/blob/main/implemented/0026-workspaces.md
     @[YAML::Field(ignore: true)]
