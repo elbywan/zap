@@ -175,4 +175,26 @@ describe "interactive update", tags: "integration" do
     end
   end
 
+  it "fails fast when the lockfile is missing" do
+    It.with_registry do |registry|
+      registry.add("pinned", "1.0.0", It.pkg("pinned", "1.0.0"), {"index.js" => "1.0.0"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"pinned":"^1.0.0"}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        # No install ran: there is no lockfile to read current versions from.
+        state = ItState.build(config, ic)
+        expect_raises(Exception, /lockfile/) do
+          Commands::Install::Interactive.scan(state)
+        end
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
 end

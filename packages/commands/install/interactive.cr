@@ -88,6 +88,13 @@ module Commands::Install
     # Scans the direct dependencies of the command scope and returns the ones
     # for which a newer version is available within the declared range.
     def self.scan(state : State) : Array(Updateable)
+      # The list's "current version" comes from the lockfile. Without it the
+      # scan would fetch every latest version and then report nothing to
+      # update: fail fast instead of leaving the user staring at an empty
+      # screen for minutes.
+      unless state.lockfile.read_status.from_disk?
+        raise "The interactive list needs a lockfile to know the current versions. Run `zap i` first, then `zap up --interactive`."
+      end
       # The scan is silent: the list appears on its own screen afterwards, so
       # no progress is rendered (nothing is shown until the user can choose).
       result = Concurrency::SafeArray(Updateable).new

@@ -972,4 +972,39 @@ describe "update semantics", tags: "integration" do
     end
   end
 
+  it "keeps resolved pins on a shared transitive during --recursive --latest" do
+    It.with_registry do |registry|
+      registry.add("grandchild", "1.0.0", It.pkg("grandchild", "1.0.0"), {"index.js" => "1.0.0"})
+      registry.add("child", "1.0.0", It.pkg("child", "1.0.0", dependencies: {"grandchild" => "^1.0.0"}), {"index.js" => "1.0.0"})
+      registry.add("parent-a", "1.0.0", It.pkg("parent-a", "1.0.0", dependencies: {"child" => "^1.0.0"}), {"index.js" => "1.0.0"})
+      registry.add("parent-b", "1.0.0", It.pkg("parent-b", "1.0.0", dependencies: {"child" => "^1.0.0"}), {"index.js" => "1.0.0"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"parent-a":"^1.0.0","parent-b":"^1.0.0"}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        registry.add("grandchild", "1.1.0", It.pkg("grandchild", "1.1.0"), {"index.js" => "1.1.0"})
+        registry.add("child", "1.1.0", It.pkg("child", "1.1.0", dependencies: {"grandchild" => "^1.0.0"}), {"index.js" => "1.1.0"})
+        registry.add("parent-a", "1.1.0", It.pkg("parent-a", "1.1.0", dependencies: {"child" => "^1.0.0"}), {"index.js" => "1.1.0"})
+        registry.add("parent-b", "1.1.0", It.pkg("parent-b", "1.1.0", dependencies: {"child" => "^1.0.0"}), {"index.js" => "1.1.0"})
+
+        update_ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true, update_all: true, update_latest: true, update_recursive: true, strategy: Data::Package::InstallStrategy::Isolated)
+        Commands::Install.run(config, update_ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        # child is reached from both parents; the second visit must not
+        # overwrite the entry with the declared ranges, or the linker would
+        # fail looking up grandchild@^1.0.0.
+        lockfile = Data::Lockfile.new(tmpdir)
+        child = lockfile.packages["child@1.1.0"]
+        child.dependencies.not_nil!["grandchild"].should eq("1.1.0")
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
 end

@@ -303,8 +303,11 @@ module Commands::Install::Resolver
         _metadata.dependents << package if package
 
         # Mutate only if the package is not already in the lockfile, or when
-        # an update re-resolved it (so the refreshed dependency pins persist)
-        if !lockfile_metadata || forced_retrieval || state.install_config.update_recursive
+        # an update re-resolved it for the first time in this run. The
+        # dependency pins are written after this store (as the children
+        # resolve), so re-storing a fresh manifest on a later visit would
+        # wipe them and replace them with the declared ranges.
+        if !lockfile_metadata || forced_retrieval || (state.install_config.update_recursive && !already_resolved)
           Log.debug { "(#{metadata_key}) Saving package metadata in the lockfile #{(package ? "[parent: #{package.key}]" : "")}" }
           # Remove dev dependencies
           _metadata.dev_dependencies = nil
