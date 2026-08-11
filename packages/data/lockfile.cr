@@ -256,44 +256,92 @@ class Data::Lockfile
     diff
   end
 
-  def mark_transitive_peers(*, roots = self.roots) : Array(Tuple(Data::Lockfile::Root, Array(Tuple(String, Semver::Range, Data::Package))))
-    unmet_peers_by_roots = reduce_roots(Tuple(String, Semver::Range, Package), roots: roots) do |package, type, root, ancestors, unresolved_peers|
-      # For each package, filter unresolved (transitive) peers after all its dependencies have been crawled.
-      # "Transitive peers" are inherited from children (it is the sum of all unresolved peers)
-      transitive_peers = unresolved_peers.reject do |(peer_name, peer_range)|
-        # The peer is resolved if the current package is the peer itself
-        if package.name == peer_name && peer_range.satisfies?(package.version)
-          next true
-        end
+  # A peer need propagating upward: the peer's name, the demanded range and
+  # the package that declared it (kept for reporting).
+  alias PeerNeed = Tuple(String, Semver::Range, Data::Package)
 
-        # The peer is resolved if the current package has the peer as a direct dependency
-        if specifier = package.dependency_specifier?(peer_name)
-          if peer_range.satisfies?(specifier.is_a?(Package::Alias) ? specifier.version : specifier)
-            next true
-          end
+  def mark_transitive_peers(*, roots = self.roots) : Array(Tuple(Data::Lockfile::Root, Array(PeerNeed)))
+    # Each package's need-set only grows as peers propagate upward, so a
+    # monotone worklist fixpoint computes the union over all paths exactly:
+    # no per-path re-walk of shared cores, and cycles converge instead of
+    # looping (the ancestor-pruned recursion they replace could not be
+    # memoized exactly, since the pruning differs per path).
+    needs = Hash(String, Set(PeerNeed)).new
+    own = Hash(String, Set(PeerNeed)).new
+    packages.each_value do |pkg|
+      next unless peer_deps = pkg.peer_dependencies
+      set = Set(PeerNeed).new
+      peer_deps.each do |peer_name, peer_range|
+        set << {peer_name, Semver.parse?(peer_range).or(Semver::ANY), pkg}
+      end
+      own[pkg.key] = set
+      needs[pkg.key] = set
+    end
+
+    # Reverse edges: every package that depends on each package. The child
+    # key must match the lockfile entry key: workspace: pins are stored as
+    # the declared specifier ("workspace:^") while the entry is keyed by the
+    # resolved one ("name@workspace:name"), so both map to the same target.
+    parents = Hash(String, Array(Data::Package)).new
+    packages.each_value do |pkg|
+      pkg.each_dependency do |name, version_or_alias, _type|
+        child_key = if version_or_alias.is_a?(Data::Package::Alias)
+                      version_or_alias.key
+                    elsif version_or_alias.starts_with?("workspace:")
+                      "#{name}@workspace:#{name}"
+                    else
+                      "#{name}@#{version_or_alias}"
+                    end
+        (parents[child_key] ||= [] of Data::Package) << pkg
+      end
+    end
+
+    worklist = Deque(String).new(needs.keys)
+    while (key = worklist.shift?)
+      need_set = needs[key]?
+      next unless need_set
+      parents[key]?.try &.each do |parent|
+        incoming = need_set.select { |(peer_name, peer_range, _)| !peer_resolved_by?(parent, peer_name, peer_range) }.to_set
+        next if incoming.empty?
+        parent_needs = (needs[parent.key] ||= Set(PeerNeed).new)
+        new_needs = incoming - parent_needs
+        next if new_needs.empty?
+        parent_needs.concat(new_needs)
+        worklist << parent.key
+      end
+    end
+
+    # The transitive marks are the inherited needs only: a package's own peer
+    # declarations are already tracked in peer_dependencies.
+    needs.each do |key, need_set|
+      pkg = packages[key]
+      inherited = need_set - (own[key]? || Set(PeerNeed).new)
+      next if inherited.empty?
+      transitive = (pkg.transitive_peer_dependencies ||= Hash(String, Set(Semver::Range)).new)
+      inherited.each do |(peer_name, peer_range, _)|
+        (transitive[peer_name] ||= Set(Semver::Range).new) << peer_range
+      end
+    end
+
+    roots.map do |root_name, root|
+      results = [] of PeerNeed
+      root.each_dependency do |name, version, type|
+        if package = get_package?(name, version)
+          results.concat(needs[package.key]? || [] of PeerNeed)
         end
       end
+      {root, results}
+    end
+  end
 
-      if transitive_peers.size > 0
-        # if this path to the package has transitive peers, append them to the transitive peer list
-        pkg_transitive_peers = (package.transitive_peer_dependencies ||= Hash(String, Set(Semver::Range)).new)
-        transitive_peers.each do |(peer_name, peer_range)|
-          (pkg_transitive_peers[peer_name] ||= Set(Semver::Range).new) << peer_range
-        end
-      end
-
-      if pkg_peers = package.peer_dependencies
-        # pkg_peers = pkg_peers.reject do |peer|
-        #   package.has_dependency?(peer)
-        # end
-        # Return the unresolved transitive peers + its own peers to the ancestor package
-        transitive_peers + pkg_peers.map do |peer_name, peer_range|
-          {peer_name, Semver.parse?(peer_range).or(Semver::ANY), package}
-        end
-      else
-        # No own peer dependencies, return only the unresolved peers
-        transitive_peers
-      end
+  # Whether *package* resolves a peer need itself: it is the peer at a
+  # satisfying version, or it depends on the peer at a satisfying version.
+  private def peer_resolved_by?(package : Data::Package, peer_name : String, peer_range : Semver::Range) : Bool
+    return true if package.name == peer_name && peer_range.satisfies?(package.version)
+    if specifier = package.dependency_specifier?(peer_name)
+      peer_range.satisfies?(specifier.is_a?(Data::Package::Alias) ? specifier.version : specifier)
+    else
+      false
     end
   end
 
@@ -329,43 +377,6 @@ class Data::Lockfile
     ancestors.pop
 
     yield package, type, root, ancestors
-  end
-
-  def reduce_roots(
-    _type : T.class,
-    *,
-    roots = self.roots,
-    &block : Data::Package, DependencyType, Root, Deque({Data::Package, DependencyType}), Array(T) -> Array(T)
-  ) forall T
-    roots.map do |root_name, root|
-      results = [] of T
-      root.each_dependency do |name, version, type|
-        if package = get_package?(name, version)
-          results.concat(reduce_package(_type, package, type, root, &block))
-        end
-      end
-      {root, results}
-    end
-  end
-
-  private def reduce_package(
-    _type : T.class,
-    package : Data::Package,
-    type : DependencyType,
-    root : Root,
-    ancestors : Deque({Package, DependencyType}) = Deque({Package, DependencyType}).new,
-    &block : Data::Package, DependencyType, Root, Deque({Package, DependencyType}), Array(T) -> Array(T)
-  ) : Array(T) forall T
-    results = [] of T
-    return results if ancestors.any? { |(ancestor, ancestor_type)| ancestor == package }
-
-    ancestors << {package, type}
-    package.each_dependency_ref do |dependency, type|
-      results.concat(reduce_package(_type, dependency, type, root, ancestors, &block))
-    end
-    ancestors.pop
-
-    yield package, type, root, ancestors, results
   end
 
   class Root
