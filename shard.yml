@@ -1,6 +1,6 @@
 ---
 name: zap
-version: 0.2.1
+version: 0.3.0
 authors:
 - Julien Elbaz <elbywan@hotmail.com>
 crystal: '>= 1.6.1, < 2.0'
@@ -9,5 +9,5 @@ crystalline:
   projects:
   - ./packages/**
   flags:
-    - preview_mt
-    - execution_context
+  - preview_mt
+  - execution_context
