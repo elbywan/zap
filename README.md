@@ -265,7 +265,7 @@ crystal projects.cr build:cli --production --release --progress
 ```
 
 The binary runs on Crystal's execution contexts: installs are single-threaded by default
-and can be parallelized at runtime with `--workers <n>` (or the `ZAP_WORKERS` env var) —
+and can be parallelized at runtime with `--workers <n>` (or the `ZAP_WORKERS` env var),
 `--workers 1` is single-threaded, higher values enable multi-threaded resolution:
 
 ## Contributing

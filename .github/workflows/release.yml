@@ -12,7 +12,7 @@ on:
 
 permissions:
   id-token: write # Required for npm trusted publishing (OIDC)
-  contents: read
+  contents: write # Required to create the GitHub release
 
 jobs:
   release:
@@ -33,12 +33,14 @@ jobs:
           run_id: ${{ github.event.inputs.workflow_run_id }}
           path: ./bin
       - name: Sync the npm package versions
+        id: version
         # The npm wrappers carry their own package.json version, which is
         # otherwise only bumped by hand: derive it from the root shard.yml
         # (the version the binaries were built with) so publishing never
         # re-uses a stale version.
         run: |
           VERSION=$(grep -m1 '^version:' shard.yml | awk '{print $2}')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           node npm/set-version.js "$VERSION"
       - name: Prepare the binaries
         run: |
@@ -60,3 +62,23 @@ jobs:
           npm publish ./npm/linux-x64 --tag ${{ github.event.inputs.dist_tag }} --access public
           npm publish ./npm/win32-x64 --tag ${{ github.event.inputs.dist_tag }} --access public
           npm publish ./npm/zap --tag ${{ github.event.inputs.dist_tag }} --access public
+      - name: Create the GitHub release
+        # The tag already exists (pushed with the version bump); attach the
+        # changelog entry for this version as the release notes.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - "${{ steps.version.outputs.version }}" <<'EOF'
+          import sys
+          version = sys.argv[1]
+          text = open("CHANGELOG.md").read()
+          marker = f"## v{version}"
+          idx = text.find(marker)
+          if idx != -1:
+              end = text.find("\n## ", idx + len(marker))
+              notes = text[idx:end].strip() if end != -1 else text[idx:].strip()
+          else:
+              notes = f"No changelog entry for v{version}."
+          open("/tmp/release-notes.md", "w").write(notes + "\n")
+          EOF
+          gh release create "v${{ steps.version.outputs.version }}" --notes-file /tmp/release-notes.md
