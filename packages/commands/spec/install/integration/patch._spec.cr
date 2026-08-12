@@ -19,6 +19,9 @@ describe "patch", tags: "integration" do
         ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
         Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
         File.read(tmpdir / "node_modules/a/index.js").should eq("const x = 1;\nconsole.log(x);\n")
+        # One project-level state file, no per-package marker files
+        File.exists?(tmpdir / "node_modules/.zap-state").should be_true
+        File.exists?(tmpdir / "node_modules/a/.zap.metadata").should be_false
 
         old_argv = ARGV.dup
         begin
@@ -42,6 +45,11 @@ describe "patch", tags: "integration" do
           pkg_json = JSON.parse(File.read(tmpdir / "package.json"))
           pkg_json["zap"]["patched_dependencies"]["a@1.0.0"].should eq("patches/a@1.0.0.patch")
 
+          # patch-commit refreshed the lockfile: a frozen install passes
+          # (and applies the patch to the stale copy)
+          Commands::Install.run(config, ic.copy_with(frozen_lockfile: true), raise_on_failure: true, reporter: Reporter::Null.new)
+          File.read(tmpdir / "node_modules/a/index.js").should eq("const x = 42;\nconsole.log(x);\n// patched\n")
+
           # A fresh install applies the patch to the linked copy, and the
           # store copy stays pristine (the classic strategy hardlinks files).
           FileUtils.rm_rf(tmpdir / "node_modules")
@@ -52,6 +60,27 @@ describe "patch", tags: "integration" do
         ensure
           ARGV.replace(old_argv)
         end
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "applies patches with the isolated strategy" do
+    It.with_registry do |registry|
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0"), {"index.js" => "one\n"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"a":"1.0.0"},"zap":{"strategy":"isolated","patched_dependencies":{"a@1.0.0":"patches/a.patch"}}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        Dir.mkdir_p(tmpdir / "patches")
+        File.write(tmpdir / "patches/a.patch", "--- a/index.js\n+++ b/index.js\n@@ -1,1 +1,1 @@\n-one\n+deux\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+        File.read(tmpdir / "node_modules/a/index.js").should eq("deux\n")
       ensure
         FileUtils.rm_rf(tmpdir)
       end
@@ -79,6 +108,162 @@ describe "patch", tags: "integration" do
         File.write(tmpdir / "patches/a.patch", "--- a/index.js\n+++ b/index.js\n@@ -1,1 +1,1 @@\n-one\n+deux\n")
         Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
         File.read(tmpdir / "node_modules/a/index.js").should eq("deux\n")
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "re-links a package when its patch changes, and only that package" do
+    It.with_registry do |registry|
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0"), {"index.js" => "one\n"})
+      registry.add("b", "1.0.0", It.pkg("b", "1.0.0"), {"index.js" => "b\n"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"a":"1.0.0","b":"1.0.0"},"zap":{"patched_dependencies":{"a@1.0.0":"patches/a.patch"}}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        Dir.mkdir_p(tmpdir / "patches")
+        File.write(tmpdir / "patches/a.patch", "--- a/index.js\n+++ b/index.js\n@@ -1,1 +1,1 @@\n-one\n+deux\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+        File.read(tmpdir / "node_modules/a/index.js").should eq("deux\n")
+        b_mtime = File.info(tmpdir / "node_modules/b").modification_time
+
+        # Edit the patch: the patched package is re-linked with the new
+        # content, the unpatched one is left untouched (pnpm style).
+        File.write(tmpdir / "patches/a.patch", "--- a/index.js\n+++ b/index.js\n@@ -1,1 +1,1 @@\n-one\n+trois\n")
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+        File.read(tmpdir / "node_modules/a/index.js").should eq("trois\n")
+        File.info(tmpdir / "node_modules/b").modification_time.should eq(b_mtime)
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "fails a frozen install when a patch changed since the lockfile update" do
+    It.with_registry do |registry|
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0"), {"index.js" => "one\n"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"a":"1.0.0"},"zap":{"patched_dependencies":{"a@1.0.0":"patches/a.patch"}}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        Dir.mkdir_p(tmpdir / "patches")
+        File.write(tmpdir / "patches/a.patch", "--- a/index.js\n+++ b/index.js\n@@ -1,1 +1,1 @@\n-one\n+deux\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        File.write(tmpdir / "patches/a.patch", "--- a/index.js\n+++ b/index.js\n@@ -1,1 +1,1 @@\n-one\n+trois\n")
+        expect_raises(Exception, /patched dependencies have been modified/) do
+          Commands::Install.run(config, ic.copy_with(frozen_lockfile: true), raise_on_failure: true, reporter: Reporter::Null.new)
+        end
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "restores the pristine package when the patch is removed from the config" do
+    It.with_registry do |registry|
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0"), {"index.js" => "one\n"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"a":"1.0.0"},"zap":{"patched_dependencies":{"a@1.0.0":"patches/a.patch"}}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        Dir.mkdir_p(tmpdir / "patches")
+        File.write(tmpdir / "patches/a.patch", "--- a/index.js\n+++ b/index.js\n@@ -1,1 +1,1 @@\n-one\n+deux\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+        File.read(tmpdir / "node_modules/a/index.js").should eq("deux\n")
+
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"a":"1.0.0"}}))
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+        File.read(tmpdir / "node_modules/a/index.js").should eq("one\n")
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "keeps isolated packages installed on a no-op install" do
+    It.with_registry do |registry|
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0"), {"index.js" => "a\n"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"a":"1.0.0"},"zap":{"strategy":"isolated"}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+        package_dir = Path.new(Dir.glob((tmpdir / "node_modules/.store/*/node_modules/a").to_s).first)
+        mtime = File.info(package_dir).modification_time
+
+        # The state file makes the no-op install skip the linked packages
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+        File.info(package_dir).modification_time.should eq(mtime)
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "seeds the state from legacy .zap.metadata markers on the first run" do
+    It.with_registry do |registry|
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0"), {"index.js" => "a\n"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        # Simulate a pre-state install: the package dir with the legacy
+        # marker, no state file
+        Dir.mkdir_p(tmpdir / "node_modules/a")
+        File.write(tmpdir / "node_modules/a/index.js", "a\n")
+        File.write(tmpdir / "node_modules/a/.zap.metadata", "a@1.0.0")
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"a":"1.0.0"}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        mtime = File.info(tmpdir / "node_modules/a/index.js").modification_time
+
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        # The seeded state matches: no re-link (the file is untouched, only
+        # the marker inside the dir is deleted), marker removed, state saved
+        File.info(tmpdir / "node_modules/a/index.js").modification_time.should eq(mtime)
+        File.exists?(tmpdir / "node_modules/a/.zap.metadata").should be_false
+        File.exists?(tmpdir / "node_modules/.zap-state").should be_true
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "passes a frozen install when no patches are configured" do
+    It.with_registry do |registry|
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0"), {"index.js" => "a\n"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"a":"1.0.0"}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        # A lockfile without patched_dependencies (written above, or by a
+        # pre-feature zap) must not look like a patch drift.
+        Commands::Install.run(config, ic.copy_with(frozen_lockfile: true), raise_on_failure: true, reporter: Reporter::Null.new)
       ensure
         FileUtils.rm_rf(tmpdir)
       end

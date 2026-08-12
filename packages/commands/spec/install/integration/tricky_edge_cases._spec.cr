@@ -152,10 +152,17 @@ describe "tricky edge cases", tags: "integration" do
         ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
         Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
 
-        # A directory claiming to be a package that is not in the lockfile
+        # A directory claiming to be a package that is not in the lockfile:
+        # the installed state records the stale key
         Dir.mkdir_p(tmpdir / "node_modules/stale")
-        File.write(tmpdir / "node_modules/stale/.zap.metadata", "stale@9.9.9")
-        # A plain directory without a metadata marker is left alone
+        state_file = tmpdir / "node_modules/.zap-state"
+        entries = File.exists?(state_file) ? JSON.parse(File.read(state_file)).as_h : {} of String => JSON::Any
+        entries[(tmpdir / "node_modules/stale").to_s] = JSON::Any.new({
+          "key" => JSON::Any.new("stale@9.9.9"),
+          "patch" => JSON::Any.new(nil),
+        })
+        File.write(state_file, entries.to_json)
+        # A plain directory without a state entry is left alone
         Dir.mkdir_p(tmpdir / "node_modules/plain-dir")
 
         Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)

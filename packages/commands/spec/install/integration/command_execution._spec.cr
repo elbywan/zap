@@ -31,7 +31,8 @@ describe "command execution", tags: "integration" do
         File.exists?(project / ".pnp.cjs").should be_true
         File.exists?(project / ".pnp.loader.mjs").should be_true
         # No packages are linked into node_modules; only the .pnp data dir
-        Dir.children(project / "node_modules").should eq([".pnp"])
+        # (and the installed-state file)
+        Dir.children(project / "node_modules").sort.should eq([".pnp", ".zap-state"])
       end
     end
   end
