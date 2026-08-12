@@ -189,12 +189,12 @@ class Commands::Install::Linker::Classic < Commands::Install::Linker::Base
 
   # Actions to perform after the dependency has been freshly installed.
   def on_link(dependency : Data::Package, install_folder : Path, *, state : Commands::Install::State, location : LocationNode, ancestors : Array(Data::Package))
-    # Store package metadata
-    unless File.symlink?(install_folder)
-      File.open(install_folder / Shared::Constants::METADATA_FILE_NAME, "w") do |f|
-        f.print dependency.key
-      end
-    end
+    # Record the installed state (key + applied patch hash) before the
+    # post-link steps, so a failing patch leaves no entry and is retried on
+    # the next install. The state file replaces the old per-package
+    # .zap.metadata marker; the entry is in memory, so symlinked packages
+    # (file:/workspace: dependencies) are recorded too.
+    state.installed_state[install_folder.to_s] = Backend::InstalledEntry.new(dependency.key, Patches.apply(dependency, install_folder, state: state))
 
     # Link binary files if they are declared in the package.json
     # An empty bin string means no binaries (npm/yarn parity)

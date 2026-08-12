@@ -43,6 +43,7 @@ class Data::Lockfile
   property overrides : Data::Package::Overrides? = nil
   @hoisting_shasum : String? = nil
   @package_extensions_shasum : String? = nil
+  @patched_dependencies_shasum : String? = nil
   property strategy : InstallStrategy? = nil
   @[YAML::Field(converter: Utils::Converters::OrderedHash(String, Data::Package))]
   @[MessagePack::Field(converter: Utils::Converters::OrderedHash(String, Data::Package))]
@@ -253,6 +254,31 @@ class Data::Lockfile
     end.hexstring
     diff = @package_extensions_shasum != hexstr
     @package_extensions_shasum = hexstr
+    diff
+  end
+
+  # Detects a change in the patched dependencies configuration or in the
+  # content of the referenced patch files (pnpm parity: the lockfile pins
+  # the patches, frozen installs fail on drift).
+  def update_patched_dependencies_shasum(main_package : Data::Package, prefix : Path) : Bool
+    # No patches configured means no shasum (nil): lockfiles written before
+    # this feature also record nil, so the migration does not look like a
+    # drift on the first frozen install.
+    patches = main_package.zap_config.try(&.patched_dependencies)
+    hexstr = if patches.nil? || patches.empty?
+               nil
+             else
+               Digest::MD5.digest do |ctx|
+                 sorted = patches.to_a.sort!
+                 ctx << sorted.to_json
+                 sorted.each do |_, rel|
+                   patch_path = Path.new(rel).expand(prefix)
+                   ctx << File.read(patch_path).gsub("\r\n", "\n") if File.exists?(patch_path)
+                 end
+               end.hexstring
+             end
+    diff = @patched_dependencies_shasum != hexstr
+    @patched_dependencies_shasum = hexstr
     diff
   end
 

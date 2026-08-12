@@ -11,6 +11,7 @@ require "data/package/scripts"
 require "utils/shasum"
 require "./config"
 require "./state"
+require "./patches"
 require "./resolver"
 require "./interactive"
 require "./linker"
@@ -91,6 +92,7 @@ module Commands::Install
 
       # Force metadata retrieval if the package extensions options have changed
       install_config = self.package_extensions_check(install_config, lockfile, inferred_context, reporter)
+      install_config = self.patched_dependencies_check(install_config, lockfile, inferred_context, config, reporter)
 
       # Init state struct
       state = State.new(
@@ -104,6 +106,8 @@ module Commands::Install
         lockfile: lockfile,
         reporter: reporter,
         context: inferred_context,
+        installed_state_path: Path.new(config.node_modules) / Shared::Constants::STATE_FILE_NAME,
+        installed_state: Backend::InstalledState.load(Path.new(config.node_modules) / Shared::Constants::STATE_FILE_NAME),
         registry_clients: RegistryClients.new(
           config.store_path,
           npmrc,
@@ -166,11 +170,30 @@ module Commands::Install
       # Install dependencies to the appropriate node_modules folder
       linker = link_packages(state, pruned_direct_dependencies)
 
+      # Verify every configured patch matched an installed package (pnpm's
+      # unused-patch check: a stale or mistyped key is an error, or a warning
+      # when allow_unused_patches is set).
+      if patches = state.context.main_package.zap_config.try(&.patched_dependencies)
+        unused = Patches.unused_keys(patches, state.lockfile.packages.values)
+        unless unused.empty?
+          message = "The following patched_dependencies did not match any installed package: #{unused.join(", ")}"
+          if state.context.main_package.zap_config.try(&.allow_unused_patches)
+            state.reporter.info(message)
+          else
+            raise message
+          end
+        end
+      end
+
       # Run package.json hooks for the installed packages
       run_install_hooks(state, linker)
 
       # Run package.json hooks for the workspace packages
       run_own_install_hooks(state)
+
+      # Persist the installed state (keys + applied patch hashes) after the
+      # linking, so the freshly installed packages are recorded.
+      Backend::InstalledState.save(state.installed_state_path, state.installed_state)
     end
 
     # Print the report
@@ -178,6 +201,12 @@ module Commands::Install
       s.reporter.report_done(realtime, memory, s.install_config, unmet_peers: unmet_peers_hash)
     end
   rescue e
+    # Persist the state accumulated so far: packages linked before the
+    # failure are not re-linked on the next run (parity with the old
+    # per-package markers).
+    state.try do |s|
+      Backend::InstalledState.save(s.installed_state_path, s.installed_state)
+    end
     raise e if raise_on_failure
     # Early failures (e.g. an invalid --reporter) happen before the reporter
     # exists; print them instead of silently exiting.
@@ -303,6 +332,21 @@ module Commands::Install
         Log.debug { "Detected a change in package extensions options in the package.json file" }
         reporter.info("Package extensions have been modified. Package metadata will forcefully be fetched from the registry and packages will be re-installed.")
         return install_config.copy_with(force_metadata_retrieval: true, refresh_install: true)
+      end
+    end
+    install_config
+  end
+
+  private def self.patched_dependencies_check(install_config : Install::Config, lockfile : Data::Lockfile, inferred_context : Core::Config::InferredContext, config : Core::Config, reporter : Reporter) : Install::Config
+    if lockfile.update_patched_dependencies_shasum(inferred_context.main_package, Path.new(config.prefix))
+      if install_config.frozen_lockfile
+        # If the lockfile is frozen, raise an error
+        raise "The --frozen-lockfile flag is on but patched dependencies have been modified since the last lockfile update. Run `zap i --frozen-lockfile=false` to regenerate the lockfile and try again."
+      end
+
+      if lockfile.read_status.from_disk?
+        Log.debug { "Detected a change in patched dependencies in the package.json file" }
+        reporter.info("Patched dependencies have been modified. Patched packages will be re-installed.")
       end
     end
     install_config

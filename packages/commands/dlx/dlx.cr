@@ -28,9 +28,10 @@ module Commands::Dlx
       npmrc: Data::Npmrc.new(config.prefix),
     )
 
-    # If the folder is already sealed, we can skip the installation part
-    unless File.exists?(path / Shared::Constants::METADATA_FILE_NAME)
-      Log.debug { "Location #{path / Shared::Constants::METADATA_FILE_NAME} does not exist." }
+    # If the folder is already sealed (the install wrote the state file),
+    # we can skip the installation part
+    unless File.exists?(path / "node_modules" / Shared::Constants::STATE_FILE_NAME)
+      Log.debug { "Location #{path / Shared::Constants::STATE_FILE_NAME} does not exist." }
       Log.debug { "Installing packages…" }
       FileUtils.rm_rf(path)
       Dir.mkdir(path)
@@ -43,18 +44,22 @@ module Commands::Dlx
       # Install it
       # The temp prefix has no lockfile, so a frozen install (the default
       # under CI) would fail before resolving anything.
-      Commands::Install.run(
-        process_config,
-        Commands::Install::Config.new.copy_with(frozen_lockfile: false)
-      )
+      begin
+        Commands::Install.run(
+          process_config,
+          Commands::Install::Config.new.copy_with(frozen_lockfile: false)
+        )
+      rescue e
+        # A failed install must not seal the folder: the partial state
+        # written by the rescue path would skip the re-install next time.
+        File.delete?(path / "node_modules" / Shared::Constants::STATE_FILE_NAME)
+        raise e
+      end
 
       # Line break
       puts ""
-
-      # Seal the folder
-      File.touch(path / Shared::Constants::METADATA_FILE_NAME)
     else
-      Log.debug { "Location #{path / Shared::Constants::METADATA_FILE_NAME} exists. Skipping installation phase." }
+      Log.debug { "Location #{path / "node_modules" / Shared::Constants::STATE_FILE_NAME} exists. Skipping installation phase." }
     end
 
     if dlx_config.command.empty?

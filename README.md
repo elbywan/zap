@@ -49,6 +49,8 @@ zap --help
 | `zap exec`    | `e`                   | Execute a shell command in the scope of the project    | ✅       |
 | `zap update`  | `up` `upgrade`        | Update dependencies                                    | ✅ |
 | `zap why`     | `y`                   | Show information about why a package is installed      | ✅       |
+| `zap patch`   |                       | Extract a package for editing, to be patched           | ✅       |
+| `zap patch-commit` |                 | Generate and register a patch from an edited package   | ✅       |
 
 #### Check the [project board](https://github.com/users/elbywan/projects/1/views/1) for the current status of the project.
 
@@ -191,6 +193,29 @@ cafile=/certs/rootCA.crt
 zap i my-react@npm:react
 zap i jquery2@npm:jquery@2
 zap i jquery3@npm:jquery@3
+```
+
+- **Apply patch files to installed dependencies** (like pnpm's `patchedDependencies`)
+
+```bash
+# Extract an installed package to a temporary directory for editing
+zap patch some-package@1.0.0
+# Edit the files in the printed directory, then commit the changes
+zap patch-commit /tmp/zap-patch-some-package-1.0.0-abc123
+# The patch is saved to patches/some-package@1.0.0.patch and registered in
+# the "zap" section of package.json. The next install applies it.
+```
+
+Patches are applied to the linked node_modules copy after install; the store keeps the pristine package. Editing a patch file re-applies it to the affected package on the next install, and a changed patch makes frozen installs fail until the lockfile is regenerated (run `zap i --frozen-lockfile=false`). A `patched_dependencies` key that matches no installed package fails the install (a stale or mistyped key); set `allow_unused_patches: true` to warn instead. Patch files are plain git-style unified diffs, so they can also be hand-written or produced by `git diff` and registered under `zap.patched_dependencies` in package.json. The key matches the exact version, any range, or the bare package name:
+
+```json
+{
+  "zap": {
+    "patched_dependencies": {
+      "some-package@1.0.0": "patches/some-package@1.0.0.patch"
+    }
+  }
+}
 ```
 
 # Benchmarks

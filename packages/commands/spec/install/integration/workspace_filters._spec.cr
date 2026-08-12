@@ -131,7 +131,7 @@ describe "workspace filters", tags: "integration" do
         Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
 
         File.exists?(ws_root / ".pnp.cjs").should be_true
-        Dir.children(ws_root / "node_modules").should eq([".pnp"])
+        Dir.children(ws_root / "node_modules").sort.should eq([".pnp", ".zap-state"])
       ensure
         FileUtils.rm_rf(ws_root)
       end

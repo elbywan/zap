@@ -31,6 +31,7 @@ module Commands::Install::Linker
           if package && package.name == name && package.version == version
             unlink_binaries(package, package_path)
             FileUtils.rm_rf(package_path)
+            state.installed_state.delete(package_path.to_s)
           end
         end
       end
@@ -63,6 +64,7 @@ module Commands::Install::Linker
                 end
               end
               FileUtils.rm_rf(package_path)
+              state.installed_state.delete(package_path.to_s)
             end
           end
         end
@@ -76,14 +78,10 @@ module Commands::Install::Linker
 
     private def should_prune_orphan?(package_path : Path) : Bool
       remove_child = false
-      metadata_path = package_path / Shared::Constants::METADATA_FILE_NAME
-      if File::Info.readable?(metadata_path)
-        # Check the metadata file to retrieve the package key
-        key = File.read(metadata_path)
-        # Check if the lockfile still contains the package
-        pkg = state.lockfile.packages[key]?
-        # If the package is not in the lockfile, delete it
-        remove_child = !pkg
+      # The installed state records the key that was linked at this path
+      if entry = state.installed_state[package_path.to_s]?
+        # If the package is not in the lockfile anymore, delete it
+        remove_child = !state.lockfile.packages[entry.key]?
       end
 
       remove_child

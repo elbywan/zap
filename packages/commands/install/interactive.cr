@@ -71,18 +71,7 @@ module Commands::Install
 
     # Returns the state with a different install config.
     private def self.with_config(state : State, config : Config) : State
-      State.new(
-        config: state.config,
-        install_config: config,
-        store: state.store,
-        main_package: state.main_package,
-        lockfile: state.lockfile,
-        context: state.context,
-        npmrc: state.npmrc,
-        registry_clients: state.registry_clients,
-        pipeline: state.pipeline,
-        reporter: state.reporter
-      )
+      state.copy_with(install_config: config)
     end
 
     # Scans the direct dependencies of the command scope and returns the ones
