@@ -4,6 +4,8 @@ require "log"
 require "utils/debug_formatter"
 require "commands/install/cli"
 require "commands/install"
+require "commands/patch/cli"
+require "commands/patch"
 require "commands/dlx/cli"
 require "commands/dlx"
 require "commands/exec/cli"
@@ -47,6 +49,7 @@ module Zap
       Log.debug { "• Registring CLI commands" }
       commands = [
         Commands::Install::CLI.new,
+        Commands::Patch::CLI.new,
         Commands::Dlx::CLI.new,
         Commands::Exec::CLI.new,
         Commands::Init::CLI.new,
@@ -67,6 +70,8 @@ module Zap
     case command_config
     when Commands::Install::Config
       Commands::Install.run(config, command_config)
+    when Commands::Patch::Config
+      Commands::Patch.run(config, command_config)
     when Commands::Dlx::Config
       Commands::Dlx.run(config, command_config)
     when Commands::Init::Config
