@@ -19,7 +19,8 @@ class Data::Package
       strategy : InstallStrategy? = nil,
       package_extensions : Hash(String, PackageExtension) = Hash(String, PackageExtension).new,
       check_peer_dependencies : Bool? = nil,
-      patched_dependencies : Hash(String, String)? = nil do
+      patched_dependencies : Hash(String, String)? = nil,
+      allow_unused_patches : Bool? = nil do
       include JSON::Serializable
       include YAML::Serializable
       include MessagePack::Serializable

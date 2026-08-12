@@ -1,7 +1,6 @@
 require "log"
 require "json"
 require "file_utils"
-require "semver"
 require "data/lockfile"
 require "utils/misc"
 require "utils/patch"
@@ -18,7 +17,8 @@ module Commands::Patch
   record Marker,
     name : String,
     version : String,
-    store_path : String do
+    store_path : String,
+    apply_to_all : Bool = false do
     include JSON::Serializable
   end
 
@@ -35,10 +35,22 @@ module Commands::Patch
   end
 
   # `zap patch <package>`: copies the installed package to a temporary
-  # directory for editing. The store copy stays pristine.
+  # directory for editing. The store copy stays pristine. A bare name (no
+  # version) records apply-to-all, so patch-commit writes a key that matches
+  # every version (pnpm parity); several installed versions are ambiguous.
   private def self.extract(config : Core::Config, lockfile : Data::Lockfile, spec : String, output_io : IO) : Nil
     name, version = Utils::Misc.parse_key(spec)
-    package = find_package(lockfile, name, version)
+    apply_to_all = version.nil?
+
+    package = if version
+                lockfile.get_package?(name, version)
+              else
+                candidates = lockfile.packages.values.select { |p| p.name == name }
+                if candidates.size > 1
+                  raise "Multiple versions of #{name} are installed; specify one (e.g. `zap patch #{name}@<version>`)."
+                end
+                candidates.first?
+              end
     raise "Package not found in the lockfile: #{spec}" unless package
 
     store_path = ::Store.new(config.store_path).package_path(package)
@@ -46,7 +58,7 @@ module Commands::Patch
 
     dir = Path.new(Dir.tempdir) / "zap-patch-#{package.name}-#{package.version}-#{Random::Secure.hex(4)}"
     FileUtils.cp_r(store_path.to_s, dir.to_s)
-    File.write(dir / MARKER_FILE, Marker.new(package.name, package.version, store_path.to_s).to_json)
+    File.write(dir / MARKER_FILE, Marker.new(package.name, package.version, store_path.to_s, apply_to_all).to_json)
     output_io.puts "Patched package directory: #{dir}"
     output_io.puts "Edit the files, then run `zap patch-commit #{dir}` to generate the patch."
   end
@@ -63,15 +75,23 @@ module Commands::Patch
     end
 
     patch = Utils::Patch.generate(Path.new(marker.store_path), dir, exclude: MARKER_FILE)
-    raise "No changes detected in #{dir}" if patch.empty?
+    if patch.empty?
+      # pnpm parity: a no-op edit is a benign success, not an error.
+      output_io.puts "No changes were found."
+      return
+    end
 
     patches_dir = Path.new(config.prefix) / "patches"
     Dir.mkdir_p(patches_dir)
-    filename = "#{marker.name}@#{marker.version}.patch"
+    key = marker.apply_to_all ? marker.name : "#{marker.name}@#{marker.version}"
+    filename = "#{key}.patch"
     patch_path = patches_dir / filename
+    # Never write through a symlink (pnpm parity: a patch file must stay
+    # inside the patches directory).
+    raise "Patch file must not be a symlink: #{patch_path}" if File.symlink?(patch_path)
     File.write(patch_path, patch)
 
-    register(config, marker, "patches/#{filename}")
+    register(config, key, "patches/#{filename}")
 
     # Refresh the lockfile's patched-dependencies shasum so the committed
     # state is consistent right away (a frozen CI install must not fail on
@@ -86,7 +106,7 @@ module Commands::Patch
   # Registers the patch in the `zap.patched_dependencies` section of the
   # root package.json. The file is edited in place: only the zap section
   # is added or updated, the rest is preserved.
-  private def self.register(config : Core::Config, marker : Marker, rel_path : String) : Nil
+  private def self.register(config : Core::Config, key : String, rel_path : String) : Nil
     path = Path.new(config.prefix) / "package.json"
     raise "No package.json found at #{config.prefix}" unless File.exists?(path)
     root = JSON.parse(File.read(path))
@@ -97,26 +117,8 @@ module Commands::Patch
     zap = zap.as_h
     patched = zap["patched_dependencies"]? || JSON::Any.new({} of String => JSON::Any)
     zap["patched_dependencies"] = patched
-    patched.as_h["#{marker.name}@#{marker.version}"] = JSON::Any.new(rel_path)
+    patched.as_h[key] = JSON::Any.new(rel_path)
 
     File.write(path, root.to_pretty_json)
-  end
-
-  # Finds the installed package. With an explicit version the lockfile key
-  # is looked up directly; without one, the highest installed version wins.
-  private def self.find_package(lockfile : Data::Lockfile, name : String, version : String?) : Data::Package?
-    if version
-      lockfile.get_package?(name, version)
-    else
-      best : Data::Package? = nil
-      lockfile.packages.each_value do |package|
-        next unless package.name == name
-        # Non-semver versions (workspace refs) are never chosen.
-        if !best || (Semver::Version.parse(package.version) > Semver::Version.parse(best.not_nil!.version) rescue false)
-          best = package
-        end
-      end
-      best
-    end
   end
 end

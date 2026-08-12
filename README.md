@@ -206,7 +206,7 @@ zap patch-commit /tmp/zap-patch-some-package-1.0.0-abc123
 # the "zap" section of package.json. The next install applies it.
 ```
 
-Patches are applied to the linked node_modules copy after install; the store keeps the pristine package. Editing a patch file re-applies it to the affected package on the next install, and a changed patch makes frozen installs fail until the lockfile is regenerated (run `zap i --frozen-lockfile=false`). Patch files are plain git-style unified diffs, so they can also be hand-written or produced by `git diff` and registered under `zap.patched_dependencies` in package.json. The key matches the exact version, any range, or the bare package name:
+Patches are applied to the linked node_modules copy after install; the store keeps the pristine package. Editing a patch file re-applies it to the affected package on the next install, and a changed patch makes frozen installs fail until the lockfile is regenerated (run `zap i --frozen-lockfile=false`). A `patched_dependencies` key that matches no installed package fails the install (a stale or mistyped key); set `allow_unused_patches: true` to warn instead. Patch files are plain git-style unified diffs, so they can also be hand-written or produced by `git diff` and registered under `zap.patched_dependencies` in package.json. The key matches the exact version, any range, or the bare package name:
 
 ```json
 {

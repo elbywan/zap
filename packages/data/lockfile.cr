@@ -273,7 +273,7 @@ class Data::Lockfile
                  ctx << sorted.to_json
                  sorted.each do |_, rel|
                    patch_path = Path.new(rel).expand(prefix)
-                   ctx << File.read(patch_path) if File.exists?(patch_path)
+                   ctx << File.read(patch_path).gsub("\r\n", "\n") if File.exists?(patch_path)
                  end
                end.hexstring
              end

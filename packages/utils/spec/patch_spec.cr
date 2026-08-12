@@ -60,6 +60,114 @@ describe Utils::Patch do
     end
   end
 
+  it "rejects a patch with no parseable sections" do
+    dir = Path.new(Dir.tempdir, "zap-patch-#{Random::Secure.hex(4)}")
+    begin
+      Dir.mkdir_p(dir)
+      expect_raises(Exception, /no changes found/) do
+        Utils::Patch.apply("this is not a patch", dir)
+      end
+    ensure
+      FileUtils.rm_rf(dir)
+    end
+  end
+
+  it "rejects a hunk whose header counts do not match the body" do
+    dir = Path.new(Dir.tempdir, "zap-patch-#{Random::Secure.hex(4)}")
+    begin
+      Dir.mkdir_p(dir)
+      File.write(dir / "a.txt", "one\n")
+      # The header claims 5 old lines, the body has 1
+      patch = "--- a/a.txt\n+++ b/a.txt\n@@ -1,5 +1,4 @@\n one\n"
+      expect_raises(Exception, /counts do not match/) { Utils::Patch.apply(patch, dir) }
+    ensure
+      FileUtils.rm_rf(dir)
+    end
+  end
+
+  it "applies a CRLF patch to an LF file" do
+    dir = Path.new(Dir.tempdir, "zap-patch-#{Random::Secure.hex(4)}")
+    begin
+      Dir.mkdir_p(dir)
+      File.write(dir / "a.txt", "one\n")
+      patch = "--- a/a.txt\r\n+++ b/a.txt\r\n@@ -1,1 +1,1 @@\r\n-one\r\n+two\r\n"
+      Utils::Patch.apply(patch, dir)
+      File.read(dir / "a.txt").should eq("two\n")
+    ensure
+      FileUtils.rm_rf(dir)
+    end
+  end
+
+  it "tolerates a stray blank line between the header and the hunk" do
+    dir = Path.new(Dir.tempdir, "zap-patch-#{Random::Secure.hex(4)}")
+    begin
+      Dir.mkdir_p(dir)
+      File.write(dir / "a.txt", "one\n")
+      patch = "--- a/a.txt\n+++ b/a.txt\n\n@@ -1,1 +1,1 @@\n-one\n+two\n"
+      Utils::Patch.apply(patch, dir)
+      File.read(dir / "a.txt").should eq("two\n")
+    ensure
+      FileUtils.rm_rf(dir)
+    end
+  end
+
+  it "tolerates git diff headers" do
+    dir = Path.new(Dir.tempdir, "zap-patch-#{Random::Secure.hex(4)}")
+    begin
+      Dir.mkdir_p(dir)
+      File.write(dir / "a.txt", "one\n")
+      patch = "diff --git a/a.txt b/a.txt\nindex 0000000..1111111 100644\n--- a/a.txt\n+++ b/a.txt\n@@ -1,1 +1,1 @@\n-one\n+two\n"
+      Utils::Patch.apply(patch, dir)
+      File.read(dir / "a.txt").should eq("two\n")
+    ensure
+      FileUtils.rm_rf(dir)
+    end
+  end
+
+  it "applies a rename" do
+    dir = Path.new(Dir.tempdir, "zap-patch-#{Random::Secure.hex(4)}")
+    begin
+      Dir.mkdir_p(dir)
+      File.write(dir / "numbers.txt", "one\ntwo\n")
+      patch = "diff --git a/numbers.txt b/banana.txt\nrename from numbers.txt\nrename to banana.txt\n--- a/numbers.txt\n+++ b/banana.txt\n@@ -1,2 +1,2 @@\n-one\n+uno\n two\n"
+      Utils::Patch.apply(patch, dir)
+      File.exists?(dir / "numbers.txt").should be_false
+      File.read(dir / "banana.txt").should eq("uno\ntwo\n")
+    ensure
+      FileUtils.rm_rf(dir)
+    end
+  end
+
+  it "leaves the content intact for a mode-only change" do
+    dir = Path.new(Dir.tempdir, "zap-patch-#{Random::Secure.hex(4)}")
+    begin
+      Dir.mkdir_p(dir)
+      File.write(dir / "a.txt", "unchanged\n")
+      patch = "diff --git a/a.txt b/a.txt\nold mode 100644\nnew mode 100755\n--- a/a.txt\n+++ b/a.txt\n"
+      Utils::Patch.apply(patch, dir)
+      File.read(dir / "a.txt").should eq("unchanged\n")
+    ensure
+      FileUtils.rm_rf(dir)
+    end
+  end
+
+  it "handles unicode directory names" do
+    a = Path.new(Dir.tempdir, "zap-patch-#{Random::Secure.hex(4)}")
+    b = Path.new(Dir.tempdir, "zap-patch-#{Random::Secure.hex(4)}")
+    begin
+      Dir.mkdir_p(a / "测试")
+      Dir.mkdir_p(b / "测试")
+      File.write(a / "测试/foo.txt", "one\n")
+      File.write(b / "测试/foo.txt", "two\n")
+      patch = Utils::Patch.generate(a, b)
+      Utils::Patch.apply(patch, a)
+      File.read(a / "测试/foo.txt").should eq("two\n")
+    ensure
+      FileUtils.rm_rf(a)
+      FileUtils.rm_rf(b)
+    end
+  end
+
   it "round-trips a generated tree diff" do
     a = Path.new(Dir.tempdir, "zap-patch-#{Random::Secure.hex(4)}")
     b = Path.new(Dir.tempdir, "zap-patch-#{Random::Secure.hex(4)}")

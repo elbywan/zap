@@ -13,14 +13,17 @@ module Utils::Patch
     Deleted
   end
 
-  # The apply only needs the position and the body lines; the counts in the
-  # header are validated by the parser but not stored.
-  record Hunk, old_start : Int32, lines : Array(String)
+  # The hunk header counts are validated against the body by the parser
+  # (matching yarn/pnpm: a lying header is a corrupt patch).
+  record Hunk, old_start : Int32, old_count : Int32, new_count : Int32, lines : Array(String)
 
   # A patch section for one file. The path is only known once the `+++`
   # line is seen, so the fields are mutable.
   class FileSection
+    # The write target (the `+++` path). For a rename this differs from
+    # *source* (the `---` path, the read base).
     property path : String = ""
+    property source : String = ""
     property status : Status = Status::Modified
     property newline : Bool = true
     property hunks : Array(Hunk) = [] of Hunk
@@ -28,9 +31,20 @@ module Utils::Patch
 
   # Applies a git-style unified diff to the files under *root*. Raises when
   # the patch does not parse or a hunk does not match (strict, like pnpm).
+  # Normalizes CRLF to LF (pnpm parity: the same logical patch hashes and
+  # applies identically on Windows and POSIX).
+  def self.normalize(text : String) : String
+    text.gsub("\r\n", "\n")
+  end
+
   def self.apply(patch_text : String, root : Path) : Nil
     Log.debug { "Applying patch to #{root}" }
-    parse(patch_text).each do |file|
+    patch_text = normalize(patch_text)
+    sections = parse(patch_text)
+    # A patch that parses to nothing is corrupt: fail loudly (yarn/pnpm
+    # report "No changes found") instead of silently doing nothing.
+    raise "Cannot apply patch: no changes found" if sections.empty?
+    sections.each do |file|
       raise "Cannot apply patch: absolute path: #{file.path}" if file.path.starts_with?('/')
       target = root / file.path
       case file.status
@@ -40,11 +54,15 @@ module Utils::Patch
         Utils::Directories.mkdir_p(target.dirname)
         write_lines(target, apply_hunks(file.hunks, [] of String, file.path), file.newline)
       when .modified?
-        unless ::File.exists?(target)
-          raise "Cannot apply patch: file not found: #{file.path}"
+        source = file.source.empty? ? file.path : file.source
+        source_path = root / source
+        unless ::File.exists?(source_path)
+          raise "Cannot apply patch: file not found: #{source}"
         end
-        original = ::File.read(target).chomp('\n').split('\n', remove_empty: false)
+        original = ::File.read(source_path).chomp('\n').split('\n', remove_empty: false)
         write_lines(target, apply_hunks(file.hunks, original, file.path), file.newline)
+        # A rename: the new name is written, the old one removed.
+        ::File.delete?(source_path) if !file.source.empty? && file.source != file.path
       end
     end
   end
@@ -185,6 +203,7 @@ module Utils::Patch
           if old_path == "/dev/null"
             current.status = Status::Created
           else
+            current.source = strip_prefix(old_path)
             current.path = strip_prefix(old_path)
           end
           sections << current
@@ -194,7 +213,9 @@ module Utils::Patch
           new_path = line[4..]
           if new_path == "/dev/null"
             section.status = Status::Deleted
-          elsif section.path.empty?
+          else
+            # Always take the new name: a rename (git diff) has a `+++` path
+            # that differs from the `---` path.
             section.path = strip_prefix(new_path)
           end
         end
@@ -212,13 +233,18 @@ module Utils::Patch
 
   private def self.push_hunk(section : FileSection?, hunk : Hunk) : Nil
     raise "Cannot parse patch: hunk without a file section" unless section
+    old_count = hunk.lines.count { |l| l[0]? == ' ' || l[0]? == '-' }
+    new_count = hunk.lines.count { |l| l[0]? == ' ' || l[0]? == '+' }
+    if old_count != hunk.old_count || new_count != hunk.new_count
+      raise "Cannot parse patch: hunk header counts do not match the body (#{hunk.old_count}/#{hunk.new_count} vs #{old_count}/#{new_count})"
+    end
     section.hunks << hunk
   end
 
   private def self.parse_hunk_header(line : String) : Hunk
-    match = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
+    match = line.match(/@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/)
     raise "Cannot parse patch hunk: #{line}" unless match
-    Hunk.new(match[1].to_i, [] of String)
+    Hunk.new(match[1].to_i, (match[2]? || "1").to_i, (match[4]? || "1").to_i, [] of String)
   end
 
   private def self.strip_prefix(path : String) : String

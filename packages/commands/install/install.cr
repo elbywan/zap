@@ -170,6 +170,21 @@ module Commands::Install
       # Install dependencies to the appropriate node_modules folder
       linker = link_packages(state, pruned_direct_dependencies)
 
+      # Verify every configured patch matched an installed package (pnpm's
+      # unused-patch check: a stale or mistyped key is an error, or a warning
+      # when allow_unused_patches is set).
+      if patches = state.context.main_package.zap_config.try(&.patched_dependencies)
+        unused = Patches.unused_keys(patches, state.lockfile.packages.values)
+        unless unused.empty?
+          message = "The following patched_dependencies did not match any installed package: #{unused.join(", ")}"
+          if state.context.main_package.zap_config.try(&.allow_unused_patches)
+            state.reporter.info(message)
+          else
+            raise message
+          end
+        end
+      end
+
       # Run package.json hooks for the installed packages
       run_install_hooks(state, linker)
 

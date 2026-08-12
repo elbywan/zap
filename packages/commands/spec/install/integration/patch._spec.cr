@@ -269,4 +269,274 @@ describe "patch", tags: "integration" do
       end
     end
   end
+
+  it "fails an install when a patch key matches no package" do
+    It.with_registry do |registry|
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0"), {"index.js" => "one\n"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"a":"1.0.0"},"zap":{"patched_dependencies":{"a@1.0.0":"patches/a.patch","missing@1.0.0":"patches/missing.patch"}}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        Dir.mkdir_p(tmpdir / "patches")
+        File.write(tmpdir / "patches/a.patch", "--- a/index.js\n+++ b/index.js\n@@ -1,1 +1,1 @@\n-one\n+deux\n")
+        File.write(tmpdir / "patches/missing.patch", "--- a/index.js\n+++ b/index.js\n@@ -1,1 +1,1 @@\n-one\n+deux\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        expect_raises(Exception, /did not match/) do
+          Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+        end
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "warns instead of failing when allow_unused_patches is set" do
+    It.with_registry do |registry|
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0"), {"index.js" => "one\n"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"a":"1.0.0"},"zap":{"patched_dependencies":{"a@1.0.0":"patches/a.patch","missing@1.0.0":"patches/missing.patch"},"allow_unused_patches":true}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        Dir.mkdir_p(tmpdir / "patches")
+        File.write(tmpdir / "patches/a.patch", "--- a/index.js\n+++ b/index.js\n@@ -1,1 +1,1 @@\n-one\n+deux\n")
+        File.write(tmpdir / "patches/missing.patch", "--- a/index.js\n+++ b/index.js\n@@ -1,1 +1,1 @@\n-one\n+deux\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+        File.read(tmpdir / "node_modules/a/index.js").should eq("deux\n")
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "applies a patch when install scripts are disabled" do
+    It.with_registry do |registry|
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0", scripts: {"postinstall" => "true"}), {"index.js" => "one\n"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"a":"1.0.0"},"zap":{"patched_dependencies":{"a@1.0.0":"patches/a.patch"}}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        Dir.mkdir_p(tmpdir / "patches")
+        File.write(tmpdir / "patches/a.patch", "--- a/index.js\n+++ b/index.js\n@@ -1,1 +1,1 @@\n-one\n+deux\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true, ignore_scripts: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+        File.read(tmpdir / "node_modules/a/index.js").should eq("deux\n")
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "reports no changes on an unchanged patch-commit" do
+    It.with_registry do |registry|
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0"), {"index.js" => "one\n"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"a":"1.0.0"}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        old_argv = ARGV.dup
+        output = IO::Memory.new
+        begin
+          ARGV.replace(["a@1.0.0"])
+          Commands::Patch.run(config, Commands::Patch::Config.new, output_io: output)
+          patch_dir = Path.new(output.to_s.lines.find { |l| l.starts_with?("Patched package directory: ") }.not_nil!.split(": ", 2)[1].strip)
+          ARGV.replace([patch_dir.to_s])
+          Commands::Patch.run(config, Commands::Patch::Config.new.copy_with(commit: true), output_io: output)
+          output.to_s.should contain("No changes were found.")
+          File.exists?(tmpdir / "patches").should be_false
+        ensure
+          ARGV.replace(old_argv)
+        end
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "writes an apply-to-all key for a bare-name patch" do
+    It.with_registry do |registry|
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0"), {"index.js" => "one\n"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"a":"1.0.0"}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        old_argv = ARGV.dup
+        output = IO::Memory.new
+        begin
+          ARGV.replace(["a"])
+          Commands::Patch.run(config, Commands::Patch::Config.new, output_io: output)
+          patch_dir = Path.new(output.to_s.lines.find { |l| l.starts_with?("Patched package directory: ") }.not_nil!.split(": ", 2)[1].strip)
+          File.write(patch_dir / "index.js", "deux\n")
+          ARGV.replace([patch_dir.to_s])
+          Commands::Patch.run(config, Commands::Patch::Config.new.copy_with(commit: true), output_io: output)
+
+          # The bare name is registered (apply-to-all), not name@version
+          pkg_json = JSON.parse(File.read(tmpdir / "package.json"))
+          pkg_json["zap"]["patched_dependencies"]["a"].should eq("patches/a.patch")
+          File.exists?(tmpdir / "patches/a.patch").should be_true
+        ensure
+          ARGV.replace(old_argv)
+        end
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "fails a bare-name patch when multiple versions are installed" do
+    It.with_registry do |registry|
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0"), {"index.js" => "one\n"})
+      registry.add("a", "2.0.0", It.pkg("a", "2.0.0"), {"index.js" => "two\n"})
+      registry.add("b", "1.0.0", It.pkg("b", "1.0.0", dependencies: {"a" => "^1.0.0"}), {"index.js" => "b\n"})
+      registry.add("c", "1.0.0", It.pkg("c", "1.0.0", dependencies: {"a" => "^2.0.0"}), {"index.js" => "c\n"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"b":"1.0.0","c":"1.0.0"}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        old_argv = ARGV.dup
+        begin
+          ARGV.replace(["a"])
+          expect_raises(Exception, /multiple versions/i) do
+            Commands::Patch.run(config, Commands::Patch::Config.new, output_io: IO::Memory.new)
+          end
+        ensure
+          ARGV.replace(old_argv)
+        end
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "replaces the patch when patch-commit runs again" do
+    It.with_registry do |registry|
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0"), {"index.js" => "one\n"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"a":"1.0.0"}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        old_argv = ARGV.dup
+        output = IO::Memory.new
+        begin
+          2.times do |i|
+            ARGV.replace(["a@1.0.0"])
+            Commands::Patch.run(config, Commands::Patch::Config.new, output_io: output)
+            patch_dir = Path.new(output.to_s.lines.find { |l| l.starts_with?("Patched package directory: ") }.not_nil!.split(": ", 2)[1].strip)
+            File.write(patch_dir / "index.js", "edit#{i}\n")
+            ARGV.replace([patch_dir.to_s])
+            Commands::Patch.run(config, Commands::Patch::Config.new.copy_with(commit: true), output_io: output)
+          end
+
+          pkg_json = JSON.parse(File.read(tmpdir / "package.json"))
+          pkg_json["zap"]["patched_dependencies"].as_h.size.should eq(1)
+          File.read(tmpdir / "patches/a@1.0.0.patch").should contain("edit1")
+        ensure
+          ARGV.replace(old_argv)
+        end
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "fails patch-commit on a directory without the marker" do
+    It.with_registry do |registry|
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0"), {"index.js" => "one\n"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"a":"1.0.0"}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        old_argv = ARGV.dup
+        begin
+          ARGV.replace([(tmpdir / "not-a-patch-dir").to_s])
+          expect_raises(Exception, /not a zap patch directory/i) do
+            Commands::Patch.run(config, Commands::Patch::Config.new.copy_with(commit: true), output_io: IO::Memory.new)
+          end
+        ensure
+          ARGV.replace(old_argv)
+        end
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "refuses to write a patch through a symlink" do
+    It.with_registry do |registry|
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0"), {"index.js" => "one\n"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"a":"1.0.0"}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        old_argv = ARGV.dup
+        output = IO::Memory.new
+        begin
+          ARGV.replace(["a@1.0.0"])
+          Commands::Patch.run(config, Commands::Patch::Config.new, output_io: output)
+          patch_dir = Path.new(output.to_s.lines.find { |l| l.starts_with?("Patched package directory: ") }.not_nil!.split(": ", 2)[1].strip)
+          File.write(patch_dir / "index.js", "deux\n")
+
+          # A patch file symlinked outside the patches dir must be refused
+          Dir.mkdir_p(tmpdir / "patches")
+          File.write(tmpdir / "outside.patch", "outside original\n")
+          File.symlink(tmpdir / "outside.patch", tmpdir / "patches/a@1.0.0.patch")
+
+          ARGV.replace([patch_dir.to_s])
+          expect_raises(Exception, /must not be a symlink/i) do
+            Commands::Patch.run(config, Commands::Patch::Config.new.copy_with(commit: true), output_io: output)
+          end
+          File.read(tmpdir / "outside.patch").should eq("outside original\n")
+        ensure
+          ARGV.replace(old_argv)
+        end
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
 end
