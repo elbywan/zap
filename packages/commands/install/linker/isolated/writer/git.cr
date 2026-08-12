@@ -4,7 +4,7 @@ module Commands::Install::Linker::Isolated::Writer::Git
       raise "Cannot install git dependency #{dependency.name} because the dist.cache_key field is missing."
     end
 
-    exists = Backend.package_already_installed?(dependency.key, install_path)
+    exists = Backend.package_already_installed?(dependency.key, install_path, state.installed_state, Patches.expected_hash(dependency, state: state))
 
     unless exists
       state.reporter.on_linking_package

@@ -1,8 +1,12 @@
 require "file_utils"
+require "json"
+require "log"
 require "concurrency/pipeline"
 require "extensions/dir"
 
 module Backend
+  Log = ::Log.for("zap.backend")
+
   alias Pipeline = Concurrency::Pipeline
 
   enum Backends
@@ -97,26 +101,87 @@ module Backend
   #   end
   # end
 
-  protected def self.prepare(dependency : Data::Package, dest_path : Path | String, *, store : Store) : {Path, Path, Bool}
+  # The installed-state record for one package: the key that was linked at
+  # *path* and the hash of the patch that was applied (nil when none).
+  # Replaces the old per-package .zap.metadata file.
+  record InstalledEntry, key : String, patch : String? do
+    include JSON::Serializable
+  end
+
+  # The per-project installed state, persisted as a single JSON file at the
+  # node_modules root (or the PnP modules store), keyed by the absolute
+  # package path.
+  module InstalledState
+    def self.load(path : Path) : Hash(String, InstalledEntry)
+      unless File.exists?(path)
+        # First run with the state file: seed it from the old per-package
+        # .zap.metadata markers (key only, patches were not recorded), so
+        # upgrading does not re-link and re-script the whole tree. The
+        # patched packages re-link anyway via the hash mismatch.
+        return seed_from_legacy_markers(path.parent)
+      end
+      hash = Hash(String, InstalledEntry).new
+      JSON.parse(File.read(path)).as_h.each do |key, value|
+        obj = value.as_h
+        hash[key] = InstalledEntry.new(obj["key"].as_s, obj["patch"]?.try(&.as_s?))
+      end
+      hash
+    rescue ex : JSON::ParseException | KeyError | TypeCastError
+      Log.warn { "Failed to parse the installed state at #{path}: #{ex.message}" }
+      Hash(String, InstalledEntry).new
+    end
+
+    def self.save(path : Path, entries : Hash(String, InstalledEntry)) : Nil
+      Utils::Directories.mkdir_p(path.dirname)
+      File.write(path, entries.to_json)
+    end
+
+    # Reads the legacy .zap.metadata markers under *root* (the key written
+    # by pre-state installs), removes them, and returns the seeded entries.
+    private def self.seed_from_legacy_markers(root : Path) : Hash(String, InstalledEntry)
+      entries = Hash(String, InstalledEntry).new
+      begin
+        walk(root) do |dir, key|
+          entries[dir.to_s] = InstalledEntry.new(key, nil)
+          File.delete?(dir / ".zap.metadata")
+        end
+      rescue File::NotFoundError
+        # A directory that disappeared mid-walk
+      end
+      entries
+    end
+
+    private def self.walk(dir : Path, &block : (Path, String) -> Nil) : Nil
+      Dir.each_child(dir) do |name|
+        path = dir / name
+        # Do not follow symlinks: file:/workspace: packages point at their
+        # sources, which can be huge and cyclic.
+        if File.directory?(path) && !File.symlink?(path)
+          walk(path, &block)
+        elsif name == ".zap.metadata"
+          block.call(dir, File.read(path))
+        end
+      end
+    end
+  end
+
+  protected def self.prepare(dependency : Data::Package, dest_path : Path | String, *, store : Store, installed_state : Hash(String, InstalledEntry), patch_hash : String?) : {Path, Path, Bool}
     src_path = store.package_path(dependency)
-    already_installed = self.package_already_installed?(dependency.key, dest_path)
+    already_installed = self.package_already_installed?(dependency.key, dest_path, installed_state, patch_hash)
     Utils::Directories.mkdir_p(dest_path.dirname) unless already_installed
     {src_path, dest_path, already_installed}
   end
 
-  # Check if a package is already installed on the filesystem
-  def self.package_already_installed?(package_key : String, path : Path)
+  # Check if a package is already installed on the filesystem: the directory
+  # exists and the recorded state matches the expected key and patch hash.
+  # A stale or missing entry (first run with the state file, a changed patch,
+  # a different version) re-links the package.
+  def self.package_already_installed?(package_key : String, path : Path, installed_state : Hash(String, InstalledEntry), patch_hash : String?) : Bool
     if exists = Dir.exists?(path)
-      metadata_path = path / Shared::Constants::METADATA_FILE_NAME
-      unless File.readable?(metadata_path)
+      entry = installed_state[path.to_s]?
+      if !entry || entry.key != package_key || entry.patch != patch_hash
         FileUtils.rm_rf(path)
         exists = false
-      else
-        key = File.read(metadata_path)
-        if key != package_key
-          FileUtils.rm_rf(path)
-          exists = false
-        end
       end
     end
     exists
@@ -130,8 +195,8 @@ require "./hardlink"
 require "./symlink"
 
 module Backend
-  def self.link(*, dependency : Data::Package, target : Path | String, backend : Backends, store : Store, pipeline : Concurrency::Pipeline, &on_installing) : Bool
-    src_path, dest_path, already_installed = self.prepare(dependency, target, store: store)
+  def self.link(*, dependency : Data::Package, target : Path | String, backend : Backends, store : Store, pipeline : Concurrency::Pipeline, installed_state : Hash(String, InstalledEntry), patch_hash : String?, &on_installing) : Bool
+    src_path, dest_path, already_installed = self.prepare(dependency, target, store: store, installed_state: installed_state, patch_hash: patch_hash)
     return false if already_installed
 
     yield

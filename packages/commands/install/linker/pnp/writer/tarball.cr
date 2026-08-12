@@ -2,7 +2,7 @@ module Commands::Install::Linker::PnP::Writer::Tarball
   def self.install(dependency : Data::Package, install_path : Path, *, linker : Linker::Base, state : Commands::Install::State)
     case dist = dependency.dist
     when Data::Package::Dist::Tarball
-      exists = Backend.package_already_installed?(dependency.key, install_path)
+      exists = Backend.package_already_installed?(dependency.key, install_path, state.installed_state, Patches.expected_hash(dependency, state: state))
       unless exists
         extracted_folder = Path.new(dist.path)
         state.reporter.on_linking_package

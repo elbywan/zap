@@ -1,5 +1,8 @@
 module Shared::Constants
-  METADATA_FILE_NAME = ".zap.metadata"
+  # The per-project installed-state file, written at the node_modules root
+  # (or the PnP modules store). Replaces the old per-package .zap.metadata
+  # marker: one file instead of one dotfile inside every installed package.
+  STATE_FILE_NAME = ".zap-state"
 
   NEW_LINE = '\n'
 

@@ -28,7 +28,7 @@ module Commands::Patch
     lockfile = Data::Lockfile.new(config.prefix, default_format: config.lockfile_format)
 
     if patch_config.commit
-      commit(config, Path.new(patch_config.package), output_io)
+      commit(config, lockfile, Path.new(patch_config.package), output_io)
     else
       extract(config, lockfile, patch_config.package, output_io)
     end
@@ -54,7 +54,7 @@ module Commands::Patch
   # `zap patch-commit <directory>`: diffs the edited directory against the
   # pristine store copy, writes the patch under `patches/` and registers it
   # in the root package.json.
-  private def self.commit(config : Core::Config, dir : Path, output_io : IO) : Nil
+  private def self.commit(config : Core::Config, lockfile : Data::Lockfile, dir : Path, output_io : IO) : Nil
     marker_path = dir / MARKER_FILE
     raise "Not a zap patch directory: #{dir}" unless File.exists?(marker_path)
     marker = Marker.from_json(File.read(marker_path))
@@ -72,6 +72,14 @@ module Commands::Patch
     File.write(patch_path, patch)
 
     register(config, marker, "patches/#{filename}")
+
+    # Refresh the lockfile's patched-dependencies shasum so the committed
+    # state is consistent right away (a frozen CI install must not fail on
+    # the patch we just registered).
+    main_package = Data::Package.init?(Path.new(config.prefix)).not_nil!
+    lockfile.update_patched_dependencies_shasum(main_package, Path.new(config.prefix))
+    lockfile.write(format: config.lockfile_format)
+
     output_io.puts "Patch saved to #{patch_path} and registered in package.json."
   end
 
