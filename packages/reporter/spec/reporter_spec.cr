@@ -4,18 +4,26 @@ require "../ndjson"
 require "../null"
 
 # The plain reporter is selected for non-TTY output (pipes, logs, CI):
-# append-only plain lines, no ANSI sequences or emojis, periodic progress
-# and a summary carrying the phase counts and duration.
+# append-only plain lines, no ANSI sequences or emojis, progress only once
+# a phase has been running for a while, and an npm-style summary.
+# Shrinks the progress cadence so the specs do not have to wait 5s.
+private class FastPlain < Reporter::Plain
+  def self.progress_interval : Time::Span
+    10.milliseconds
+  end
+end
+
 describe Reporter::Plain do
-  it "prints plain progress lines" do
+  it "prints a progress line once a phase is slow" do
     io = IO::Memory.new
-    reporter = Reporter::Plain.new(io)
+    reporter = FastPlain.new(io)
     # Let the debounce interval elapse so the first counter call runs the
     # action synchronously instead of scheduling it in a timer fiber.
     sleep 60.milliseconds
 
     ran = false
     reporter.report_resolver_updates do
+      sleep 20.milliseconds
       reporter.on_resolving_package
       reporter.on_package_resolved
       ran = true
@@ -25,10 +33,10 @@ describe Reporter::Plain do
     ran.should be_true
     output = io.to_s
     output.should_not contain("\e[")
-    output.should contain("Resolving… [0/1]")
+    output.should contain("Resolving… 0/1")
   end
 
-  it "carries the phase counts and duration in the summary" do
+  it "prints an npm-style summary and warnings" do
     io = IO::Memory.new
     reporter = Reporter::Plain.new(io)
 
@@ -43,10 +51,20 @@ describe Reporter::Plain do
     reporter.stop
 
     output = io.to_s
-    output.should contain("Done in 1s")
-    output.should contain("3 packages resolved")
-    output.should contain("1 installed")
+    output.should contain("Warnings:")
+    output.should contain("unsupported engine for foo@1.0.0")
+    output.should contain("added 1 package in 1s")
+    output.should_not contain("packages resolved")
     output.should_not contain("\e[")
+  end
+
+  it "prints 'up to date' when nothing changed" do
+    io = IO::Memory.new
+    reporter = Reporter::Plain.new(io)
+    reporter.report_done(1.seconds, 1024_i64, FakeConfig.new, unmet_peers: nil)
+    reporter.stop
+
+    io.to_s.should contain("up to date in 1s")
   end
 
   it "reports unmet peers" do
@@ -101,5 +119,5 @@ describe Reporter::Ndjson do
 end
 
 struct FakeConfig
-  getter print_logs = false
+  getter print_logs = true
 end

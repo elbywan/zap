@@ -14,7 +14,12 @@ class Reporter::Plain < Reporter::Interactive
   # one line every interval so the log does not drown in frames.
   PROGRESS_INTERVAL = 5.seconds
 
-  @last_progress = Time.monotonic - PROGRESS_INTERVAL
+  @last_progress = Time.monotonic
+
+  # The progress cadence, overridable by subclasses (used by tests).
+  def self.progress_interval : Time::Span
+    PROGRESS_INTERVAL
+  end
 
   def initialize(@out = STDOUT)
     # A plain reporter means the whole output should be uncolored, including
@@ -25,7 +30,7 @@ class Reporter::Plain < Reporter::Interactive
 
   def report_resolver_updates(& : -> T) : T forall T
     @stopped = false
-    @last_progress = Time.monotonic - PROGRESS_INTERVAL
+    @last_progress = Time.monotonic
     @action = -> do
       downloading = @downloading_packages.get
       extra = downloading > 0 ? " • downloading #{@downloaded_packages.get}/#{downloading}" : nil
@@ -38,7 +43,7 @@ class Reporter::Plain < Reporter::Interactive
 
   def report_linker_updates(& : -> T) : T forall T
     @stopped = false
-    @last_progress = Time.monotonic - PROGRESS_INTERVAL
+    @last_progress = Time.monotonic
     @action = -> do
       progress_line("Installing", @installed_packages.get, @installing_packages.get)
     end
@@ -49,7 +54,7 @@ class Reporter::Plain < Reporter::Interactive
 
   def report_builder_updates(& : -> T) : T forall T
     @stopped = false
-    @last_progress = Time.monotonic - PROGRESS_INTERVAL
+    @last_progress = Time.monotonic
     @action = -> do
       progress_line("Building", @built_packages.get, @building_packages.get)
     end
@@ -61,7 +66,7 @@ class Reporter::Plain < Reporter::Interactive
   def report_done(realtime, memory, install_config, *, unmet_peers : Hash(String, Hash(Semver::Range, Set(String)))? = nil) : Nil
     @io_lock.synchronize do
       if install_config.print_logs && @logs.size > 0
-        @out << "Logs:" << Shared::Constants::NEW_LINE
+        @out << "Warnings:" << Shared::Constants::NEW_LINE
         @logs.each { |log| @out << "  • #{log}" << Shared::Constants::NEW_LINE }
         @out << Shared::Constants::NEW_LINE
       end
@@ -76,19 +81,23 @@ class Reporter::Plain < Reporter::Interactive
         @out << Shared::Constants::NEW_LINE
       end
 
-      all_packages = @added_packages.map { |pkg_key| {pkg_key, true} } + @removed_packages.map { |pkg_key| {pkg_key, false} }
-      if all_packages.size > 0
-        @out << "Added: #{@added_packages.size}, Removed: #{@removed_packages.size}" << Shared::Constants::NEW_LINE
-        all_packages.sort_by(&.[0]).each do |pkg_key, added|
-          @out << "  #{added ? "+" : "-"} #{pkg_key}" << Shared::Constants::NEW_LINE
-        end
-        @out << Shared::Constants::NEW_LINE
-      end
-
-      @out << "Done in #{Utils::Misc.format_time_span(realtime)} • #{@resolved_packages.get} packages resolved"
-      @out << " • #{@installed_packages.get} installed" if @installed_packages.get > 0
-      @out << Shared::Constants::NEW_LINE
+      # npm-style summary: the counts that matter, nothing else.
+      installed = @installed_packages.get
+      removed = @removed_packages.size
+      duration = realtime ? " in #{Utils::Misc.format_time_span(realtime)}" : ""
+      summary = if installed > 0
+                  "added #{installed} #{noun(installed)}#{duration}"
+                elsif removed > 0
+                  "removed #{removed} #{noun(removed)}#{duration}"
+                else
+                  "up to date#{duration}"
+                end
+      @out << summary << Shared::Constants::NEW_LINE
     end
+  end
+
+  private def noun(count : Int32) : String
+    count == 1 ? "package" : "packages"
   end
 
   def info(str : String) : Nil
@@ -120,7 +129,7 @@ class Reporter::Plain < Reporter::Interactive
   private def progress_line(label : String, done : Int32, total : Int32, extra : String? = nil) : Nil
     return unless progress_tick
     output_sync_unless_stopped do
-      @out << "#{label}… [#{done}/#{total}]"
+      @out << "#{label}… #{done}/#{total}"
       @out << extra if extra
       @out << Shared::Constants::NEW_LINE
       @out.flush
@@ -128,7 +137,7 @@ class Reporter::Plain < Reporter::Interactive
   end
 
   private def progress_tick : Bool
-    return false unless Time.monotonic - @last_progress > PROGRESS_INTERVAL
+    return false unless Time.monotonic - @last_progress > self.class.progress_interval
     @last_progress = Time.monotonic
     true
   end
