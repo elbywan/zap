@@ -1,5 +1,50 @@
 # Changelog
 
+## v0.4.0
+
+- **Apply patch files to installed dependencies**, pnpm style. Extract a
+  package, edit it, and commit your changes as a patch that is re-applied on
+  every install:
+
+```bash
+zap patch some-package@1.0.0
+# edit the files in the printed directory
+zap patch-commit /tmp/zap-patch-some-package-1.0.0-abc123
+```
+
+The patch is saved to `patches/some-package@1.0.0.patch`, registered in the
+`zap.patched_dependencies` section of package.json, and applied to node_modules
+right away. No separate `zap i` needed.
+
+- **Hand-written patches** work too: register a git-style unified diff. The key
+  matches the exact version, any version range, or the bare package name
+  (which applies to every version).
+
+```json
+{
+  "zap": {
+    "patched_dependencies": {
+      "some-package@1.0.0": "patches/some-package@1.0.0.patch"
+    }
+  }
+}
+```
+
+- **Patches stay correct.** Editing a patch file re-applies it to the affected
+  package on the next install, re-linking only that package. A changed patch
+  makes frozen installs fail until the lockfile is regenerated, and a
+  `patched_dependencies` key that matches no installed package fails the
+  install (or warns with `allowUnusedPatches: true`).
+
+- **Iterate on a patch** with `zap patch --update <package>`: the extracted
+  files include the current patch, so the next `patch-commit` accumulates on
+  top instead of restarting from the pristine copy.
+
+- **A robust in-house patch engine.** The unified-diff parser and applier
+  tolerate git headers, CRLF patches, renames and unicode paths, and fail
+  loudly on a corrupt patch instead of silently doing nothing. No external
+  patch tool, no process spawns.
+
 ## v0.3.1
 
 - **Clean output when piped or in CI.** Running `zap i` with the output
