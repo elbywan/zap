@@ -16,7 +16,7 @@ struct Commands::Install::Config < Core::CommandConfig
   getter frozen_lockfile : Bool = !!ENV["CI"]?
   @[Env]
   getter ignore_scripts : Bool = false
-  # Force a specific output reporter (plain, interactive or null) instead
+  # Force a specific output reporter (plain, interactive, null or ndjson) instead
   # of auto-detecting it from the terminal. [env: ZAP_INSTALL_REPORTER]
   @[Env]
   getter reporter : String? = nil

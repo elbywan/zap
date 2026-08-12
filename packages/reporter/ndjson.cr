@@ -5,15 +5,10 @@ require "./interactive"
 
 # Emits newline-delimited JSON events for machine consumers
 # (pnpm --reporter=ndjson parity): one object per line, no ANSI, no colors.
-# Progress events every few seconds, info/warning/error events as they
-# happen, and a final done event with the summary counts.
+# Progress events every few seconds once a phase is slow, then
+# info/warning/error events as they happen, and a final done event with
+# the summary counts.
 class Reporter::Ndjson < Reporter::Interactive
-  # Progress cadence: the first event is immediate, then one every interval
-  # so a long install does not drown the stream in progress events.
-  PROGRESS_INTERVAL = 5.seconds
-
-  @last_progress = Time.monotonic - PROGRESS_INTERVAL
-
   def initialize(@out = STDOUT)
     Colorize.enabled = false
     super
@@ -21,7 +16,7 @@ class Reporter::Ndjson < Reporter::Interactive
 
   def report_resolver_updates(& : -> T) : T forall T
     @stopped = false
-    @last_progress = Time.monotonic - PROGRESS_INTERVAL
+    @last_progress = Time.monotonic
     @action = -> do
       progress("resolving", @resolved_packages.get, @resolving_packages.get)
     end
@@ -32,7 +27,7 @@ class Reporter::Ndjson < Reporter::Interactive
 
   def report_linker_updates(& : -> T) : T forall T
     @stopped = false
-    @last_progress = Time.monotonic - PROGRESS_INTERVAL
+    @last_progress = Time.monotonic
     @action = -> do
       progress("installing", @installed_packages.get, @installing_packages.get)
     end
@@ -43,7 +38,7 @@ class Reporter::Ndjson < Reporter::Interactive
 
   def report_builder_updates(& : -> T) : T forall T
     @stopped = false
-    @last_progress = Time.monotonic - PROGRESS_INTERVAL
+    @last_progress = Time.monotonic
     @action = -> do
       progress("building", @built_packages.get, @building_packages.get)
     end
@@ -84,7 +79,7 @@ class Reporter::Ndjson < Reporter::Interactive
   end
 
   def errors(errors : Array({Exception, String})) : Nil
-    errors.each do |(error, message)|
+    errors.each do |(_, message)|
       emit { |json| json.field("type", "error"); json.field("message", message) }
     end
   end
@@ -94,8 +89,7 @@ class Reporter::Ndjson < Reporter::Interactive
   end
 
   private def progress(phase : String, done : Int32, total : Int32) : Nil
-    return unless Time.monotonic - @last_progress > PROGRESS_INTERVAL
-    @last_progress = Time.monotonic
+    return unless progress_due?
     emit do |json|
       json.field("type", "progress")
       json.field("phase", phase)

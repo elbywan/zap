@@ -13,6 +13,23 @@ class Reporter::Interactive < Reporter
   @action : (-> Void) | Nil = nil
   @stopped : Bool = false
 
+  # Progress cadence shared by the line-based reporters: a progress line or
+  # event is due once the interval has elapsed since the phase started.
+  PROGRESS_INTERVAL = 5.seconds
+
+  @last_progress = Time.monotonic
+
+  # The cadence, overridable by subclasses (used by tests).
+  def self.progress_interval : Time::Span
+    PROGRESS_INTERVAL
+  end
+
+  protected def progress_due? : Bool
+    return false unless Time.monotonic - @last_progress > self.class.progress_interval
+    @last_progress = Time.monotonic
+    true
+  end
+
   def initialize(@out = STDOUT)
     # The output terminal status; when the dashboard is forced on a non-TTY
     # output (--reporter interactive) the summary carries the phase counts.

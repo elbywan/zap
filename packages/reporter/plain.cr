@@ -7,20 +7,9 @@ require "./interactive"
 
 # Line-based reporter for non-TTY output (pipes, logs, CI): plain text
 # with no ANSI sequences, emojis or cursor movement. Progress prints a
-# line every few seconds; the summary carries the phase counts, the
-# duration and any errors, like a regular command-line tool.
+# line every few seconds once a phase is slow, warnings as a plain
+# section, and an npm-style summary like a regular command-line tool.
 class Reporter::Plain < Reporter::Interactive
-  # Progress cadence for piped output: the first line is immediate, then
-  # one line every interval so the log does not drown in frames.
-  PROGRESS_INTERVAL = 5.seconds
-
-  @last_progress = Time.monotonic
-
-  # The progress cadence, overridable by subclasses (used by tests).
-  def self.progress_interval : Time::Span
-    PROGRESS_INTERVAL
-  end
-
   def initialize(@out = STDOUT)
     # A plain reporter means the whole output should be uncolored, including
     # the CLI banner printed around it.
@@ -127,18 +116,12 @@ class Reporter::Plain < Reporter::Interactive
   end
 
   private def progress_line(label : String, done : Int32, total : Int32, extra : String? = nil) : Nil
-    return unless progress_tick
+    return unless progress_due?
     output_sync_unless_stopped do
       @out << "#{label}… #{done}/#{total}"
       @out << extra if extra
       @out << Shared::Constants::NEW_LINE
       @out.flush
     end
-  end
-
-  private def progress_tick : Bool
-    return false unless Time.monotonic - @last_progress > self.class.progress_interval
-    @last_progress = Time.monotonic
-    true
   end
 end

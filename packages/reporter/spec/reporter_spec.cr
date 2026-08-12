@@ -6,8 +6,14 @@ require "../null"
 # The plain reporter is selected for non-TTY output (pipes, logs, CI):
 # append-only plain lines, no ANSI sequences or emojis, progress only once
 # a phase has been running for a while, and an npm-style summary.
-# Shrinks the progress cadence so the specs do not have to wait 5s.
+# Shrink the progress cadence so the specs do not have to wait 5s.
 private class FastPlain < Reporter::Plain
+  def self.progress_interval : Time::Span
+    10.milliseconds
+  end
+end
+
+private class FastNdjson < Reporter::Ndjson
   def self.progress_interval : Time::Span
     10.milliseconds
   end
@@ -94,10 +100,11 @@ end
 describe Reporter::Ndjson do
   it "emits one JSON object per line" do
     io = IO::Memory.new
-    reporter = Reporter::Ndjson.new(io)
+    reporter = FastNdjson.new(io)
     sleep 60.milliseconds
 
     reporter.report_resolver_updates do
+      sleep 20.milliseconds
       reporter.on_resolving_package
       reporter.on_package_resolved
     end
