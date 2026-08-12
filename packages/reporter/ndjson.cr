@@ -1,0 +1,118 @@
+require "json"
+require "log"
+require "utils/timers"
+require "./interactive"
+
+# Emits newline-delimited JSON events for machine consumers
+# (pnpm --reporter=ndjson parity): one object per line, no ANSI, no colors.
+# Progress events every few seconds, info/warning/error events as they
+# happen, and a final done event with the summary counts.
+class Reporter::Ndjson < Reporter::Interactive
+  # Progress cadence: the first event is immediate, then one every interval
+  # so a long install does not drown the stream in progress events.
+  PROGRESS_INTERVAL = 5.seconds
+
+  @last_progress = Time.monotonic - PROGRESS_INTERVAL
+
+  def initialize(@out = STDOUT)
+    Colorize.enabled = false
+    super
+  end
+
+  def report_resolver_updates(& : -> T) : T forall T
+    @stopped = false
+    @last_progress = Time.monotonic - PROGRESS_INTERVAL
+    @action = -> do
+      progress("resolving", @resolved_packages.get, @resolving_packages.get)
+    end
+    yield
+  ensure
+    self.stop
+  end
+
+  def report_linker_updates(& : -> T) : T forall T
+    @stopped = false
+    @last_progress = Time.monotonic - PROGRESS_INTERVAL
+    @action = -> do
+      progress("installing", @installed_packages.get, @installing_packages.get)
+    end
+    yield
+  ensure
+    self.stop
+  end
+
+  def report_builder_updates(& : -> T) : T forall T
+    @stopped = false
+    @last_progress = Time.monotonic - PROGRESS_INTERVAL
+    @action = -> do
+      progress("building", @built_packages.get, @building_packages.get)
+    end
+    yield
+  ensure
+    self.stop
+  end
+
+  def report_done(realtime, memory, install_config, *, unmet_peers : Hash(String, Hash(Semver::Range, Set(String)))? = nil) : Nil
+    emit do |json|
+      json.field("type", "done")
+      json.field("resolved", @resolved_packages.get)
+      json.field("installed", @installed_packages.get)
+      json.field("added", @added_packages.size)
+      json.field("removed", @removed_packages.size)
+      json.field("duration_ms", realtime.total_milliseconds.to_i64)
+    end
+  end
+
+  def info(str : String) : Nil
+    emit { |json| json.field("type", "info"); json.field("message", str) }
+  end
+
+  def warning(error : Exception, location : String? = "") : Nil
+    emit do |json|
+      json.field("type", "warning")
+      json.field("message", error.message)
+      json.field("location", location) unless location.empty?
+    end
+  end
+
+  def error(error : Exception, location : String? = "") : Nil
+    emit do |json|
+      json.field("type", "error")
+      json.field("message", error.message)
+      json.field("location", location) unless location.empty?
+    end
+  end
+
+  def errors(errors : Array({Exception, String})) : Nil
+    errors.each do |(error, message)|
+      emit { |json| json.field("type", "error"); json.field("message", message) }
+    end
+  end
+
+  # Script output is dropped so the stream stays pure JSON.
+  def prepend(bytes : Bytes) : Nil
+  end
+
+  private def progress(phase : String, done : Int32, total : Int32) : Nil
+    return unless Time.monotonic - @last_progress > PROGRESS_INTERVAL
+    @last_progress = Time.monotonic
+    emit do |json|
+      json.field("type", "progress")
+      json.field("phase", phase)
+      json.field("done", done)
+      json.field("total", total)
+    end
+  end
+
+  private def emit(& : JSON::Builder ->) : Nil
+    @io_lock.synchronize do
+      JSON.build(@out) do |json|
+        json.object do
+          yield json
+        end
+      end
+      @out << Shared::Constants::NEW_LINE
+      @out.flush
+    end
+  end
+end

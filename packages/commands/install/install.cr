@@ -5,6 +5,7 @@ require "reporter/reporter"
 require "reporter/null"
 require "reporter/interactive"
 require "reporter/plain"
+require "reporter/ndjson"
 require "store"
 require "data/package/scripts"
 require "utils/shasum"
@@ -36,6 +37,8 @@ module Commands::Install
                    Reporter::Interactive.new
                  when "null"
                    Reporter::Null.new
+                 when "ndjson"
+                   Reporter::Ndjson.new
                  else
                    if config.silent
                      Reporter::Null.new
@@ -48,7 +51,7 @@ module Commands::Install
     store ||= ::Store.new(config.store_path)
     unmet_peers_hash = nil
 
-    Zap.print_banner unless config.silent
+    Zap.print_banner unless config.silent || reporter.is_a?(Reporter::Ndjson)
 
     realtime, memory = self.measure do
       # Infer context like the nearest package.json file and workspaces
@@ -76,7 +79,7 @@ module Commands::Install
       end
 
       # Print info about the install
-      self.print_info(config, inferred_context, install_config, lockfile, workspaces)
+      self.print_info(config, inferred_context, install_config, lockfile, workspaces) unless reporter.is_a?(Reporter::Ndjson)
 
       # Remove node_modules / .pnp folder if the install strategy has changed
       config = self.strategy_check(config, install_config, lockfile, inferred_context, reporter)

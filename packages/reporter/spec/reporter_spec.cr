@@ -1,5 +1,6 @@
 require "spec"
 require "../plain"
+require "../ndjson"
 require "../null"
 
 # The plain reporter is selected for non-TTY output (pipes, logs, CI):
@@ -69,6 +70,33 @@ describe Reporter::Plain do
     output = io.to_s
     output.should contain("Error at /tmp/x: boom")
     output.should_not contain("\e[")
+  end
+end
+
+describe Reporter::Ndjson do
+  it "emits one JSON object per line" do
+    io = IO::Memory.new
+    reporter = Reporter::Ndjson.new(io)
+    sleep 60.milliseconds
+
+    reporter.report_resolver_updates do
+      reporter.on_resolving_package
+      reporter.on_package_resolved
+    end
+    reporter.info("hi")
+    reporter.error(Exception.new("boom"), "at /tmp/x")
+    reporter.report_done(1.seconds, 1024_i64, FakeConfig.new)
+    reporter.stop
+
+    lines = io.to_s.split('\n').reject(&.empty?)
+    lines.each { |line| JSON.parse(line) }
+    progress = lines.find { |line| line.includes?(%("resolving")) }
+    progress.should_not be_nil
+    done = lines.find { |line| line.includes?(%("type":"done")) }
+    done.should_not be_nil
+    done.not_nil!.should contain(%("resolved":1))
+    done.not_nil!.should contain(%("duration_ms":1000))
+    lines.any? { |line| line.includes?("boom") }.should be_true
   end
 end
 
