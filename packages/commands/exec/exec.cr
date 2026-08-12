@@ -1,12 +1,13 @@
 require "core/config"
 require "reporter/interactive"
+require "reporter/plain"
 require "./config"
 
 module Commands::Exec
   Log = ::Log.for("zap.exec")
 
   def self.run(config : Core::Config, exec_config : Exec::Config, *, no_banner : Bool = false)
-    reporter = Reporter::Interactive.new
+    reporter = STDOUT.tty? ? Reporter::Interactive.new : Reporter::Plain.new
     begin
       raise "Please provide a command to run. Example: 'zap exec <command>'" if exec_config.command.empty?
 

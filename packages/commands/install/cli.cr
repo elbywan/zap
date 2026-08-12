@@ -31,6 +31,9 @@ class Commands::Install::CLI < Commands::CLI
 
     Helpers.separator("Options")
 
+    Helpers.flag("--reporter <plain|interactive|null|ndjson>", "Force the output reporter instead of auto-detecting it from the terminal. #{"[env: ZAP_INSTALL_REPORTER]".colorize.dim}") do |reporter|
+      command_config.ref = install_config.copy_with(reporter: reporter)
+    end
     Helpers.flag("--frozen-lockfile <true|false>", "If true, will fail if the lockfile is outdated. #{"[env: ZAP_INSTALL_FROZEN_LOCKFILE]".colorize.dim}") do |frozen_lockfile|
       command_config.ref = install_config.copy_with(frozen_lockfile: Utils::Misc.str_to_bool(frozen_lockfile))
     end

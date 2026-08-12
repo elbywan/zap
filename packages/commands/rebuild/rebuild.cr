@@ -8,7 +8,7 @@ module Commands::Rebuild
     workspaces, config = context.workspaces, context.config
     scope = context.get_scope(:install)
     scope_names = scope.map { |pkg| pkg.is_a?(Workspaces::Workspace) ? pkg.package.name : pkg.name }
-    reporter = Reporter::Interactive.new
+    reporter = STDOUT.tty? ? Reporter::Interactive.new : Reporter::Plain.new
 
     unless config.silent
       Zap.print_banner
@@ -65,6 +65,7 @@ module Commands::Rebuild
     Data::Package::Scripts.parallel_run(
       config: config,
       scripts: scripts,
+      reporter: reporter,
       print_header: false,
     )
   rescue ex : Exception
