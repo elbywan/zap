@@ -272,6 +272,10 @@ class Commands::Install::Linker::PnP < Commands::Install::Linker::Base
   end
 
   def on_link(dependency : Data::Package, install_folder : Path, *, state : Commands::Install::State)
+    # Apply the patch configured in zap.patched_dependencies (before the
+    # metadata write, so a failing patch is retried on the next install).
+    Patches.apply(dependency, install_folder, state: state)
+
     # Store package metadata
     unless File.symlink?(install_folder)
       File.open(install_folder / Shared::Constants::METADATA_FILE_NAME, "w") do |f|

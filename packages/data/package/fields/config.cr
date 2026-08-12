@@ -18,7 +18,8 @@ class Data::Package
       public_hoist_patterns : Array(String)? = nil,
       strategy : InstallStrategy? = nil,
       package_extensions : Hash(String, PackageExtension) = Hash(String, PackageExtension).new,
-      check_peer_dependencies : Bool? = nil do
+      check_peer_dependencies : Bool? = nil,
+      patched_dependencies : Hash(String, String)? = nil do
       include JSON::Serializable
       include YAML::Serializable
       include MessagePack::Serializable
