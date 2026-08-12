@@ -45,8 +45,10 @@ describe "patch", tags: "integration" do
           pkg_json = JSON.parse(File.read(tmpdir / "package.json"))
           pkg_json["zap"]["patched_dependencies"]["a@1.0.0"].should eq("patches/a@1.0.0.patch")
 
+          # patch-commit re-installed the package right away (no zap i)
+          File.read(tmpdir / "node_modules/a/index.js").should eq("const x = 42;\nconsole.log(x);\n// patched\n")
+
           # patch-commit refreshed the lockfile: a frozen install passes
-          # (and applies the patch to the stale copy)
           Commands::Install.run(config, ic.copy_with(frozen_lockfile: true), raise_on_failure: true, reporter: Reporter::Null.new)
           File.read(tmpdir / "node_modules/a/index.js").should eq("const x = 42;\nconsole.log(x);\n// patched\n")
 

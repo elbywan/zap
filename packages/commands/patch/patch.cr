@@ -100,6 +100,10 @@ module Commands::Patch
     lockfile.update_patched_dependencies_shasum(main_package, Path.new(config.prefix))
     lockfile.write(format: config.lockfile_format)
 
+    # Re-install the patched package into node_modules right away (pnpm and
+    # yarn parity: the edit is applied without a separate `zap i`).
+    Commands::Install.run(config, Commands::Install::Config.new.copy_with(frozen_lockfile: false), raise_on_failure: true)
+
     output_io.puts "Patch saved to #{patch_path} and registered in package.json."
   end
 
