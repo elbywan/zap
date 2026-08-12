@@ -58,6 +58,27 @@ describe "patch", tags: "integration" do
     end
   end
 
+  it "applies patches with the isolated strategy" do
+    It.with_registry do |registry|
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0"), {"index.js" => "one\n"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"a":"1.0.0"},"zap":{"strategy":"isolated","patched_dependencies":{"a@1.0.0":"patches/a.patch"}}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        Dir.mkdir_p(tmpdir / "patches")
+        File.write(tmpdir / "patches/a.patch", "--- a/index.js\n+++ b/index.js\n@@ -1,1 +1,1 @@\n-one\n+deux\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+        File.read(tmpdir / "node_modules/a/index.js").should eq("deux\n")
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
   it "fails when a registered patch does not match" do
     It.with_registry do |registry|
       registry.add("a", "1.0.0", It.pkg("a", "1.0.0"), {"index.js" => "one\n"})
