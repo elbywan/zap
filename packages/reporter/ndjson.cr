@@ -53,6 +53,12 @@ class Reporter::Ndjson < Reporter::Interactive
         emit { |json| json.field("type", "warning"); json.field("message", log) }
       end
     end
+    if unmet_peers && !unmet_peers.empty?
+      peers = unmet_peers.to_a.flat_map do |name, versions|
+        versions.map { |range, peers| "#{name}@#{range} (#{peers.join(", ")})" }
+      end
+      emit { |json| json.field("type", "unmet_peers"); json.field("peers", peers) }
+    end
     emit do |json|
       json.field("type", "done")
       json.field("resolved", @resolved_packages.get)
