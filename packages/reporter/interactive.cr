@@ -1,6 +1,8 @@
 require "log"
 require "utils/timers"
+require "utils/misc"
 require "semver"
+require "concurrency/data_structures/safe_set"
 require "./reporter"
 
 class Reporter::Interactive < Reporter
@@ -12,6 +14,9 @@ class Reporter::Interactive < Reporter
   @stopped : Bool = false
 
   def initialize(@out = STDOUT)
+    # The output terminal status; when the dashboard is forced on a non-TTY
+    # output (--reporter interactive) the summary carries the phase counts.
+    @tty = @out.tty?
     @resolving_packages = Atomic(Int32).new(0)
     @resolved_packages = Atomic(Int32).new(0)
     @downloading_packages = Atomic(Int32).new(0)
@@ -337,6 +342,14 @@ class Reporter::Interactive < Reporter
       end
 
       @out << header("👌", "Done!", :green)
+      unless @tty
+        # When the dashboard is forced on a non-TTY output (--reporter
+        # interactive) the bars are still printed as escapes, so the summary
+        # carries the counts instead of the live view.
+        counts = ["#{@resolved_packages.get} packages resolved"]
+        counts << "#{@installed_packages.get} installed" if @installed_packages.get > 0
+        @out << "#{counts.join(" • ")} • ".colorize.dim
+      end
       if realtime
         @out << "took #{Utils::Misc.format_time_span(realtime)} • ".colorize.dim
       end

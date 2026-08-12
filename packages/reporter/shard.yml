@@ -9,3 +9,4 @@ dependencies:
   semver:
     path: ../semver
 crystalline:
+  main: spec/specs.cr

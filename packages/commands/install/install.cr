@@ -4,6 +4,7 @@ require "concurrency/pipeline"
 require "reporter/reporter"
 require "reporter/null"
 require "reporter/interactive"
+require "reporter/plain"
 require "store"
 require "data/package/scripts"
 require "utils/shasum"
@@ -28,7 +29,20 @@ module Commands::Install
     raise_on_failure : Bool = false,
   )
     state : State? = nil
-    reporter ||= config.silent ? Reporter::Null.new : Reporter::Interactive.new
+    reporter ||= case install_config.reporter
+                 when "plain"
+                   Reporter::Plain.new
+                 when "interactive"
+                   Reporter::Interactive.new
+                 when "null"
+                   Reporter::Null.new
+                 else
+                   if config.silent
+                     Reporter::Null.new
+                   else
+                     STDOUT.tty? ? Reporter::Interactive.new : Reporter::Plain.new
+                   end
+                 end
     install_config = install_config.copy_with(raise_on_failure: raise_on_failure)
     config = config.check_if_store_is_linkeable
     store ||= ::Store.new(config.store_path)

@@ -1,6 +1,7 @@
 require "log"
 require "core/config"
 require "reporter/interactive"
+require "reporter/plain"
 require "./config"
 
 class ScriptNotFoundError < Exception
@@ -16,7 +17,7 @@ module Commands::Run
     config : Core::Config,
     run_config : Run::Config
   )
-    reporter = Reporter::Interactive.new
+    reporter = STDOUT.tty? ? Reporter::Interactive.new : Reporter::Plain.new
     begin
       script_name, script_arguments = run_config.script, run_config.args
       raise "Please provide a script to run. Example: 'zap run <script> [arguments]'" unless script_name
