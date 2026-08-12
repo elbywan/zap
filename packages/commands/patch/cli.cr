@@ -9,6 +9,10 @@ class Commands::Patch::CLI < Commands::CLI
 
       Helpers.separator("Options")
 
+      Helpers.flag("-u", "--update", "Apply the existing patch to the extracted files, so patch-commit accumulates on top of it.") do
+        command_config.ref = patch_config.copy_with(update: true)
+      end
+
       parser.before_each do |arg|
         unless arg.starts_with?("-")
           parser.stop
@@ -27,5 +31,9 @@ class Commands::Patch::CLI < Commands::CLI
         end
       end
     end
+  end
+
+  private macro patch_config
+    command_config.ref.as(Patch::Config)
   end
 end

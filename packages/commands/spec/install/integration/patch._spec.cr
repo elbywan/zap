@@ -541,4 +541,114 @@ describe "patch", tags: "integration" do
       end
     end
   end
+
+  it "accumulates on the existing patch with --update" do
+    It.with_registry do |registry|
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0"), {"index.js" => "one\n"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"a":"1.0.0"}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        old_argv = ARGV.dup
+        output = IO::Memory.new
+        begin
+          ARGV.replace(["a@1.0.0"])
+          Commands::Patch.run(config, Commands::Patch::Config.new, output_io: output)
+          dir1 = Path.new(output.to_s.lines.find { |l| l.starts_with?("Patched package directory: ") }.not_nil!.split(": ", 2)[1].strip)
+          File.write(dir1 / "index.js", "v1\n")
+          ARGV.replace([dir1.to_s])
+          Commands::Patch.run(config, Commands::Patch::Config.new.copy_with(commit: true), output_io: output)
+
+          # The update extraction starts from the already-patched content
+          ARGV.replace(["a@1.0.0"])
+          Commands::Patch.run(config, Commands::Patch::Config.new.copy_with(update: true), output_io: output)
+          dir2 = Path.new(output.to_s.lines.select { |l| l.starts_with?("Patched package directory: ") }.last.split(": ", 2)[1].strip)
+          File.read(dir2 / "index.js").should eq("v1\n")
+          File.write(dir2 / "index.js", "v2\n")
+          ARGV.replace([dir2.to_s])
+          Commands::Patch.run(config, Commands::Patch::Config.new.copy_with(commit: true), output_io: output)
+
+          # The accumulated patch is applied
+          File.read(tmpdir / "node_modules/a/index.js").should eq("v2\n")
+        ensure
+          ARGV.replace(old_argv)
+        end
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "restarts from the pristine copy by default" do
+    It.with_registry do |registry|
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0"), {"index.js" => "one\n"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"a":"1.0.0"}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        old_argv = ARGV.dup
+        output = IO::Memory.new
+        begin
+          ARGV.replace(["a@1.0.0"])
+          Commands::Patch.run(config, Commands::Patch::Config.new, output_io: output)
+          dir1 = Path.new(output.to_s.lines.find { |l| l.starts_with?("Patched package directory: ") }.not_nil!.split(": ", 2)[1].strip)
+          File.write(dir1 / "index.js", "v1\n")
+          ARGV.replace([dir1.to_s])
+          Commands::Patch.run(config, Commands::Patch::Config.new.copy_with(commit: true), output_io: output)
+
+          # A second default patch restarts from the pristine (yarn's default,
+          # pnpm's --ignore-existing), not the patched copy
+          ARGV.replace(["a@1.0.0"])
+          Commands::Patch.run(config, Commands::Patch::Config.new, output_io: output)
+          dir2 = Path.new(output.to_s.lines.select { |l| l.starts_with?("Patched package directory: ") }.last.split(": ", 2)[1].strip)
+          File.read(dir2 / "index.js").should eq("one\n")
+        ensure
+          ARGV.replace(old_argv)
+        end
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "extracts the pristine copy with --update when there is no existing patch" do
+    It.with_registry do |registry|
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0"), {"index.js" => "one\n"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"a":"1.0.0"}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        old_argv = ARGV.dup
+        output = IO::Memory.new
+        begin
+          ARGV.replace(["a@1.0.0"])
+          Commands::Patch.run(config, Commands::Patch::Config.new.copy_with(update: true), output_io: output)
+          dir = Path.new(output.to_s.lines.find { |l| l.starts_with?("Patched package directory: ") }.not_nil!.split(": ", 2)[1].strip)
+          File.read(dir / "index.js").should eq("one\n")
+        ensure
+          ARGV.replace(old_argv)
+        end
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
 end

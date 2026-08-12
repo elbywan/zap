@@ -24,13 +24,14 @@ module Commands::Patch
 
   def self.run(config : Core::Config, patch_config : Patch::Config, *, output_io : IO = STDOUT) : Nil
     patch_config = patch_config.from_args(ARGV)
-    config = config.infer_context.config
+    context = config.infer_context
+    config = context.config
     lockfile = Data::Lockfile.new(config.prefix, default_format: config.lockfile_format)
 
     if patch_config.commit
       commit(config, lockfile, Path.new(patch_config.package), output_io)
     else
-      extract(config, lockfile, patch_config.package, output_io)
+      extract(config, lockfile, patch_config.package, context.main_package, patch_config.update, output_io)
     end
   end
 
@@ -38,7 +39,7 @@ module Commands::Patch
   # directory for editing. The store copy stays pristine. A bare name (no
   # version) records apply-to-all, so patch-commit writes a key that matches
   # every version (pnpm parity); several installed versions are ambiguous.
-  private def self.extract(config : Core::Config, lockfile : Data::Lockfile, spec : String, output_io : IO) : Nil
+  private def self.extract(config : Core::Config, lockfile : Data::Lockfile, spec : String, main_package : Data::Package, update : Bool, output_io : IO) : Nil
     name, version = Utils::Misc.parse_key(spec)
     apply_to_all = version.nil?
 
@@ -58,6 +59,19 @@ module Commands::Patch
 
     dir = Path.new(Dir.tempdir) / "zap-patch-#{package.name}-#{package.version}-#{Random::Secure.hex(4)}"
     FileUtils.cp_r(store_path.to_s, dir.to_s)
+
+    # --update: start from the already-patched content so a later
+    # patch-commit accumulates on top (yarn's -u, pnpm's default reuse).
+    if update
+      if patches = main_package.zap_config.try(&.patched_dependencies)
+        if patch_file = Commands::Install::Patches.find_patch(patches, package)
+          patch_path = Path.new(patch_file).expand(Path.new(config.prefix))
+          raise "Cannot apply patch: file not found: #{patch_path}" unless File.exists?(patch_path)
+          Utils::Patch.apply(File.read(patch_path), dir)
+        end
+      end
+    end
+
     File.write(dir / MARKER_FILE, Marker.new(package.name, package.version, store_path.to_s, apply_to_all).to_json)
     output_io.puts "Patched package directory: #{dir}"
     output_io.puts "Edit the files, then run `zap patch-commit #{dir}` to generate the patch."

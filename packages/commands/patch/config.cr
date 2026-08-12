@@ -6,6 +6,8 @@ struct Commands::Patch::Config < Core::CommandConfig
 
   @[Env]
   getter commit : Bool = false
+  @[Env]
+  getter update : Bool = false
   getter package : String = ""
 
   def from_args(args : Array(String)) : self
