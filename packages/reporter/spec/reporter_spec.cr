@@ -149,6 +149,19 @@ describe Reporter::Ndjson do
     done.not_nil!.should contain(%("duration_ms":1000))
     lines.any? { |line| line.includes?("boom") }.should be_true
   end
+
+  it "flushes accumulated warnings as events" do
+    io = IO::Memory.new
+    reporter = Reporter::Ndjson.new(io)
+    reporter.log("unsupported engine for foo@1.0.0")
+    reporter.report_done(1.seconds, 1024_i64, FakeConfig.new)
+    reporter.stop
+
+    lines = io.to_s.split('\n').reject(&.empty?)
+    warning = lines.find { |line| line.includes?(%("type":"warning")) }
+    warning.should_not be_nil
+    warning.not_nil!.should contain("unsupported engine")
+  end
 end
 
 struct FakeConfig

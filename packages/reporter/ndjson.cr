@@ -48,6 +48,11 @@ class Reporter::Ndjson < Reporter::Interactive
   end
 
   def report_done(realtime, memory, install_config, *, unmet_peers : Hash(String, Hash(Semver::Range, Set(String)))? = nil) : Nil
+    if install_config.print_logs
+      @logs.each do |log|
+        emit { |json| json.field("type", "warning"); json.field("message", log) }
+      end
+    end
     emit do |json|
       json.field("type", "done")
       json.field("resolved", @resolved_packages.get)
@@ -117,7 +122,7 @@ class Reporter::Ndjson < Reporter::Interactive
     end
   end
 
-  NULL_IO = NullIO.new
+  private NULL_IO = NullIO.new
 
   private def emit(& : JSON::Builder ->) : Nil
     @io_lock.synchronize do
