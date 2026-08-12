@@ -85,6 +85,27 @@ describe Reporter::Plain do
     output.should contain("(react)")
   end
 
+  it "prints a stern section header" do
+    io = IO::Memory.new
+    reporter = Reporter::Plain.new(io)
+    reporter.header("🪝", "Hooks").should eq("Hooks")
+  end
+
+  it "combines added and removed in the summary" do
+    io = IO::Memory.new
+    reporter = Reporter::Plain.new(io)
+    reporter.report_linker_updates do
+      reporter.on_linking_package
+      reporter.on_package_linked
+    end
+    reporter.on_package_removed("foo@1.0.0")
+    reporter.on_package_removed("bar@2.0.0")
+    reporter.report_done(1.seconds, 1024_i64, FakeConfig.new)
+    reporter.stop
+
+    io.to_s.should contain("added 1 package and removed 2 packages in 1s")
+  end
+
   it "prints errors" do
     io = IO::Memory.new
     reporter = Reporter::Plain.new(io)
@@ -115,6 +136,11 @@ describe Reporter::Ndjson do
 
     lines = io.to_s.split('\n').reject(&.empty?)
     lines.each { |line| JSON.parse(line) }
+    # Script output and hook headers are dropped so the stream stays JSON.
+    reporter.output << "corrupt"
+    reporter.output_sync { |io| io << "corrupt" }
+    reporter.prepend("corrupt".to_slice)
+    io.to_s.split('\n').reject(&.empty?).each { |line| JSON.parse(line) }
     progress = lines.find { |line| line.includes?(%("resolving")) }
     progress.should_not be_nil
     done = lines.find { |line| line.includes?(%("type":"done")) }

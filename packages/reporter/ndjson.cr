@@ -84,7 +84,17 @@ class Reporter::Ndjson < Reporter::Interactive
     end
   end
 
-  # Script output is dropped so the stream stays pure JSON.
+  # Script output and hook headers are human-readable; drop them so the
+  # stream stays pure JSON (the child processes are redirected to a null
+  # sink by the script printers).
+  def output : IO
+    NULL_IO
+  end
+
+  def output_sync(&block : IO ->) : Nil
+    block.call(NULL_IO)
+  end
+
   def prepend(bytes : Bytes) : Nil
   end
 
@@ -97,6 +107,17 @@ class Reporter::Ndjson < Reporter::Interactive
       json.field("total", total)
     end
   end
+
+  private class NullIO < IO
+    def read(slice : Bytes) : Int32
+      0
+    end
+
+    def write(slice : Bytes) : Nil
+    end
+  end
+
+  NULL_IO = NullIO.new
 
   private def emit(& : JSON::Builder ->) : Nil
     @io_lock.synchronize do

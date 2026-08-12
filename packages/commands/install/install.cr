@@ -39,12 +39,14 @@ module Commands::Install
                    Reporter::Null.new
                  when "ndjson"
                    Reporter::Ndjson.new
-                 else
+                 when nil
                    if config.silent
                      Reporter::Null.new
                    else
                      STDOUT.tty? ? Reporter::Interactive.new : Reporter::Plain.new
                    end
+                 else
+                   raise "Unknown reporter: #{install_config.reporter} (expected plain, interactive, null or ndjson)"
                  end
     install_config = install_config.copy_with(raise_on_failure: raise_on_failure)
     config = config.check_if_store_is_linkeable
@@ -177,7 +179,13 @@ module Commands::Install
     end
   rescue e
     raise e if raise_on_failure
-    reporter.try &.error(e)
+    # Early failures (e.g. an invalid --reporter) happen before the reporter
+    # exists; print them instead of silently exiting.
+    if reporter
+      reporter.error(e)
+    else
+      puts e.message
+    end
     exit Shared::Constants::ErrorCodes::INSTALL_COMMAND_FAILED.to_i32
   end
 
@@ -499,7 +507,7 @@ module Commands::Install
         ordered_hooks.each do |package, path|
           package.scripts.try do |scripts|
             state.reporter.on_building_package
-            output_io = state.config.silent ? File.open(File::NULL, "w") : nil
+            output_io = state.config.silent || state.reporter.is_a?(Reporter::Null) || state.reporter.is_a?(Reporter::Ndjson) ? File.open(File::NULL, "w") : nil
             begin
               scripts.run_script(:preinstall, path, state.config, output_io: output_io)
               scripts.run_script(:install, path, state.config, output_io: output_io)

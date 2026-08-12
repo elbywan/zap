@@ -17,6 +17,11 @@ class Reporter::Plain < Reporter::Interactive
     super
   end
 
+  # The script runners print section headers directly; keep them stern.
+  def header(emoji : String, str : String, color = :default) : String
+    str
+  end
+
   def report_resolver_updates(& : -> T) : T forall T
     @stopped = false
     @last_progress = Time.monotonic
@@ -74,13 +79,10 @@ class Reporter::Plain < Reporter::Interactive
       installed = @installed_packages.get
       removed = @removed_packages.size
       duration = realtime ? " in #{Utils::Misc.format_time_span(realtime)}" : ""
-      summary = if installed > 0
-                  "added #{installed} #{noun(installed)}#{duration}"
-                elsif removed > 0
-                  "removed #{removed} #{noun(removed)}#{duration}"
-                else
-                  "up to date#{duration}"
-                end
+      fragments = [] of String
+      fragments << "added #{installed} #{noun(installed)}" if installed > 0
+      fragments << "removed #{removed} #{noun(removed)}" if removed > 0
+      summary = fragments.empty? ? "up to date#{duration}" : "#{fragments.join(" and ")}#{duration}"
       @out << summary << Shared::Constants::NEW_LINE
     end
   end

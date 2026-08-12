@@ -65,6 +65,7 @@ module Commands::Rebuild
     Data::Package::Scripts.parallel_run(
       config: config,
       scripts: scripts,
+      reporter: reporter,
       print_header: false,
     )
   rescue ex : Exception
