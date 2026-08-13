@@ -207,11 +207,18 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
     raise "Refusing to install #{pkg.key}: its trust evidence (#{tier_name(current_tier)}) is weaker than the previously locked versions' (#{tier_name(previous_tier)}), violating the trust policy no-downgrade. Add \"#{pkg.name}\" to zap.trust_policy_exclude or change zap.trust_policy to allow it."
   end
 
-  # Whether a trust policy exclude selector matches a package: a bare name or
-  # a name@range selector (pnpm's trustPolicyExclude).
+  # Whether an exclude selector matches a package: a bare name or a
+  # name@range selector (pnpm's minimumReleaseAgeExclude/trustPolicyExclude).
+  # A malformed range never matches.
   private def excluded?(selector : String, pkg : Data::Package) : Bool
     name, range = Utils::Misc.parse_key(selector)
-    name == pkg.name && (range.nil? || Semver.parse(range).satisfies?(pkg.version))
+    return false unless name == pkg.name
+    return true if range.nil?
+    begin
+      Semver.parse(range).satisfies?(pkg.version)
+    rescue
+      false
+    end
   end
 
   # The trust tiers, strongest first: a publisher signature, then a
@@ -254,7 +261,7 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
     return if minutes <= 0
 
     exemptions = zap.try(&.minimum_release_age_exemptions) || [] of String
-    return if exemptions.includes?(pkg.name)
+    return if exemptions.any? { |selector| excluded?(selector, pkg) }
 
     published = manifest.publish_time?(pkg.version)
     if published.nil?

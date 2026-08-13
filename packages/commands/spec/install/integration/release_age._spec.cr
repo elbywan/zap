@@ -115,6 +115,17 @@ describe "release age", tags: "integration" do
     end
   end
 
+  it "exempts a specific version from the age check" do
+    It.with_registry do |registry|
+      registry.add("fresh", "1.0.0", It.pkg("fresh", "1.0.0"), {"index.js" => "f"},
+        published_at: Time.utc - 1.hour)
+
+      It.install_project(registry, %({"name":"app","version":"1.0.0","dependencies":{"fresh":"1.0.0"},"zap":{"minimum_release_age_exemptions":["fresh@1.0.0"]}})) do |project|
+        File.read(project / "node_modules/fresh/index.js").should eq("f")
+      end
+    end
+  end
+
   it "accepts minute units" do
     It.with_registry do |registry|
       registry.add("fresh", "1.0.0", It.pkg("fresh", "1.0.0"), {"index.js" => "f"},
