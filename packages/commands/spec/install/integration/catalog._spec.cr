@@ -185,6 +185,67 @@ describe "catalogs", tags: "integration" do
     end
   end
 
+  it "records the catalog reference in the lockfile" do
+    It.with_registry do |registry|
+      registry.add("react", "18.3.1", It.pkg("react", "18.3.1"), {"index.js" => "18.3.1"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"react":"catalog:"},"zap":{"catalog":{"react":"^18.3.1"}}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        # The declared edge keeps the catalog reference; the resolved version
+        # is pinned separately.
+        lockfile = Data::Lockfile.new(tmpdir)
+        lockfile.roots["app"].dependencies.not_nil!["react"].should eq("catalog:")
+        lockfile.roots["app"].dependency_specifier?("react").to_s.should eq("18.3.1")
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "fails when a catalog entry references another catalog" do
+    It.with_registry do |registry|
+      registry.add("react", "18.3.1", It.pkg("react", "18.3.1"), {"index.js" => "18.3.1"})
+
+      raised = false
+      begin
+        It.install_project(registry, %({"name":"app","version":"1.0.0","dependencies":{"react":"catalog:"},"zap":{"catalog":{"react":"catalog:react17"},"catalogs":{"react17":{"react":"^17.0.2"}}}})) { |_| }
+      rescue ex
+        raised = true
+        ex.message.not_nil!.should contain("references another catalog")
+      end
+      raised.should be_true
+    end
+  end
+
+  it "adds a dependency with a catalog reference" do
+    It.with_registry do |registry|
+      registry.add("react", "18.3.1", It.pkg("react", "18.3.1"), {"index.js" => "18.3.1"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","zap":{"catalog":{"react":"^18.3.1"}}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true, added_packages: ["catalog:react"])
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        File.read(tmpdir / "node_modules/react/index.js").should eq("18.3.1")
+        pkg = JSON.parse(File.read(tmpdir / "package.json"))
+        pkg["dependencies"]["react"].as_s.should eq("catalog:")
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
   it "rewrites the specifier literally when updating a catalog dependency" do
     It.with_registry do |registry|
       registry.add("react", "18.3.1", It.pkg("react", "18.3.1"), {"index.js" => "18.3.1"})

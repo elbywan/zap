@@ -1,5 +1,6 @@
 require "log"
 require "./alias"
+require "./catalog"
 require "./file"
 require "./git"
 require "./registry"
@@ -10,6 +11,7 @@ module Commands::Install::Protocol
   Log = ::Log.for("zap.install.protocol")
 
   PROTOCOLS = {
+    Protocol::Catalog,
     Protocol::Workspace,
     Protocol::Alias,
     Protocol::File,
