@@ -191,15 +191,27 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
     return unless zap.try(&.trust_policy) == "no-downgrade"
 
     exclude = zap.try(&.trust_policy_exclude) || [] of String
-    return if exclude.includes?(pkg.name)
+    return if exclude.any? { |selector| excluded?(selector, pkg) }
 
-    previous = state.lockfile.packages.values.select { |p| p.name == pkg.name && p.version != pkg.version }
+    # A prerelease never blocks a stable release: a trusted beta cannot hold
+    # back the stable version that lacks trust evidence (pnpm v10.24 parity).
+    current_prerelease = prerelease?(pkg.version)
+    previous = state.lockfile.packages.values.select do |p|
+      p.name == pkg.name && p.version != pkg.version && (current_prerelease || !prerelease?(p.version))
+    end
     return if previous.empty?
     previous_tier = previous.map { |p| manifest.dist_evidence?(p.version) }.compact.map { |e| trust_tier(*e) }.max? || 0
     current_tier = manifest.dist_evidence?(pkg.version).try { |e| trust_tier(*e) } || 0
     return if current_tier >= previous_tier
 
     raise "Refusing to install #{pkg.key}: its trust evidence (#{tier_name(current_tier)}) is weaker than the previously locked versions' (#{tier_name(previous_tier)}), violating the trust policy no-downgrade. Add \"#{pkg.name}\" to zap.trust_policy_exclude or change zap.trust_policy to allow it."
+  end
+
+  # Whether a trust policy exclude selector matches a package: a bare name or
+  # a name@range selector (pnpm's trustPolicyExclude).
+  private def excluded?(selector : String, pkg : Data::Package) : Bool
+    name, range = Utils::Misc.parse_key(selector)
+    name == pkg.name && (range.nil? || Semver.parse(range).satisfies?(pkg.version))
   end
 
   # The trust tiers, strongest first: a publisher signature, then a
@@ -222,6 +234,12 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
     end
   end
 
+  private def prerelease?(version : String) : Bool
+    Semver::Version.parse(version).prerelease?
+  rescue
+    false
+  end
+
   # The recently-published quarantine: a version that is not yet pinned in the
   # lockfile must be at least as old as the configured minimum release age.
   # Skipped for lockfile-pinned versions, the --allow-recent flag, exempted
@@ -239,7 +257,15 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
     return if exemptions.includes?(pkg.name)
 
     published = manifest.publish_time?(pkg.version)
-    return if published.nil?
+    if published.nil?
+      # Fail closed when the registry does not expose publish times and the
+      # user opted into the strict behavior (pnpm's
+      # minimumReleaseAgeIgnoreMissingTime: false).
+      if zap.try(&.minimum_release_age_ignore_missing_time) == false
+        raise "Refusing to install #{pkg.key}: the registry does not expose publish times, so the minimum release age cannot be enforced. Set zap.minimum_release_age to 0, zap.minimum_release_age_ignore_missing_time to true, or add \"#{pkg.name}\" to zap.minimum_release_age_exemptions to allow it."
+      end
+      return
+    end
 
     age = Time.utc - published
     return if age.total_minutes >= minutes

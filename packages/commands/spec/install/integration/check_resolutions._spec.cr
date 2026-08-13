@@ -16,6 +16,33 @@ describe "check resolutions", tags: "integration" do
     end
   end
 
+  it "raises when a direct resolution was tampered in place" do
+    It.with_registry do |registry|
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0"), {"index.js" => "a"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"a":"^1.0.0"}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        # An in-place edit of the direct entry's version, the key intact
+        lock = File.read(tmpdir / "zap.lock")
+        lock = lock.gsub("version: 1.0.0", "version: 1.0.1")
+        File.write(tmpdir / "zap.lock", lock)
+
+        expect_raises(Exception, /does not match its key/) do
+          Commands::Install.run(config, ic.copy_with(check_resolutions: true), raise_on_failure: true, reporter: Reporter::Null.new)
+        end
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
   it "raises when a lockfile resolution was tampered with" do
     It.with_registry do |registry|
       registry.add("child", "1.2.0", It.pkg("child", "1.2.0"), {"index.js" => "1.2.0"})

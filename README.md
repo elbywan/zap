@@ -241,7 +241,9 @@ run-everything behavior, and `--ignore-scripts` still disables everything.
 Newly resolved versions younger than `minimum_release_age` (default `7d`)
 are refused, quarantining typosquats and freshly compromised releases.
 Lockfile-pinned versions are trusted and exempt; `0` disables the check,
-`minimum_release_age_exemptions` and the `--allow-recent` flag bypass it:
+`minimum_release_age_exemptions` and the `--allow-recent` flag bypass it.
+Registries without publish times fail open, or fail closed with
+`minimum_release_age_ignore_missing_time: false`:
 
 ```json
 {

@@ -53,6 +53,10 @@ module Commands::ApproveBuilds
     allowlist = zap.try(&.only_built_dependencies) || [] of String
     ignored = zap.try(&.ignored_built_dependencies) || [] of String
 
+    # With dangerously_allow_all_builds everything already runs: there is
+    # nothing pending to review.
+    return [] of Data::Package if zap.try(&.dangerously_allow_all_builds)
+
     lockfile.packages.values.select do |pkg|
       (pkg.has_install_script || File.exists?(store.package_path(pkg) / "binding.gyp")) &&
         !allowlist.includes?(pkg.name) &&

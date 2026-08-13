@@ -120,26 +120,38 @@ module Commands::Install::Resolver
       next unless name && range
       package.dependencies.try &.each_key do |dep_name|
         next unless ::File.match?(name, dep_name)
-        next if package.dependency_specifier?(dep_name) == range
-        package.dependency_specifier(dep_name, range, Data::Package::DependencyType::Dependency)
+        declared = package.dependency_specifier?(dep_name)
+        next if declared == range
+        package.dependency_specifier(dep_name, rewritten_specifier(declared, range), Data::Package::DependencyType::Dependency)
         changed = true
       end
       package.dev_dependencies.try &.each_key do |dep_name|
         next unless ::File.match?(name, dep_name)
-        # Compare against the dev entry itself: dependency_specifier? merges
-        # the hashes, so a dep declared in both would skip the dev update.
-        next if package.dev_dependencies.not_nil![dep_name].to_s == range
-        package.dependency_specifier(dep_name, range, Data::Package::DependencyType::DevDependency)
+        declared = package.dev_dependencies.not_nil![dep_name].to_s
+        next if declared == range
+        package.dependency_specifier(dep_name, rewritten_specifier(declared, range), Data::Package::DependencyType::DevDependency)
         changed = true
       end
       package.optional_dependencies.try &.each_key do |dep_name|
         next unless ::File.match?(name, dep_name)
-        next if package.optional_dependencies.not_nil![dep_name].to_s == range
-        package.dependency_specifier(dep_name, range, Data::Package::DependencyType::OptionalDependency)
+        declared = package.optional_dependencies.not_nil![dep_name].to_s
+        next if declared == range
+        package.dependency_specifier(dep_name, rewritten_specifier(declared, range), Data::Package::DependencyType::OptionalDependency)
         changed = true
       end
     end
     changed
+  end
+
+  # The rewritten specifier keeps a named registry alias prefix (work:^1.0.0
+  # becomes work:^2.0.0): the alias pins the source registry, and dropping it
+  # would silently re-point the dependency at the default registry.
+  private def self.rewritten_specifier(declared : (String | Data::Package::Alias)?, range : String) : String
+    if declared.is_a?(String) && (match = declared.match(/\A([A-Za-z0-9._-]+):/)) && match[1] != "npm"
+      "#{match[1]}:#{range}"
+    else
+      range
+    end
   end
 
   # With --latest, rewrites the declared specifier of updated direct

@@ -84,6 +84,31 @@ describe "approve-builds", tags: "integration" do
     end
   end
 
+  it "lists nothing pending with dangerously_allow_all_builds" do
+    It.with_registry do |registry|
+      registry.add("scripted", "1.0.0", It.pkg("scripted", "1.0.0",
+        scripts: {"install" => "node -e \"1\""}),
+        {"index.js" => "s"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"scripted":"1.0.0"},"zap":{"dangerously_allow_all_builds":true}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        lockfile = Data::Lockfile.new(tmpdir)
+        main = Data::Package.init(tmpdir / "package.json", append_filename: false)
+        store = ::Store.new((tmpdir / "store").to_s)
+        Commands::ApproveBuilds.pending_packages(lockfile, main, store).should be_empty
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
   it "persists the decisions into the zap section of package.json" do
     tmpdir = Path.new(Dir.tempdir, "zap-ab-#{Random::Secure.hex(4)}")
     begin

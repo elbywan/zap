@@ -408,6 +408,14 @@ module Commands::Install
   # range). Should never fire on a legit install.
   private def self.check_resolutions(state : State) : Nil
     errors = [] of String
+    # Each lockfile entry must match its key: an in-place edit of the version
+    # field (with the key left intact) shows up as a key/content mismatch for
+    # every package, direct or transitive.
+    state.lockfile.packages.each do |key, pkg|
+      if pkg.key != key
+        errors << "#{key} contains a package whose metadata does not match its key (#{pkg.key})"
+      end
+    end
     overrides = state.lockfile.overrides
     state.lockfile.packages.each_value do |pkg|
       pkg.each_dependency(include_dev: false) do |dep_name, declared, type|

@@ -26,6 +26,7 @@ class Data::Package
       dangerously_allow_all_builds : Bool? = nil,
       minimum_release_age : String? = nil,
       minimum_release_age_exemptions : Array(String)? = nil,
+      minimum_release_age_ignore_missing_time : Bool? = nil,
       default_semver_range_prefix : String? = nil,
       block_exotic_subdeps : Bool? = nil,
       trust_policy : String? = nil,

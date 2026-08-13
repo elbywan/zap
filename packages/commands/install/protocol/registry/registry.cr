@@ -8,7 +8,15 @@ struct Commands::Install::Protocol::Registry < Commands::Install::Protocol::Base
   # [<@scope>/]<name>
   # [<@scope>/]<name>@<tag>
   # [<@scope>/]<name>@<version range>
+  # <alias>:... — a named registry alias prefix (pnpm's namedRegistries):
+  # "work:@corp/lib@^2.0.0" becomes {"work:^2.0.0", "@corp/lib"} so the alias
+  # flows to the resolution and the saved specifier.
   def self.normalize?(str : String, path_info : PathInfo?) : {String?, String?}?
+    if (match = str.match(/\A([A-Za-z0-9._-]+):(.+)\z/)) && match[1] != "npm"
+      if inner = normalize?(match[2], path_info)
+        return {"#{match[1]}:#{inner[0]}", inner[1]} if inner[0]
+      end
+    end
     parts = str.split('@')
     if parts.size == 1 || (parts.size == 2 && str.starts_with?('@'))
       return {nil, str}

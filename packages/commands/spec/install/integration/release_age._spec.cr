@@ -84,6 +84,21 @@ describe "release age", tags: "integration" do
     end
   end
 
+  it "fails closed when the registry has no publish times and requested" do
+    It.with_registry do |registry|
+      registry.add("old", "1.0.0", It.pkg("old", "1.0.0"), {"index.js" => "o"})
+
+      raised = false
+      begin
+        It.install_project(registry, %({"name":"app","version":"1.0.0","dependencies":{"old":"1.0.0"},"zap":{"minimum_release_age":"7d","minimum_release_age_ignore_missing_time":false}})) { |_| }
+      rescue ex
+        raised = true
+        ex.message.not_nil!.should contain("publish times")
+      end
+      raised.should be_true
+    end
+  end
+
   it "rejects an invalid minimum_release_age value" do
     It.with_registry do |registry|
       registry.add("fresh", "1.0.0", It.pkg("fresh", "1.0.0"), {"index.js" => "f"},
