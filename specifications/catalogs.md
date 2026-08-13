@@ -30,6 +30,13 @@ workspace root and referenced from the manifests by name. Parity target: pnpm
   `devDependencies`, `optionalDependencies`, `peerDependencies`) and to the
   `overrides`, since they all flow through the same resolution entry point.
 
+- **Manage the catalogs with the CLI.** `zap catalog list [--catalog <name>]`,
+  `zap catalog add <name>@<range> [--catalog <name>]`, and
+  `zap catalog remove <name> [--catalog <name>]` read and edit the `zap`
+  section in place. The add creates a named catalog on demand and rejects a
+  catalog reference as the range; the remove warns when a manifest still
+  references the entry.
+
 - **Keep the lockfile honest.** The declared edge keeps the `catalog:`
   reference and the resolved version is pinned separately (the catalog is a
   first-class protocol). An edit to a catalog entry changes the resolution

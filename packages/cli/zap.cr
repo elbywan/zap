@@ -14,6 +14,8 @@ require "commands/init/cli"
 require "commands/init"
 require "commands/approve-builds/cli"
 require "commands/approve-builds"
+require "commands/catalog/cli"
+require "commands/catalog"
 require "commands/rebuild/cli"
 require "commands/rebuild"
 require "commands/run/cli"
@@ -56,6 +58,7 @@ module Zap
         Commands::Exec::CLI.new,
         Commands::Init::CLI.new,
         Commands::ApproveBuilds::CLI.new,
+        Commands::Catalog::CLI.new,
         Commands::Run::CLI.new,
         Commands::Store::CLI.new,
         Commands::Why::CLI.new,
@@ -76,6 +79,8 @@ module Zap
       Commands::Patch.run(config, command_config)
     when Commands::ApproveBuilds::Config
       Commands::ApproveBuilds.run(config, command_config)
+    when Commands::Catalog::Config
+      Commands::Catalog.run(config, command_config)
     when Commands::Dlx::Config
       Commands::Dlx.run(config, command_config)
     when Commands::Init::Config

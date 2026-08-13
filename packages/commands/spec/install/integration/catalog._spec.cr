@@ -1,3 +1,4 @@
+require "../../../catalog/catalog"
 require "./spec_helper"
 
 # The catalog: protocol (pnpm / yarn berry parity): a dependency specifier
@@ -243,6 +244,72 @@ describe "catalogs", tags: "integration" do
       ensure
         FileUtils.rm_rf(tmpdir)
       end
+    end
+  end
+
+  it "adds and removes catalog entries through the CLI helpers" do
+    tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+    begin
+      Dir.mkdir_p(tmpdir)
+      File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","zap":{"catalog":{"react":"^18.3.1"}}}))
+      config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+
+      Commands::Catalog.add(tmpdir.to_s, "default", "lodash", "^4.17.21")
+      Commands::Catalog.add(tmpdir.to_s, "react17", "react", "^17.0.2")
+      pkg = JSON.parse(File.read(tmpdir / "package.json"))
+      pkg["zap"]["catalog"]["lodash"].as_s.should eq("^4.17.21")
+      pkg["zap"]["catalogs"]["react17"]["react"].as_s.should eq("^17.0.2")
+
+      Commands::Catalog.remove(tmpdir.to_s, config.infer_context, "default", "lodash")
+      pkg = JSON.parse(File.read(tmpdir / "package.json"))
+      pkg["zap"]["catalog"]["lodash"]?.should be_nil
+      pkg["zap"]["catalog"]["react"].as_s.should eq("^18.3.1")
+      pkg["zap"]["catalogs"]["react17"]["react"].as_s.should eq("^17.0.2")
+    ensure
+      FileUtils.rm_rf(tmpdir)
+    end
+  end
+
+  it "catalog-add rejects a catalog reference as the range" do
+    tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+    begin
+      Dir.mkdir_p(tmpdir)
+      File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","zap":{"catalog":{}}}))
+      expect_raises(Exception, /cannot use a catalog reference/) do
+        Commands::Catalog.add(tmpdir.to_s, "default", "react", "catalog:react17")
+      end
+    ensure
+      FileUtils.rm_rf(tmpdir)
+    end
+  end
+
+  it "catalog-remove rejects a missing entry" do
+    tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+    begin
+      Dir.mkdir_p(tmpdir)
+      File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","zap":{"catalog":{"react":"^18.3.1"}}}))
+      config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+      expect_raises(Exception, /no entry/) do
+        Commands::Catalog.remove(tmpdir.to_s, config.infer_context, "default", "missing")
+      end
+    ensure
+      FileUtils.rm_rf(tmpdir)
+    end
+  end
+
+  it "removes a catalog entry still referenced by a manifest" do
+    tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+    begin
+      Dir.mkdir_p(tmpdir)
+      File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"react":"catalog:"},"zap":{"catalog":{"react":"^18.3.1"}}}))
+      config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+
+      Commands::Catalog.remove(tmpdir.to_s, config.infer_context, "default", "react")
+      pkg = JSON.parse(File.read(tmpdir / "package.json"))
+      pkg["zap"]["catalog"]["react"]?.should be_nil
+      pkg["dependencies"]["react"].as_s.should eq("catalog:")
+    ensure
+      FileUtils.rm_rf(tmpdir)
     end
   end
 
