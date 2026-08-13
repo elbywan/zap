@@ -1,3 +1,4 @@
+require "../../../catalog/catalog"
 require "./spec_helper"
 
 # The catalog: protocol (pnpm / yarn berry parity): a dependency specifier
@@ -182,6 +183,133 @@ describe "catalogs", tags: "integration" do
       It.install_project(registry, %({"name":"app","version":"1.0.0","dependencies":{"parent":"1.0.0"},"overrides":{"dep":"catalog:"},"zap":{"catalog":{"dep":"^2.0.0"}}})) do |project|
         File.read(project / "node_modules/dep/index.js").should eq("2.0.0")
       end
+    end
+  end
+
+  it "records the catalog reference in the lockfile" do
+    It.with_registry do |registry|
+      registry.add("react", "18.3.1", It.pkg("react", "18.3.1"), {"index.js" => "18.3.1"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"react":"catalog:"},"zap":{"catalog":{"react":"^18.3.1"}}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        # The declared edge keeps the catalog reference; the resolved version
+        # is pinned separately.
+        lockfile = Data::Lockfile.new(tmpdir)
+        lockfile.roots["app"].dependencies.not_nil!["react"].should eq("catalog:")
+        lockfile.roots["app"].dependency_specifier?("react").to_s.should eq("18.3.1")
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "fails when a catalog entry references another catalog" do
+    It.with_registry do |registry|
+      registry.add("react", "18.3.1", It.pkg("react", "18.3.1"), {"index.js" => "18.3.1"})
+
+      raised = false
+      begin
+        It.install_project(registry, %({"name":"app","version":"1.0.0","dependencies":{"react":"catalog:"},"zap":{"catalog":{"react":"catalog:react17"},"catalogs":{"react17":{"react":"^17.0.2"}}}})) { |_| }
+      rescue ex
+        raised = true
+        ex.message.not_nil!.should contain("references another catalog")
+      end
+      raised.should be_true
+    end
+  end
+
+  it "adds a dependency with a catalog reference" do
+    It.with_registry do |registry|
+      registry.add("react", "18.3.1", It.pkg("react", "18.3.1"), {"index.js" => "18.3.1"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","zap":{"catalog":{"react":"^18.3.1"}}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true, added_packages: ["catalog:react"])
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        File.read(tmpdir / "node_modules/react/index.js").should eq("18.3.1")
+        pkg = JSON.parse(File.read(tmpdir / "package.json"))
+        pkg["dependencies"]["react"].as_s.should eq("catalog:")
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "adds and removes catalog entries through the CLI helpers" do
+    tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+    begin
+      Dir.mkdir_p(tmpdir)
+      File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","zap":{"catalog":{"react":"^18.3.1"}}}))
+      config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+
+      Commands::Catalog.add(tmpdir.to_s, "default", "lodash", "^4.17.21")
+      Commands::Catalog.add(tmpdir.to_s, "react17", "react", "^17.0.2")
+      pkg = JSON.parse(File.read(tmpdir / "package.json"))
+      pkg["zap"]["catalog"]["lodash"].as_s.should eq("^4.17.21")
+      pkg["zap"]["catalogs"]["react17"]["react"].as_s.should eq("^17.0.2")
+
+      Commands::Catalog.remove(tmpdir.to_s, config.infer_context, "default", "lodash")
+      pkg = JSON.parse(File.read(tmpdir / "package.json"))
+      pkg["zap"]["catalog"]["lodash"]?.should be_nil
+      pkg["zap"]["catalog"]["react"].as_s.should eq("^18.3.1")
+      pkg["zap"]["catalogs"]["react17"]["react"].as_s.should eq("^17.0.2")
+    ensure
+      FileUtils.rm_rf(tmpdir)
+    end
+  end
+
+  it "catalog-add rejects a catalog reference as the range" do
+    tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+    begin
+      Dir.mkdir_p(tmpdir)
+      File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","zap":{"catalog":{}}}))
+      expect_raises(Exception, /cannot use a catalog reference/) do
+        Commands::Catalog.add(tmpdir.to_s, "default", "react", "catalog:react17")
+      end
+    ensure
+      FileUtils.rm_rf(tmpdir)
+    end
+  end
+
+  it "catalog-remove rejects a missing entry" do
+    tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+    begin
+      Dir.mkdir_p(tmpdir)
+      File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","zap":{"catalog":{"react":"^18.3.1"}}}))
+      config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+      expect_raises(Exception, /no entry/) do
+        Commands::Catalog.remove(tmpdir.to_s, config.infer_context, "default", "missing")
+      end
+    ensure
+      FileUtils.rm_rf(tmpdir)
+    end
+  end
+
+  it "removes a catalog entry still referenced by a manifest" do
+    tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+    begin
+      Dir.mkdir_p(tmpdir)
+      File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"react":"catalog:"},"zap":{"catalog":{"react":"^18.3.1"}}}))
+      config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+
+      Commands::Catalog.remove(tmpdir.to_s, config.infer_context, "default", "react")
+      pkg = JSON.parse(File.read(tmpdir / "package.json"))
+      pkg["zap"]["catalog"]["react"]?.should be_nil
+      pkg["dependencies"]["react"].as_s.should eq("catalog:")
+    ensure
+      FileUtils.rm_rf(tmpdir)
     end
   end
 

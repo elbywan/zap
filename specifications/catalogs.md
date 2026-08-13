@@ -30,18 +30,25 @@ workspace root and referenced from the manifests by name. Parity target: pnpm
   `devDependencies`, `optionalDependencies`, `peerDependencies`) and to the
   `overrides`, since they all flow through the same resolution entry point.
 
-- **Keep the lockfile honest.** The resolved version is pinned as usual; an
-  edit to a catalog entry changes the resolution and fails a frozen install
-  through the normal drift check. The lockfile stores the expanded range.
+- **Manage the catalogs with the CLI.** `zap catalog list [--catalog <name>]`,
+  `zap catalog add <name>@<range> [--catalog <name>]`, and
+  `zap catalog remove <name> [--catalog <name>]` read and edit the `zap`
+  section in place. The add creates a named catalog on demand and rejects a
+  catalog reference as the range; the remove warns when a manifest still
+  references the entry.
+
+- **Keep the lockfile honest.** The declared edge keeps the `catalog:`
+  reference and the resolved version is pinned separately (the catalog is a
+  first-class protocol). An edit to a catalog entry changes the resolution
+  and fails a frozen install through the normal drift check.
 
 - **Diverge deliberately, documented:** the catalogs live in the `zap`
   section of the root `package.json` (not `pnpm-workspace.yaml` or
-  `.yarnrc.yml`); the lockfile records the expanded range rather than the
-  `catalog:` reference; `zap up pkg@range` rewrites the specifier literally
-  instead of editing the catalog entry; the interactive update list does not
-  include catalog dependencies (their specifier is not a semver range); there
-  is no `catalogMode` (the `zap add` catalog behavior), and catalog references
-  are written in the manifest by hand.
+  `.yarnrc.yml`); `zap up pkg@range` rewrites the specifier literally instead
+  of editing the catalog entry; the interactive update list does not include
+  catalog dependencies (their specifier is not a semver range); there is no
+  `catalogMode` (the `zap add` catalog behavior) other than adding with an
+  explicit `catalog:` reference.
 
 ## Reference
 
