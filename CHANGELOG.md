@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.5.1
+
+- **`zap approve-builds` runs the hooks of the approved packages right away.**
+  Approving a package previously only wrote the allowlist: the build scripts
+  did not run until the package happened to be re-linked on a future install.
+  The newly approved packages are now re-linked and their scripts executed
+  immediately, mirroring how `zap patch-commit` reinstalls the patched
+  package. Already-allowlisted packages are untouched, and the approvals
+  persist even if a re-link fails.
+
 ## v0.5.0
 
 - **Strict and safe by default.** Dependency build scripts
