@@ -14,6 +14,10 @@ struct Commands::Install::Config < Core::CommandConfig
   # Configuration specific for the install command
   @[Env]
   getter frozen_lockfile : Bool = !!ENV["CI"]?
+  # --check-resolutions: verify that the lockfile resolutions satisfy the
+  # declared dependency ranges (yarn's YN0078 check, default on CI)
+  @[Env]
+  getter check_resolutions : Bool = !!ENV["CI"]?
   @[Env]
   getter ignore_scripts : Bool = false
   # --allow-recent: skip the minimum release age check for newly resolved
