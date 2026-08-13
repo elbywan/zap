@@ -91,46 +91,4 @@ describe "add and save", tags: "integration" do
       end
     end
   end
-
-  it "uses the configured tilde prefix instead of the caret" do
-    It.with_registry do |registry|
-      registry.add("fresh", "1.2.3", It.pkg("fresh", "1.2.3"), {"index.js" => "f"})
-
-      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
-      begin
-        Dir.mkdir_p(tmpdir)
-        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","zap":{"default_semver_range_prefix":"~"}}))
-        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
-        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
-        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true, added_packages: ["fresh"])
-        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
-
-        pkg = JSON.parse(File.read(tmpdir / "package.json"))
-        pkg["dependencies"]["fresh"].as_s.should eq("~1.2.3")
-      ensure
-        FileUtils.rm_rf(tmpdir)
-      end
-    end
-  end
-
-  it "saves exact versions with an empty prefix" do
-    It.with_registry do |registry|
-      registry.add("fresh", "1.2.3", It.pkg("fresh", "1.2.3"), {"index.js" => "f"})
-
-      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
-      begin
-        Dir.mkdir_p(tmpdir)
-        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","zap":{"default_semver_range_prefix":""}}))
-        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
-        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
-        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true, added_packages: ["fresh"])
-        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
-
-        pkg = JSON.parse(File.read(tmpdir / "package.json"))
-        pkg["dependencies"]["fresh"].as_s.should eq("1.2.3")
-      ensure
-        FileUtils.rm_rf(tmpdir)
-      end
-    end
-  end
 end

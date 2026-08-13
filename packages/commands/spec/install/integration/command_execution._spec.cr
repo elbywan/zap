@@ -83,37 +83,4 @@ describe "command execution", tags: "integration" do
       end
     end
   end
-
-  it "dlx runs the install scripts of the downloaded package" do
-    It.with_registry do |registry|
-      registry.add("dlx-scripted", "1.0.0", It.pkg("dlx-scripted", "1.0.0", bin: "cli.js",
-        scripts: {"postinstall" => "node -e \"require('fs').writeFileSync('built.txt','yes')\""}),
-        {"index.js" => "main", "cli.js" => "#!/usr/bin/env node\nrequire('fs').writeFileSync('dlx-scripted-ran.txt','ok')"})
-
-      tmpdir = Path.new(Dir.tempdir, "zap-dlx-#{Random::Secure.hex(4)}")
-      begin
-        Dir.mkdir_p(tmpdir)
-        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0"}))
-        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
-
-        old_argv = ARGV.dup
-        begin
-          ARGV.replace(["dlx-scripted"])
-          dlx_config = Core::Config.new.copy_with(prefix: tmpdir.to_s, silent: true)
-          Dir.cd(tmpdir) do
-            Commands::Dlx.run(dlx_config, Commands::Dlx::Config.new.copy_with(packages: ["dlx-scripted"], quiet: true))
-          end
-        ensure
-          ARGV.replace(old_argv)
-        end
-        File.read(tmpdir / "dlx-scripted-ran.txt").should eq("ok")
-        # The postinstall ran during the dlx install (the strict default
-        # would otherwise block it)
-        dlx_dir = Path.new(Dir.tempdir) / "zap--dlx-#{Digest::SHA1.hexdigest("dlx-scripted@*")}"
-        File.read(dlx_dir / "node_modules/dlx-scripted/built.txt").should eq("yes")
-      ensure
-        FileUtils.rm_rf(tmpdir)
-      end
-    end
-  end
 end

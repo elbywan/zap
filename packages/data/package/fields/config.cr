@@ -25,9 +25,7 @@ class Data::Package
       ignored_built_dependencies : Array(String)? = nil,
       dangerously_allow_all_builds : Bool? = nil,
       minimum_release_age : String? = nil,
-      minimum_release_age_exemptions : Array(String)? = nil,
-      default_semver_range_prefix : String? = nil,
-      block_exotic_subdeps : Bool? = nil do
+      minimum_release_age_exemptions : Array(String)? = nil do
       include JSON::Serializable
       include YAML::Serializable
       include MessagePack::Serializable

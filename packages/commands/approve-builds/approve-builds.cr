@@ -3,6 +3,8 @@ require "tui"
 require "data/lockfile"
 
 module Commands::ApproveBuilds
+  Log = ::Log.for("zap.commands.approve_builds")
+
   # `zap approve-builds`: review the dependencies that declare build scripts
   # (preinstall/install/postinstall) and pick which ones may run. The result
   # is persisted into the zap section of the root package.json, following the
@@ -19,7 +21,7 @@ module Commands::ApproveBuilds
       raise "zap approve-builds needs a lockfile. Run `zap i` first, then `zap approve-builds`."
     end
 
-    pending = pending_packages(lockfile, context.main_package, ::Store.new(context.config.store_path))
+    pending = pending_packages(lockfile, context.main_package)
 
     if pending.empty?
       puts "No dependencies have pending build scripts."
@@ -45,16 +47,14 @@ module Commands::ApproveBuilds
   end
 
   # The packages with install scripts that are neither allowlisted nor
-  # explicitly ignored, sorted by name for a stable review order. The
-  # implicit node-gyp build (a binding.gyp without an install script) counts
-  # as a build script too, so native packages show up for approval.
-  def self.pending_packages(lockfile : Data::Lockfile, main_package : Data::Package, store : ::Store) : Array(Data::Package)
+  # explicitly ignored, sorted by name for a stable review order.
+  def self.pending_packages(lockfile : Data::Lockfile, main_package : Data::Package) : Array(Data::Package)
     zap = main_package.zap_config
     allowlist = zap.try(&.only_built_dependencies) || [] of String
     ignored = zap.try(&.ignored_built_dependencies) || [] of String
 
     lockfile.packages.values.select do |pkg|
-      (pkg.has_install_script || File.exists?(store.package_path(pkg) / "binding.gyp")) &&
+      pkg.has_install_script &&
         !allowlist.includes?(pkg.name) &&
         !ignored.includes?(pkg.name)
     end.sort_by(&.name)

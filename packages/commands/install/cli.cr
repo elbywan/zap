@@ -37,9 +37,6 @@ class Commands::Install::CLI < Commands::CLI
     Helpers.flag("--frozen-lockfile <true|false>", "If true, will fail if the lockfile is outdated. #{"[env: ZAP_INSTALL_FROZEN_LOCKFILE]".colorize.dim}") do |frozen_lockfile|
       command_config.ref = install_config.copy_with(frozen_lockfile: Utils::Misc.str_to_bool(frozen_lockfile))
     end
-    Helpers.flag("--check-resolutions <true|false>", "If true, verifies that the lockfile resolutions satisfy the declared dependency ranges. #{"[env: ZAP_INSTALL_CHECK_RESOLUTIONS]".colorize.dim}") do |check_resolutions|
-      command_config.ref = install_config.copy_with(check_resolutions: Utils::Misc.str_to_bool(check_resolutions))
-    end
     Helpers.flag("--ignore-scripts", "If true, does not run scripts specified in package.json files. #{"[env: ZAP_INSTALL_IGNORE_SCRIPTS]".colorize.dim}") do
       command_config.ref = install_config.copy_with(ignore_scripts: true)
     end
@@ -128,8 +125,6 @@ class Commands::Install::CLI < Commands::CLI
     parser.missing_option do |option|
       if option == "--frozen-lockfile"
         command_config.ref = install_config.copy_with(frozen_lockfile: true)
-      elsif option == "--check-resolutions"
-        command_config.ref = install_config.copy_with(check_resolutions: true)
       else
         raise OptionParser::MissingOption.new(option)
       end

@@ -130,11 +130,6 @@ module Commands::Install
       # Resolve all dependencies
       update_changed = resolve_dependencies(state)
 
-      # Verify the lockfile resolutions satisfy the declared ranges (yarn's
-      # --check-resolutions / YN0078): a mismatch means the lockfile was
-      # tampered with.
-      check_resolutions(state) if state.install_config.check_resolutions
-
       # Prune lockfile before installing to cleanup pinned dependencies
       pruned_direct_dependencies = clean_lockfile(state)
 
@@ -399,34 +394,6 @@ module Commands::Install
       end
       update_changed
     end
-  end
-
-  # yarn's --check-resolutions (YN0078): verifies that every resolved package
-  # satisfies its declared dependency range, catching a lockfile that was
-  # tampered with (a resolution rewritten to a different name or version).
-  # Overridden dependencies are skipped (the override replaces the declared
-  # range). Should never fire on a legit install.
-  private def self.check_resolutions(state : State) : Nil
-    errors = [] of String
-    overrides = state.lockfile.overrides
-    state.lockfile.packages.each_value do |pkg|
-      pkg.each_dependency(include_dev: false) do |dep_name, declared, type|
-        next if overrides.try(&.has_key?(dep_name))
-        next unless declared.is_a?(String)
-        next unless range = Semver.parse?(declared)
-        resolved =
-          if type.optional_dependency?
-            pkg.optional_dependencies_refs.find { |ref| ref.name == dep_name }
-          else
-            pkg.dependencies_refs.find { |ref| ref.name == dep_name }
-          end
-        next unless resolved
-        next if range.satisfies?(resolved.version)
-        errors << "#{pkg.key} resolves #{dep_name} to #{resolved.key}, which does not satisfy the declared range #{declared}"
-      end
-    end
-    return if errors.empty?
-    raise "The lockfile resolutions are inconsistent with the declared dependency ranges:\n#{errors.join("\n")}\nThis usually indicates the lockfile was tampered with. Regenerate it with `zap i`."
   end
 
   private def self.resolve_overrides(state : State)

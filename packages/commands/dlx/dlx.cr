@@ -37,10 +37,6 @@ module Commands::Dlx
       Dir.mkdir(path)
       # Make a fictional package.json
       pkg_json = Data::Package.new(directory_name, "0.0.0")
-      # The dlx executes the requested tool right away, so its build scripts
-      # are allowed (npx parity) instead of being blocked by the strict
-      # deny-by-default policy.
-      pkg_json.zap_config = Data::Package::ZapConfig.new(dangerously_allow_all_builds: true)
       # Add to the package the requested packages
       pkg_json.dependencies = packages.to_h
       # Write the package.json
