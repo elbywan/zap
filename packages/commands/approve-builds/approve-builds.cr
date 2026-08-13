@@ -1,6 +1,10 @@
 require "json"
 require "tui"
 require "data/lockfile"
+require "backend/backend"
+require "shared/constants"
+require "../install/install"
+require "../install/config"
 
 module Commands::ApproveBuilds
   # `zap approve-builds`: review the dependencies that declare build scripts
@@ -35,13 +39,36 @@ module Commands::ApproveBuilds
     approved = selected.map { |index| pending[index].name }
     declined = pending.map(&.name).reject { |name| approved.includes?(name) }
 
-    write_approvals(context.config.prefix, approved, declined)
+    apply_approvals(context, approved, declined)
 
     puts "Approved: #{approved.sort.join(", ")}" unless approved.empty?
     puts "Ignored: #{declined.sort.join(", ")}" unless declined.empty?
   rescue ex : Exception
     puts ex.message
     exit 1
+  end
+
+  # Writes the decisions and re-links the newly approved packages so their
+  # build scripts run right away instead of waiting for a future install.
+  def self.apply_approvals(context : Core::Config::InferredContext, approved : Array(String), declined : Array(String)) : Nil
+    previously_allowed = context.main_package.zap_config.try(&.only_built_dependencies) || [] of String
+    write_approvals(context.config.prefix, approved, declined)
+
+    newly_approved = approved.reject { |name| previously_allowed.includes?(name) }
+    return if newly_approved.empty?
+
+    lockfile = Data::Lockfile.new(context.config.prefix)
+    keys = lockfile.packages.values.select { |pkg| newly_approved.includes?(pkg.name) }.map(&.key)
+    return if keys.empty?
+
+    # Invalidate the installed-state entries so the reinstall re-links the
+    # packages, which registers their hooks; the allowlist now admits them.
+    state_path = Path.new(context.config.node_modules) / Shared::Constants::STATE_FILE_NAME
+    installed_state = Backend::InstalledState.load(state_path)
+    installed_state.reject! { |_path, entry| keys.includes?(entry.key) }
+    Backend::InstalledState.save(state_path, installed_state)
+
+    Commands::Install.run(context.config, Commands::Install::Config.new.copy_with(frozen_lockfile: false), raise_on_failure: true)
   end
 
   # The packages with install scripts that are neither allowlisted nor

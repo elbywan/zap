@@ -109,6 +109,35 @@ describe "approve-builds", tags: "integration" do
     end
   end
 
+  it "re-links the approved packages so their scripts run" do
+    It.with_registry do |registry|
+      registry.add("scripted", "1.0.0", It.pkg("scripted", "1.0.0",
+        scripts: {"install" => "node -e \"require('fs').writeFileSync('order.txt','ok')\""}),
+        {"index.js" => "s"})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"scripted":"1.0.0"}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+        # The install blocked the script (no allowlist)
+        File.exists?(tmpdir / "node_modules/scripted/order.txt").should be_false
+
+        Commands::ApproveBuilds.apply_approvals(config.infer_context, ["scripted"], [] of String)
+
+        # The config is written, the package re-linked, and its script ran
+        pkg = JSON.parse(File.read(tmpdir / "package.json"))
+        pkg["zap"]["only_built_dependencies"].as_a.map(&.as_s).should eq(["scripted"])
+        File.exists?(tmpdir / "node_modules/scripted/order.txt").should be_true
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
   it "persists the decisions into the zap section of package.json" do
     tmpdir = Path.new(Dir.tempdir, "zap-ab-#{Random::Secure.hex(4)}")
     begin
