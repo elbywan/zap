@@ -259,27 +259,6 @@ you did not explicitly declare. `--check-resolutions` (default on CI)
 verifies that the lockfile resolutions satisfy the declared ranges, catching
 a tampered lockfile.
 
-`trust_policy: "no-downgrade"` refuses a version whose trust evidence is
-weaker than the previously locked versions (a publisher signature or
-provenance attestation cannot silently disappear on an update);
-`trust_policy_exclude` bypasses specific packages. `named_registries`
-defines registry aliases usable as a specifier prefix, and the lockfile
-records the registry so a same-name package from another registry cannot be
-substituted:
-
-```json
-{
-  "zap": {
-    "named_registries": {
-      "work": "https://npm.work.example.com/"
-    }
-  },
-  "dependencies": {
-    "@corp/lib": "work:^2.0.0"
-  }
-}
-```
-
 # Benchmarks
 
 ### a.k.a is it fast?

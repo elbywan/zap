@@ -191,7 +191,7 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
     return unless zap.try(&.trust_policy) == "no-downgrade"
 
     exclude = zap.try(&.trust_policy_exclude) || [] of String
-    return if exclude.any? { |selector| excluded?(selector, pkg) }
+    return if exclude.includes?(pkg.name)
 
     previous = state.lockfile.packages.values.select { |p| p.name == pkg.name && p.version != pkg.version }
     return if previous.empty?
@@ -200,13 +200,6 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
     return if current_tier >= previous_tier
 
     raise "Refusing to install #{pkg.key}: its trust evidence (#{tier_name(current_tier)}) is weaker than the previously locked versions' (#{tier_name(previous_tier)}), violating the trust policy no-downgrade. Add \"#{pkg.name}\" to zap.trust_policy_exclude or change zap.trust_policy to allow it."
-  end
-
-  # Whether a trust policy exclude selector matches a package: a bare name or
-  # a name@range selector (pnpm's trustPolicyExclude).
-  private def excluded?(selector : String, pkg : Data::Package) : Bool
-    name, range = Utils::Misc.parse_key(selector)
-    name == pkg.name && (range.nil? || Semver.parse(range).satisfies?(pkg.version))
   end
 
   # The trust tiers, strongest first: a publisher signature, then a
