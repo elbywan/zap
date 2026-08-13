@@ -436,8 +436,10 @@ module Commands::Install::Resolver
               # If the exact flag is set use the resolved version
               saved_version = metadata.version
             elsif inferred_version.nil?
-              # Otherwise add the default range operator (^) to the resolved version
-              saved_version = %(^#{metadata.version})
+              # Otherwise add the configured range operator (^ by default,
+              # yarn's defaultSemverRangePrefix) to the resolved version
+              prefix = state.context.main_package.zap_config.try(&.default_semver_range_prefix) || "^"
+              saved_version = %(#{prefix}#{metadata.version})
             end
           end
           # Save the dependency in the package.json
