@@ -107,6 +107,9 @@ module Commands::Install::Linker
     # for *name*. Mirrors yarn's behavior of preferring a satisfiable peer
     # over a same-name regular dependency.
     protected def peer_satisfied_by_ancestor?(name : String, peer_range : String, ancestors : Enumerable(Data::Package | Data::Lockfile::Root)) : Bool
+      if peer_range.starts_with?("catalog:")
+        peer_range = Commands::Install::Resolver.expand_catalog(name, peer_range, state)
+      end
       range = Semver.parse?(peer_range) || Semver::ANY
       satisfied = false
       ancestors.each do |ancestor|
@@ -125,6 +128,9 @@ module Commands::Install::Linker
       peers = Hash(String, Set(Semver::Range)).new
       if direct_peers = package.peer_dependencies
         direct_peers.each do |direct_peer, peer_range|
+          if peer_range.starts_with?("catalog:")
+            peer_range = Commands::Install::Resolver.expand_catalog(direct_peer, peer_range, state)
+          end
           peers[direct_peer] = Set(Semver::Range){
             Semver.parse?(peer_range).or(Semver::ANY),
           }

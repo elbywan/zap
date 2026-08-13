@@ -145,13 +145,32 @@ module Commands::Install::Resolver
 
   # The rewritten specifier keeps a named registry alias prefix (work:^1.0.0
   # becomes work:^2.0.0): the alias pins the source registry, and dropping it
-  # would silently re-point the dependency at the default registry.
+  # would silently re-point the dependency at the default registry. The npm:
+  # and catalog: prefixes are not registry aliases and are written literally.
   private def self.rewritten_specifier(declared : (String | Data::Package::Alias)?, range : String) : String
-    if declared.is_a?(String) && (match = declared.match(/\A([A-Za-z0-9._-]+):/)) && match[1] != "npm"
+    if declared.is_a?(String) && (match = declared.match(/\A([A-Za-z0-9._-]+):/)) && match[1] != "npm" && match[1] != "catalog"
       "#{match[1]}:#{range}"
     else
       range
     end
+  end
+
+  # The catalog protocol (pnpm / yarn parity): "catalog:" resolves to the
+  # entry for the dependency in the default catalog, "catalog:<name>" to the
+  # entry in the named catalog. The value is returned as a regular specifier.
+  def self.expand_catalog(name : String, specifier : String, state : Commands::Install::State) : String
+    zap = state.context.main_package.zap_config
+    catalog_name = specifier == "catalog:" ? "default" : specifier[8..]
+    entries =
+      if catalog_name == "default"
+        zap.try(&.catalog)
+      else
+        zap.try(&.catalogs).try(&.[catalog_name]?)
+      end
+    unless entries
+      raise "The catalog \"#{catalog_name}\" referenced by #{name} is not defined. Define it under zap.catalog or zap.catalogs in the root package.json."
+    end
+    entries[name]? || raise "The catalog \"#{catalog_name}\" has no entry for #{name}."
   end
 
   # With --latest, rewrites the declared specifier of updated direct
@@ -257,6 +276,12 @@ module Commands::Install::Resolver
   )
     Log.debug { "(#{name}@#{version}) Resolving package…" + (type ? " [type: #{type}]" : "") + (package ? " [parent: #{package.key}]" : "") }
     state.reporter.on_resolving_package
+    # The catalog protocol (pnpm / yarn parity): a "catalog:" specifier
+    # resolves to the range defined at the workspace root before the
+    # protocol dispatch, so it behaves like a regular specifier.
+    if version.starts_with?("catalog:")
+      version = expand_catalog(name, version, state)
+    end
     # Add direct dependencies to the lockfile
     if package && is_direct_dependency && type
       state.lockfile.add_dependency(name, version, type, package.name, package.version)

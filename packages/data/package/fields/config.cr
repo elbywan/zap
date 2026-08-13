@@ -31,7 +31,9 @@ class Data::Package
       block_exotic_subdeps : Bool? = nil,
       trust_policy : String? = nil,
       trust_policy_exclude : Array(String)? = nil,
-      named_registries : Hash(String, String)? = nil do
+      named_registries : Hash(String, String)? = nil,
+      catalog : Hash(String, String)? = nil,
+      catalogs : Hash(String, Hash(String, String))? = nil do
       include JSON::Serializable
       include YAML::Serializable
       include MessagePack::Serializable
