@@ -116,4 +116,33 @@ describe "command execution", tags: "integration" do
       end
     end
   end
+
+  it "dlx is not quarantined by the release age gate" do
+    It.with_registry do |registry|
+      registry.add("dlx-fresh", "1.0.0", It.pkg("dlx-fresh", "1.0.0", bin: "cli.js"),
+        {"index.js" => "main", "cli.js" => "#!/usr/bin/env node\nrequire('fs').writeFileSync('dlx-fresh-ran.txt','ok')"},
+        published_at: Time.utc - 1.hour)
+
+      tmpdir = Path.new(Dir.tempdir, "zap-dlx-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0"}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+
+        old_argv = ARGV.dup
+        begin
+          ARGV.replace(["dlx-fresh"])
+          dlx_config = Core::Config.new.copy_with(prefix: tmpdir.to_s, silent: true)
+          Dir.cd(tmpdir) do
+            Commands::Dlx.run(dlx_config, Commands::Dlx::Config.new.copy_with(packages: ["dlx-fresh"], quiet: true))
+          end
+        ensure
+          ARGV.replace(old_argv)
+        end
+        File.read(tmpdir / "dlx-fresh-ran.txt").should eq("ok")
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
 end

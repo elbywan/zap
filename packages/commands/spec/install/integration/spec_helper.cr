@@ -127,7 +127,7 @@ module Zap::Integration
     # Registers a package version. `files` are stored at the package root
     # (e.g. "index.js", "lib/util.js"); the manifest is written as
     # package.json and a tarball is built with the npm "package/" layout.
-    def add(name : String, version : String, manifest : Hash(String, Json), files : Hash(String, String), *, published_at : Time? = nil) : Nil
+    def add(name : String, version : String, manifest : Hash(String, Json), files : Hash(String, String), *, published_at : Time? = nil, signature : Bool = false, attestation : Bool = false) : Nil
       package_json = manifest.merge({"name" => Zap::Integration.json(name), "version" => Zap::Integration.json(version)})
       tarball = build_tarball(package_json, files)
       shasum = Digest::SHA1.hexdigest(tarball)
@@ -140,6 +140,12 @@ module Zap::Integration
         "tarball" => Zap::Integration.json("#{base_url}/#{name}/-/#{File.basename(name)}-#{version}.tgz"),
         "shasum"  => Zap::Integration.json(shasum),
       }
+      if signature
+        dist["signatures"] = Json.new([Json.new({"sig" => Json.new("MEYCIQDVH16iCRSE8xwy"), "keyid" => Json.new("SHA256:DhQ8wR5APBvFHLF")})])
+      end
+      if attestation
+        dist["attestations"] = Json.new({"url" => Json.new("https://registry.example/-/attestations/x"), "provenance" => Json.new({"predicateType" => Json.new("https://slsa.dev/provenance/v1")})})
+      end
       version_manifest = package_json.dup
       version_manifest["dist"] = Zap::Integration.json(dist)
 

@@ -70,6 +70,21 @@ struct Commands::Install::Manifest
     nil
   end
 
+  # The trust evidence of a version, from its dist metadata: whether it was
+  # published with a publisher signature and/or a provenance attestation.
+  # Returns nil when the raw metadata is missing or unparseable.
+  def dist_evidence?(version : String) : {Bool, Bool}?
+    raw = @versions_json[version]?
+    return unless raw
+    dist = JSON.parse(raw).as_h["dist"]?.try(&.as_h)
+    return unless dist
+    signatures = dist["signatures"]?.try(&.as_a)
+    attestations = dist["attestations"]?
+    {!signatures.nil? && !signatures.empty?, !attestations.nil?}
+  rescue
+    nil
+  end
+
   def get_raw_metadata?(version : Semver::Range | String) : String?
     raw_metadata = nil
 

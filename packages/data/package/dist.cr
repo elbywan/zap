@@ -12,8 +12,11 @@ class Data::Package
       property tarball : String
       property shasum : String
       property integrity : String?
+      # The named registry alias the package was resolved from (pnpm's
+      # registry-qualified lockfile keys); nil for the default registry.
+      property registry_name : String? = nil
 
-      def initialize(@tarball, @shasum, @integrity = nil)
+      def initialize(@tarball, @shasum, @integrity = nil, @registry_name = nil)
       end
     end
 

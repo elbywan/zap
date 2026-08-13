@@ -28,6 +28,8 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
     dependency_type = nil,
     skip_cache = false,
     @latest_eligible : Bool = false,
+    @named_url : URI? = nil,
+    @registry_name : String? = nil,
   )
     super(state, name, specifier, parent, dependency_type, skip_cache)
 
@@ -37,9 +39,10 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
 
     # Initialize the client pool
     @clients = state.registry_clients
-    # Get the registry url from the npmrc file
-    @base_url = URI.parse(state.npmrc.registry)
-    if package_name.starts_with?('@')
+    # Get the registry url from the npmrc file; an explicit named registry
+    # alias wins over the default and the scope-based registries.
+    @base_url = @named_url || URI.parse(state.npmrc.registry)
+    if @named_url.nil? && package_name.starts_with?('@')
       scope = package_name.split('/')[0]
       if scoped_registry = state.npmrc.scoped_registries[scope]?
         @base_url = URI.parse(scoped_registry)
@@ -167,8 +170,62 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
         raise "No version matching range or dist-tag #{specifier} for package #{@name} found in the module registry"
       end
       pkg = Data::Package.from_json(raw_metadata)
+      # Record the named registry on the resolved dist so the lockfile key
+      # becomes registry-qualified (pnpm parity) and the package cannot be
+      # quietly substituted by another registry publishing the same version.
+      if @registry_name && (dist = pkg.dist).is_a?(Data::Package::Dist::Registry)
+        pkg.dist = Data::Package::Dist::Registry.new(dist.tarball, dist.shasum, dist.integrity, @registry_name)
+      end
       check_release_age(pkg, manifest)
+      check_trust_policy(pkg, manifest)
       pkg
+    end
+  end
+
+  # pnpm's trustPolicy: when set to no-downgrade, a version whose trust
+  # evidence is weaker than the strongest evidence of the previously locked
+  # versions is refused, so a publisher signature or provenance attestation
+  # cannot silently disappear on an update.
+  private def check_trust_policy(pkg : Data::Package, manifest : Manifest) : Nil
+    zap = state.context.main_package.zap_config
+    return unless zap.try(&.trust_policy) == "no-downgrade"
+
+    exclude = zap.try(&.trust_policy_exclude) || [] of String
+    return if exclude.any? { |selector| excluded?(selector, pkg) }
+
+    previous = state.lockfile.packages.values.select { |p| p.name == pkg.name && p.version != pkg.version }
+    return if previous.empty?
+    previous_tier = previous.map { |p| manifest.dist_evidence?(p.version) }.compact.map { |e| trust_tier(*e) }.max? || 0
+    current_tier = manifest.dist_evidence?(pkg.version).try { |e| trust_tier(*e) } || 0
+    return if current_tier >= previous_tier
+
+    raise "Refusing to install #{pkg.key}: its trust evidence (#{tier_name(current_tier)}) is weaker than the previously locked versions' (#{tier_name(previous_tier)}), violating the trust policy no-downgrade. Add \"#{pkg.name}\" to zap.trust_policy_exclude or change zap.trust_policy to allow it."
+  end
+
+  # Whether a trust policy exclude selector matches a package: a bare name or
+  # a name@range selector (pnpm's trustPolicyExclude).
+  private def excluded?(selector : String, pkg : Data::Package) : Bool
+    name, range = Utils::Misc.parse_key(selector)
+    name == pkg.name && (range.nil? || Semver.parse(range).satisfies?(pkg.version))
+  end
+
+  # The trust tiers, strongest first: a publisher signature, then a
+  # provenance attestation, then no evidence.
+  private def trust_tier(has_signature : Bool, has_attestation : Bool) : Int32
+    if has_signature
+      2
+    elsif has_attestation
+      1
+    else
+      0
+    end
+  end
+
+  private def tier_name(tier : Int32) : String
+    case tier
+    when 2 then "a publisher signature"
+    when 1 then "provenance"
+    else        "no evidence"
     end
   end
 
