@@ -92,7 +92,11 @@ class Data::Package
       in Dist::Git
         "#{dist.cache_key}"
       in Dist::Registry
-        version
+        if registry_name = dist.registry_name
+          "#{registry_name}:#{version}"
+        else
+          version
+        end
       in Nil
         version
       end

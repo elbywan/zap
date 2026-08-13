@@ -20,7 +20,18 @@ class Data::Package
       package_extensions : Hash(String, PackageExtension) = Hash(String, PackageExtension).new,
       check_peer_dependencies : Bool? = nil,
       patched_dependencies : Hash(String, String)? = nil,
-      allow_unused_patches : Bool? = nil do
+      allow_unused_patches : Bool? = nil,
+      only_built_dependencies : Array(String)? = nil,
+      ignored_built_dependencies : Array(String)? = nil,
+      dangerously_allow_all_builds : Bool? = nil,
+      minimum_release_age : String? = nil,
+      minimum_release_age_exemptions : Array(String)? = nil,
+      minimum_release_age_ignore_missing_time : Bool? = nil,
+      default_semver_range_prefix : String? = nil,
+      block_exotic_subdeps : Bool? = nil,
+      trust_policy : String? = nil,
+      trust_policy_exclude : Array(String)? = nil,
+      named_registries : Hash(String, String)? = nil do
       include JSON::Serializable
       include YAML::Serializable
       include MessagePack::Serializable

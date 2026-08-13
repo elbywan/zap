@@ -130,6 +130,11 @@ module Commands::Install
       # Resolve all dependencies
       update_changed = resolve_dependencies(state)
 
+      # Verify the lockfile resolutions satisfy the declared ranges (yarn's
+      # --check-resolutions / YN0078): a mismatch means the lockfile was
+      # tampered with.
+      check_resolutions(state) if state.install_config.check_resolutions
+
       # Prune lockfile before installing to cleanup pinned dependencies
       pruned_direct_dependencies = clean_lockfile(state)
 
@@ -396,6 +401,42 @@ module Commands::Install
     end
   end
 
+  # yarn's --check-resolutions (YN0078): verifies that every resolved package
+  # satisfies its declared dependency range, catching a lockfile that was
+  # tampered with (a resolution rewritten to a different name or version).
+  # Overridden dependencies are skipped (the override replaces the declared
+  # range). Should never fire on a legit install.
+  private def self.check_resolutions(state : State) : Nil
+    errors = [] of String
+    # Each lockfile entry must match its key: an in-place edit of the version
+    # field (with the key left intact) shows up as a key/content mismatch for
+    # every package, direct or transitive.
+    state.lockfile.packages.each do |key, pkg|
+      if pkg.key != key
+        errors << "#{key} contains a package whose metadata does not match its key (#{pkg.key})"
+      end
+    end
+    overrides = state.lockfile.overrides
+    state.lockfile.packages.each_value do |pkg|
+      pkg.each_dependency(include_dev: false) do |dep_name, declared, type|
+        next if overrides.try(&.has_key?(dep_name))
+        next unless declared.is_a?(String)
+        next unless range = Semver.parse?(declared)
+        resolved =
+          if type.optional_dependency?
+            pkg.optional_dependencies_refs.find { |ref| ref.name == dep_name }
+          else
+            pkg.dependencies_refs.find { |ref| ref.name == dep_name }
+          end
+        next unless resolved
+        next if range.satisfies?(resolved.version)
+        errors << "#{pkg.key} resolves #{dep_name} to #{resolved.key}, which does not satisfy the declared range #{declared}"
+      end
+    end
+    return if errors.empty?
+    raise "The lockfile resolutions are inconsistent with the declared dependency ranges:\n#{errors.join("\n")}\nThis usually indicates the lockfile was tampered with. Regenerate it with `zap i`."
+  end
+
   private def self.resolve_overrides(state : State)
     state.lockfile.overrides = Data::Package::Overrides.merge(state.main_package.overrides, state.lockfile.overrides)
     state.lockfile.overrides.try &.each do |name, override_list|
@@ -542,36 +583,73 @@ module Commands::Install
   private def self.run_install_hooks(state : State, linker : Linker::Base)
     Log.debug { "• Running install hooks" }
     hooks = linker.installed_packages_with_hooks
-    if !state.install_config.ignore_scripts && hooks.size > 0
-      error_messages = [] of {Exception, String}
-      # Run hooks in dependency order (dependencies before dependents,
-      # npm/yarn/pnpm parity) so a package's scripts see its deps ready.
-      ordered_hooks = hooks.sort_by { |(package, _)| hook_depth(package, state, {} of String => Int32) }
-      state.reporter.report_builder_updates do
-        ordered_hooks.each do |package, path|
-          package.scripts.try do |scripts|
-            state.reporter.on_building_package
-            output_io = state.config.silent || state.reporter.is_a?(Reporter::Null) || state.reporter.is_a?(Reporter::Ndjson) ? File.open(File::NULL, "w") : nil
-            begin
-              scripts.run_script(:preinstall, path, state.config, output_io: output_io)
-              scripts.run_script(:install, path, state.config, output_io: output_io)
-              scripts.run_script(:postinstall, path, state.config, output_io: output_io)
-            rescue e
-              error_messages << {e, "Error while running install scripts for #{package.name}@#{package.version} at #{path}\n\n#{e.message}"}
-            ensure
-              output_io.try &.close
-              state.reporter.on_package_built
-            end
+    return if hooks.empty? || state.install_config.ignore_scripts
+
+    # Strict-by-default: dependency build scripts run only for allowlisted
+    # packages (pnpm v10 parity). The root project's own scripts are handled
+    # separately in run_own_install_hooks and are unaffected.
+    to_run, skipped = filter_build_hooks(state, hooks)
+
+    unless skipped.empty?
+      state.reporter.info("Ignored build scripts: #{skipped.uniq.join(", ")}. Run `zap approve-builds` to pick which dependencies should be allowed to run scripts, or add them to `zap.only_built_dependencies`.")
+    end
+
+    return if to_run.empty?
+
+    error_messages = [] of {Exception, String}
+    # Run hooks in dependency order (dependencies before dependents,
+    # npm/yarn/pnpm parity) so a package's scripts see its deps ready.
+    ordered_hooks = to_run.sort_by { |(package, _)| hook_depth(package, state, {} of String => Int32) }
+    state.reporter.report_builder_updates do
+      ordered_hooks.each do |package, path|
+        package.scripts.try do |scripts|
+          state.reporter.on_building_package
+          output_io = state.config.silent || state.reporter.is_a?(Reporter::Null) || state.reporter.is_a?(Reporter::Ndjson) ? File.open(File::NULL, "w") : nil
+          begin
+            scripts.run_script(:preinstall, path, state.config, output_io: output_io)
+            scripts.run_script(:install, path, state.config, output_io: output_io)
+            scripts.run_script(:postinstall, path, state.config, output_io: output_io)
+          rescue e
+            error_messages << {e, "Error while running install scripts for #{package.name}@#{package.version} at #{path}\n\n#{e.message}"}
+          ensure
+            output_io.try &.close
+            state.reporter.on_package_built
           end
         end
       end
+    end
 
-      state.reporter.errors(error_messages) if error_messages.size > 0
-      unless error_messages.empty?
-        # Mirror npm/yarn/pnpm: a failing lifecycle script fails the install
-        raise error_messages.map(&.[1]).join("\n")
+    state.reporter.errors(error_messages) if error_messages.size > 0
+    unless error_messages.empty?
+      # Mirror npm/yarn/pnpm: a failing lifecycle script fails the install
+      raise error_messages.map(&.[1]).join("\n")
+    end
+  end
+
+  # Partitions the collected hooks into the packages allowed to run scripts
+  # and the ones skipped, returning the skipped names for the warning. A hook
+  # runs when the package is in only_built_dependencies or the whole policy is
+  # bypassed with dangerously_allow_all_builds; an ignored_built_dependencies
+  # entry suppresses the skip warning.
+  private def self.filter_build_hooks(state : State, hooks : Array({Data::Package, Path})) : {Array({Data::Package, Path}), Array(String)}
+    zap = state.context.main_package.zap_config
+    allow_all = zap.try(&.dangerously_allow_all_builds) || false
+    allowlist = zap.try(&.only_built_dependencies) || [] of String
+    ignored = zap.try(&.ignored_built_dependencies) || [] of String
+
+    to_run = [] of {Data::Package, Path}
+    skipped = [] of String
+
+    hooks.each do |package, path|
+      name = package.name
+      if allow_all || allowlist.includes?(name)
+        to_run << {package, path}
+      elsif !ignored.includes?(name)
+        skipped << "#{name}@#{package.version}"
       end
     end
+
+    {to_run, skipped}
   end
 
   # Longest dependency chain of a package in the lockfile graph. The memo is

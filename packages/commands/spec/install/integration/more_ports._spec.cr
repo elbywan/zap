@@ -23,7 +23,7 @@ describe "more ports", tags: "integration" do
         scripts: {"postinstall" => "node -e \"require('fs').readFileSync(0); require('fs').writeFileSync('read-stdin.txt', 'ok')\""}),
         {"index.js" => "s"})
 
-      It.install_project(registry, %({"name":"app","version":"1.0.0","dependencies":{"stdin-script":"1.0.0"}})) do |project|
+      It.install_project(registry, %({"name":"app","version":"1.0.0","dependencies":{"stdin-script":"1.0.0"},"zap":{"only_built_dependencies":["stdin-script"]}})) do |project|
         # The install completed: stdin is closed for install scripts
         File.read(project / "node_modules/stdin-script/read-stdin.txt").should eq("ok")
       end

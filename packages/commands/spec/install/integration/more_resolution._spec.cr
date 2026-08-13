@@ -15,7 +15,7 @@ describe "more resolution ports", tags: "integration" do
         registry.add("child", "1.0.0", It.pkg("child", "1.0.0", scripts: {"postinstall" => %(#{mark} child #{marker})}), {"index.js" => "c"})
         registry.add("parent", "1.0.0", It.pkg("parent", "1.0.0", dependencies: {"child" => "1.0.0"}, scripts: {"postinstall" => %(#{mark} parent #{marker})}), {"index.js" => "p"})
 
-        It.install_project(registry, %({"name":"app","version":"1.0.0","dependencies":{"parent":"1.0.0"}})) do |_project|
+        It.install_project(registry, %({"name":"app","version":"1.0.0","dependencies":{"parent":"1.0.0"},"zap":{"only_built_dependencies":["child","parent"]}})) do |_project|
           # Dependencies run before their dependents
           File.read(marker).should eq("childparent")
         end

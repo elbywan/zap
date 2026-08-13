@@ -8,7 +8,15 @@ struct Commands::Install::Protocol::Registry < Commands::Install::Protocol::Base
   # [<@scope>/]<name>
   # [<@scope>/]<name>@<tag>
   # [<@scope>/]<name>@<version range>
+  # <alias>:... — a named registry alias prefix (pnpm's namedRegistries):
+  # "work:@corp/lib@^2.0.0" becomes {"work:^2.0.0", "@corp/lib"} so the alias
+  # flows to the resolution and the saved specifier.
   def self.normalize?(str : String, path_info : PathInfo?) : {String?, String?}?
+    if (match = str.match(/\A([A-Za-z0-9._-]+):(.+)\z/)) && match[1] != "npm"
+      if inner = normalize?(match[2], path_info)
+        return {"#{match[1]}:#{inner[0]}", inner[1]} if inner[0]
+      end
+    end
     parts = str.split('@')
     if parts.size == 1 || (parts.size == 2 && str.starts_with?('@'))
       return {nil, str}
@@ -26,6 +34,9 @@ struct Commands::Install::Protocol::Registry < Commands::Install::Protocol::Base
     skip_cache = false
   ) : Protocol::Resolver?
     Log.debug { "(#{name}@#{specifier}) Resolved as a registry dependency" }
+    # A named registry alias (pnpm's namedRegistries): a "work:^2.0.0"
+    # specifier resolves against the aliased registry URL.
+    named_url, registry_name, specifier = named_registry(state, specifier)
     semver = Semver.parse?(specifier)
     Log.debug { "(#{name}@#{specifier}) Failed to parse semver '#{specifier}', treating as a dist-tag." } unless semver
     # --latest may only ignore the declared range when it is a simple
@@ -33,6 +44,19 @@ struct Commands::Install::Protocol::Registry < Commands::Install::Protocol::Base
     # prerelease-carrying specifiers keep their range so a beta is never
     # downgraded.
     latest_eligible = Utils::Misc.latest_eligible_specifier?(specifier)
-    Resolver.new(state, name, semver || specifier, parent, dependency_type, skip_cache, latest_eligible)
+    Resolver.new(state, name, semver || specifier, parent, dependency_type, skip_cache, latest_eligible, named_url: named_url, registry_name: registry_name)
+  end
+
+  # Splits a "alias:<specifier>" specifier into {url, alias, inner} when the
+  # alias is configured in zap.named_registries; otherwise the specifier is
+  # returned untouched.
+  private def self.named_registry(state, specifier : String) : {URI?, String?, String}
+    named = state.context.main_package.zap_config.try(&.named_registries)
+    if named && (match = specifier.match(/\A([A-Za-z0-9._-]+):(.*)\z/))
+      if url = named[match[1]]?
+        return {URI.parse(url), match[1], match[2]}
+      end
+    end
+    {nil, nil, specifier}
   end
 end

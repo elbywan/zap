@@ -12,6 +12,9 @@ end
 struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Protocol::Resolver
   Log = ::Log.for("zap.commands.install.protocol.registry.resolver")
 
+  # The default recently-published quarantine window.
+  DEFAULT_MINIMUM_RELEASE_AGE = "7d"
+
   @clients : RegistryClients
   @client_pool : Fetch(Manifest)
   @package_name : String
@@ -25,6 +28,8 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
     dependency_type = nil,
     skip_cache = false,
     @latest_eligible : Bool = false,
+    @named_url : URI? = nil,
+    @registry_name : String? = nil,
   )
     super(state, name, specifier, parent, dependency_type, skip_cache)
 
@@ -34,9 +39,10 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
 
     # Initialize the client pool
     @clients = state.registry_clients
-    # Get the registry url from the npmrc file
-    @base_url = URI.parse(state.npmrc.registry)
-    if package_name.starts_with?('@')
+    # Get the registry url from the npmrc file; an explicit named registry
+    # alias wins over the default and the scope-based registries.
+    @base_url = @named_url || URI.parse(state.npmrc.registry)
+    if @named_url.nil? && package_name.starts_with?('@')
       scope = package_name.split('/')[0]
       if scoped_registry = state.npmrc.scoped_registries[scope]?
         @base_url = URI.parse(scoped_registry)
@@ -163,7 +169,131 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
       unless raw_metadata
         raise "No version matching range or dist-tag #{specifier} for package #{@name} found in the module registry"
       end
-      Data::Package.from_json(raw_metadata)
+      pkg = Data::Package.from_json(raw_metadata)
+      # Record the named registry on the resolved dist so the lockfile key
+      # becomes registry-qualified (pnpm parity) and the package cannot be
+      # quietly substituted by another registry publishing the same version.
+      if @registry_name && (dist = pkg.dist).is_a?(Data::Package::Dist::Registry)
+        pkg.dist = Data::Package::Dist::Registry.new(dist.tarball, dist.shasum, dist.integrity, @registry_name)
+      end
+      check_release_age(pkg, manifest)
+      check_trust_policy(pkg, manifest)
+      pkg
+    end
+  end
+
+  # pnpm's trustPolicy: when set to no-downgrade, a version whose trust
+  # evidence is weaker than the strongest evidence of the previously locked
+  # versions is refused, so a publisher signature or provenance attestation
+  # cannot silently disappear on an update.
+  private def check_trust_policy(pkg : Data::Package, manifest : Manifest) : Nil
+    zap = state.context.main_package.zap_config
+    return unless zap.try(&.trust_policy) == "no-downgrade"
+
+    exclude = zap.try(&.trust_policy_exclude) || [] of String
+    return if exclude.any? { |selector| excluded?(selector, pkg) }
+
+    # A prerelease never blocks a stable release: a trusted beta cannot hold
+    # back the stable version that lacks trust evidence (pnpm v10.24 parity).
+    current_prerelease = prerelease?(pkg.version)
+    previous = state.lockfile.packages.values.select do |p|
+      p.name == pkg.name && p.version != pkg.version && (current_prerelease || !prerelease?(p.version))
+    end
+    return if previous.empty?
+    previous_tier = previous.map { |p| manifest.dist_evidence?(p.version) }.compact.map { |e| trust_tier(*e) }.max? || 0
+    current_tier = manifest.dist_evidence?(pkg.version).try { |e| trust_tier(*e) } || 0
+    return if current_tier >= previous_tier
+
+    raise "Refusing to install #{pkg.key}: its trust evidence (#{tier_name(current_tier)}) is weaker than the previously locked versions' (#{tier_name(previous_tier)}), violating the trust policy no-downgrade. Add \"#{pkg.name}\" to zap.trust_policy_exclude or change zap.trust_policy to allow it."
+  end
+
+  # Whether an exclude selector matches a package: a bare name or a
+  # name@range selector (pnpm's minimumReleaseAgeExclude/trustPolicyExclude).
+  # A malformed range never matches.
+  private def excluded?(selector : String, pkg : Data::Package) : Bool
+    name, range = Utils::Misc.parse_key(selector)
+    return false unless name == pkg.name
+    return true if range.nil?
+    begin
+      Semver.parse(range).satisfies?(pkg.version)
+    rescue
+      false
+    end
+  end
+
+  # The trust tiers, strongest first: a publisher signature, then a
+  # provenance attestation, then no evidence.
+  private def trust_tier(has_signature : Bool, has_attestation : Bool) : Int32
+    if has_signature
+      2
+    elsif has_attestation
+      1
+    else
+      0
+    end
+  end
+
+  private def tier_name(tier : Int32) : String
+    case tier
+    when 2 then "a publisher signature"
+    when 1 then "provenance"
+    else        "no evidence"
+    end
+  end
+
+  private def prerelease?(version : String) : Bool
+    Semver::Version.parse(version).prerelease?
+  rescue
+    false
+  end
+
+  # The recently-published quarantine: a version that is not yet pinned in the
+  # lockfile must be at least as old as the configured minimum release age.
+  # Skipped for lockfile-pinned versions, the --allow-recent flag, exempted
+  # package names, and registries that do not expose publish times.
+  private def check_release_age(pkg : Data::Package, manifest : Manifest) : Nil
+    return if state.lockfile.packages[pkg.key]?
+    return if state.install_config.allow_recent
+
+    zap = state.context.main_package.zap_config
+    threshold = zap.try(&.minimum_release_age) || DEFAULT_MINIMUM_RELEASE_AGE
+    minutes = minimum_release_age_minutes(threshold)
+    return if minutes <= 0
+
+    exemptions = zap.try(&.minimum_release_age_exemptions) || [] of String
+    return if exemptions.any? { |selector| excluded?(selector, pkg) }
+
+    published = manifest.publish_time?(pkg.version)
+    if published.nil?
+      # Fail closed when the registry does not expose publish times and the
+      # user opted into the strict behavior (pnpm's
+      # minimumReleaseAgeIgnoreMissingTime: false).
+      if zap.try(&.minimum_release_age_ignore_missing_time) == false
+        raise "Refusing to install #{pkg.key}: the registry does not expose publish times, so the minimum release age cannot be enforced. Set zap.minimum_release_age to 0, zap.minimum_release_age_ignore_missing_time to true, or add \"#{pkg.name}\" to zap.minimum_release_age_exemptions to allow it."
+      end
+      return
+    end
+
+    age = Time.utc - published
+    return if age.total_minutes >= minutes
+
+    raise "Refusing to install #{pkg.key}: published #{age.total_minutes.to_i} minute(s) ago, newer than the minimum release age (#{threshold}). Set zap.minimum_release_age to 0 to disable the check, add \"#{pkg.name}\" to zap.minimum_release_age_exemptions, or run with --allow-recent to bypass it."
+  end
+
+  # Parses the minimum release age config value into minutes. Plain numbers
+  # are minutes (pnpm parity), suffixed values accept d/h/m units.
+  private def minimum_release_age_minutes(value : String) : Int64
+    case value
+    when /^(\d+)\s*d(ays?)?$/i
+      $1.to_i64 * 24 * 60
+    when /^(\d+)\s*h(ours?)?$/i
+      $1.to_i64 * 60
+    when /^(\d+)\s*m(in(utes?)?)?$/i
+      $1.to_i64
+    when /^\d+$/
+      value.to_i64
+    else
+      raise "Invalid zap.minimum_release_age value: #{value} (expected e.g. \"7d\", \"24h\", \"90m\" or a number of minutes)"
     end
   end
 end

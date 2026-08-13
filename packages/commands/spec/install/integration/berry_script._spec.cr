@@ -44,7 +44,7 @@ describe "berry script ports", tags: "integration" do
         scripts: {"postinstall" => "tool-bin"}),
         {"index.js" => "s"})
 
-      It.install_project(registry, %({"name":"app","version":"1.0.0","dependencies":{"scripted":"1.0.0"}})) do |project|
+      It.install_project(registry, %({"name":"app","version":"1.0.0","dependencies":{"scripted":"1.0.0"},"zap":{"only_built_dependencies":["scripted"]}})) do |project|
         File.read(project / "node_modules/scripted/tool-ran.txt").should eq("tool")
       end
     end
