@@ -44,6 +44,7 @@ A readable example, rendered exactly like the real specs:
 - [Security](security.md) — the supply-chain guards.
 - [Workspaces](workspaces.md) — monorepo support.
 - [Configuration](config.md) — the `zap` section and the npmrc.
+- [Catalogs](catalogs.md) — the `catalog:` protocol (pnpm / yarn parity).
 
 ## The process: specification-first development
 
