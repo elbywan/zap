@@ -55,6 +55,32 @@ describe "project commands", tags: "integration" do
     end
   end
 
+  it "rebuild re-runs scripts the install blocked" do
+    It.with_registry do |registry|
+      registry.add("scripted", "1.0.0", It.pkg("scripted", "1.0.0",
+        scripts: {"install" => %(#{CMD_MARKER_SCRIPT} x)}),
+        {"index.js" => "s", "binding.gyp" => ""})
+
+      It.install_project(registry, %({"name":"app","version":"1.0.0","dependencies":{"scripted":"1.0.0"}})) do |project|
+        marker = project / "node_modules/scripted/order.txt"
+        # The install blocked the script (no allowlist)
+        File.exists?(marker).should be_false
+
+        # The explicit rebuild re-runs it anyway: rebuild is a manual action
+        # (like dlx), so the strict deny-by-default does not gate it.
+        old_argv = ARGV.dup
+        begin
+          ARGV.replace([] of String)
+          rebuild_config = Core::Config.new.copy_with(prefix: project.to_s, silent: true)
+          Commands::Rebuild.run(rebuild_config, Commands::Rebuild::Config.new)
+        ensure
+          ARGV.replace(old_argv)
+        end
+        File.read(marker).should eq("x")
+      end
+    end
+  end
+
   it "run executes a package.json script" do
     tmpdir = Path.new(Dir.tempdir, "zap-run-#{Random::Secure.hex(4)}")
     begin
