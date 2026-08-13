@@ -218,6 +218,47 @@ Patches are applied to the linked node_modules copy after install; the store kee
 }
 ```
 
+- **Strict and safe by default**
+
+Dependency build scripts (`preinstall`/`install`/`postinstall`) do not run
+unless the package is explicitly allowlisted; the root project's own scripts
+still run:
+
+```json
+{
+  "zap": {
+    "only_built_dependencies": ["esbuild", "@swc/core"],
+    "ignored_built_dependencies": ["fsevents"]
+  }
+}
+```
+
+`zap approve-builds` lists the dependencies with pending build scripts
+(including the implicit `binding.gyp` node-gyp builds) and persists your
+choices. `dangerously_allow_all_builds: true` restores the previous
+run-everything behavior, and `--ignore-scripts` still disables everything.
+
+Newly resolved versions younger than `minimum_release_age` (default `7d`)
+are refused, quarantining typosquats and freshly compromised releases.
+Lockfile-pinned versions are trusted and exempt; `0` disables the check,
+`minimum_release_age_exemptions` and the `--allow-recent` flag bypass it:
+
+```json
+{
+  "zap": {
+    "minimum_release_age": "24h"
+  }
+}
+```
+
+`default_semver_range_prefix` selects the operator used when saving a new
+dependency (`"^"` by default, `"~"`, or `""` for exact versions). With
+`block_exotic_subdeps: true`, transitive dependencies must resolve from the
+registry: git, tarball, file and workspace sources are refused for anything
+you did not explicitly declare. `--check-resolutions` (default on CI)
+verifies that the lockfile resolutions satisfy the declared ranges, catching
+a tampered lockfile.
+
 # Benchmarks
 
 ### a.k.a is it fast?

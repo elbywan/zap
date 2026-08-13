@@ -84,6 +84,38 @@ describe "release age", tags: "integration" do
     end
   end
 
+  it "rejects an invalid minimum_release_age value" do
+    It.with_registry do |registry|
+      registry.add("fresh", "1.0.0", It.pkg("fresh", "1.0.0"), {"index.js" => "f"},
+        published_at: Time.utc - 10.days)
+
+      raised = false
+      begin
+        It.install_project(registry, %({"name":"app","version":"1.0.0","dependencies":{"fresh":"1.0.0"},"zap":{"minimum_release_age":"soon"}})) { |_| }
+      rescue ex
+        raised = true
+        ex.message.not_nil!.should contain("Invalid zap.minimum_release_age")
+      end
+      raised.should be_true
+    end
+  end
+
+  it "accepts minute units" do
+    It.with_registry do |registry|
+      registry.add("fresh", "1.0.0", It.pkg("fresh", "1.0.0"), {"index.js" => "f"},
+        published_at: Time.utc - 30.minutes)
+
+      raised = false
+      begin
+        It.install_project(registry, %({"name":"app","version":"1.0.0","dependencies":{"fresh":"1.0.0"},"zap":{"minimum_release_age":"90m"}})) { |_| }
+      rescue ex
+        raised = true
+        ex.message.not_nil!.should contain("minimum release age")
+      end
+      raised.should be_true
+    end
+  end
+
   it "allows a lockfile-pinned version on a later install" do
     It.with_registry do |registry|
       registry.add("fresh", "1.0.0", It.pkg("fresh", "1.0.0"), {"index.js" => "f"},

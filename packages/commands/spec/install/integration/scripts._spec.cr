@@ -123,6 +123,42 @@ describe "lifecycle scripts", tags: "integration" do
     end
   end
 
+  it "matches scoped package names in the allowlist" do
+    It.with_registry do |registry|
+      registry.add("@scope/scripted", "1.0.0", It.pkg("@scope/scripted", "1.0.0",
+        scripts: {"install" => %(#{MARKER_SCRIPT} install)}),
+        {"index.js" => "s"})
+
+      It.install_project(registry, %({"name":"app","version":"1.0.0","dependencies":{"@scope/scripted":"1.0.0"},"zap":{"only_built_dependencies":["@scope/scripted"]}})) do |project|
+        File.exists?(project / "node_modules/@scope/scripted/order.txt").should be_true
+      end
+    end
+  end
+
+  it "blocks the implicit node-gyp build of an unallowlisted package" do
+    It.with_registry do |registry|
+      registry.add("native", "1.0.0", It.pkg("native", "1.0.0"), {"index.js" => "n", "binding.gyp" => ""})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"native":"1.0.0"}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/
+")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: false)
+        out_io = IO::Memory.new
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Plain.new(out_io))
+        # The injected node-gyp rebuild is a build script: skipped + reported
+        File.read(tmpdir / "node_modules/native/index.js").should eq("n")
+        out_io.to_s.should contain("Ignored build scripts")
+        out_io.to_s.should contain("native@1.0.0")
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
   it "runs the root project's own install scripts" do
     It.with_registry do |registry|
       registry.add("a", "1.0.0", It.pkg("a", "1.0.0"), {"index.js" => "a"})

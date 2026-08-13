@@ -23,7 +23,8 @@ describe "approve-builds", tags: "integration" do
 
         lockfile = Data::Lockfile.new(tmpdir)
         main = Data::Package.init(tmpdir / "package.json", append_filename: false)
-        pending = Commands::ApproveBuilds.pending_packages(lockfile, main)
+        store = ::Store.new((tmpdir / "store").to_s)
+        pending = Commands::ApproveBuilds.pending_packages(lockfile, main, store)
         pending.map(&.name).should eq(["scripted"])
       ensure
         FileUtils.rm_rf(tmpdir)
@@ -51,7 +52,32 @@ describe "approve-builds", tags: "integration" do
 
         lockfile = Data::Lockfile.new(tmpdir)
         main = Data::Package.init(tmpdir / "package.json", append_filename: false)
-        Commands::ApproveBuilds.pending_packages(lockfile, main).should be_empty
+        store = ::Store.new((tmpdir / "store").to_s)
+        Commands::ApproveBuilds.pending_packages(lockfile, main, store).should be_empty
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+  end
+
+  it "lists packages with an implicit node-gyp build" do
+    It.with_registry do |registry|
+      registry.add("native", "1.0.0", It.pkg("native", "1.0.0"), {"index.js" => "n", "binding.gyp" => ""})
+
+      tmpdir = Path.new(Dir.tempdir, "zap-it-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(tmpdir)
+        File.write(tmpdir / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"native":"1.0.0"}}))
+        File.write(tmpdir / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: tmpdir.to_s, store_path: (tmpdir / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true)
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+
+        lockfile = Data::Lockfile.new(tmpdir)
+        main = Data::Package.init(tmpdir / "package.json", append_filename: false)
+        store = ::Store.new((tmpdir / "store").to_s)
+        pending = Commands::ApproveBuilds.pending_packages(lockfile, main, store)
+        pending.map(&.name).should eq(["native"])
       ensure
         FileUtils.rm_rf(tmpdir)
       end
