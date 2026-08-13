@@ -256,6 +256,15 @@ module Commands::Install::Resolver
       parent = package.try { |package| is_direct_dependency ? state.lockfile.get_root(package.name, package.version) : package }
       # Create the appropriate resolver depending on the version (git, tarball, registry, local folder…)
       resolver = Resolver.get(state, name, version, parent, type)
+      # pnpm's blockExoticSubdeps: transitive dependencies must come from the
+      # registry. Exotic sources (git, tarball URLs, local files, workspaces)
+      # are only allowed for direct dependencies the user explicitly requested
+      # and for overrides.
+      if !is_direct_dependency && !single_resolution && state.context.main_package.zap_config.try(&.block_exotic_subdeps)
+        unless resolver.is_a?(Protocol::Registry::Resolver)
+          raise "Refusing to install transitive dependency #{name} (#{version}): zap.block_exotic_subdeps only allows registry sources for transitive dependencies."
+        end
+      end
       # Attempt to use the package data from the lockfile
       maybe_metadata = resolver.get_pinned_metadata(name) unless bust_pinned_cache
       # Check if the data from the lockfile is still valid (direct deps can be modified in the package.json file or through the cli)

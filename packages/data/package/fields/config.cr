@@ -26,7 +26,8 @@ class Data::Package
       dangerously_allow_all_builds : Bool? = nil,
       minimum_release_age : String? = nil,
       minimum_release_age_exemptions : Array(String)? = nil,
-      default_semver_range_prefix : String? = nil do
+      default_semver_range_prefix : String? = nil,
+      block_exotic_subdeps : Bool? = nil do
       include JSON::Serializable
       include YAML::Serializable
       include MessagePack::Serializable
