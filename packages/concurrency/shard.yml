@@ -1,6 +1,6 @@
 ---
 name: concurrency
-version: 0.5.1
+version: 0.5.2
 crystalline:
   main: spec/specs.cr
 dependencies:

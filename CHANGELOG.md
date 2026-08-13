@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.5.2
+
+- **Catalogs are now a first-class specifier.** The `catalog:` and
+  `catalog:<name>` references (pnpm / yarn berry parity) resolve through
+  their own protocol, and the lockfile records the reference itself instead
+  of the expanded range, keeping it self-contained. A catalog entry that
+  references another catalog is rejected, and `zap add catalog:foo` adds a
+  dependency with the catalog reference.
+- **`zap catalog` subcommand.** `zap catalog list [--catalog <name>]`,
+  `zap catalog add <name>@<range> [--catalog <name>]`, and
+  `zap catalog remove <name> [--catalog <name>]` manage the catalog entries
+  in the `zap` section of the root package.json: list them, add or update
+  one (creating a named catalog on demand), or remove one with a warning
+  when a manifest still references it.
+
 ## v0.5.1
 
 - **`zap approve-builds` runs the hooks of the approved packages right away.**
