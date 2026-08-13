@@ -12,6 +12,9 @@ end
 struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Protocol::Resolver
   Log = ::Log.for("zap.commands.install.protocol.registry.resolver")
 
+  # The default recently-published quarantine window.
+  DEFAULT_MINIMUM_RELEASE_AGE = "7d"
+
   @clients : RegistryClients
   @client_pool : Fetch(Manifest)
   @package_name : String
@@ -163,7 +166,51 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
       unless raw_metadata
         raise "No version matching range or dist-tag #{specifier} for package #{@name} found in the module registry"
       end
-      Data::Package.from_json(raw_metadata)
+      pkg = Data::Package.from_json(raw_metadata)
+      check_release_age(pkg, manifest)
+      pkg
+    end
+  end
+
+  # The recently-published quarantine: a version that is not yet pinned in the
+  # lockfile must be at least as old as the configured minimum release age.
+  # Skipped for lockfile-pinned versions, the --allow-recent flag, exempted
+  # package names, and registries that do not expose publish times.
+  private def check_release_age(pkg : Data::Package, manifest : Manifest) : Nil
+    return if state.lockfile.packages[pkg.key]?
+    return if state.install_config.allow_recent
+
+    zap = state.context.main_package.zap_config
+    threshold = zap.try(&.minimum_release_age) || DEFAULT_MINIMUM_RELEASE_AGE
+    minutes = minimum_release_age_minutes(threshold)
+    return if minutes <= 0
+
+    exemptions = zap.try(&.minimum_release_age_exemptions) || [] of String
+    return if exemptions.includes?(pkg.name)
+
+    published = manifest.publish_time?(pkg.version)
+    return if published.nil?
+
+    age = Time.utc - published
+    return if age.total_minutes >= minutes
+
+    raise "Refusing to install #{pkg.key}: published #{age.total_minutes.to_i} minute(s) ago, newer than the minimum release age (#{threshold}). Set zap.minimum_release_age to 0 to disable the check, add \"#{pkg.name}\" to zap.minimum_release_age_exemptions, or run with --allow-recent to bypass it."
+  end
+
+  # Parses the minimum release age config value into minutes. Plain numbers
+  # are minutes (pnpm parity), suffixed values accept d/h/m units.
+  private def minimum_release_age_minutes(value : String) : Int64
+    case value
+    when /^(\d+)\s*d(ays?)?$/i
+      $1.to_i64 * 24 * 60
+    when /^(\d+)\s*h(ours?)?$/i
+      $1.to_i64 * 60
+    when /^(\d+)\s*m(in(utes?)?)?$/i
+      $1.to_i64
+    when /^\d+$/
+      value.to_i64
+    else
+      raise "Invalid zap.minimum_release_age value: #{value} (expected e.g. \"7d\", \"24h\", \"90m\" or a number of minutes)"
     end
   end
 end

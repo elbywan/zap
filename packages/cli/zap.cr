@@ -12,6 +12,8 @@ require "commands/exec/cli"
 require "commands/exec"
 require "commands/init/cli"
 require "commands/init"
+require "commands/approve-builds/cli"
+require "commands/approve-builds"
 require "commands/rebuild/cli"
 require "commands/rebuild"
 require "commands/run/cli"
@@ -53,7 +55,7 @@ module Zap
         Commands::Dlx::CLI.new,
         Commands::Exec::CLI.new,
         Commands::Init::CLI.new,
-        Commands::Rebuild::CLI.new,
+        Commands::ApproveBuilds::CLI.new,
         Commands::Run::CLI.new,
         Commands::Store::CLI.new,
         Commands::Why::CLI.new,
@@ -72,6 +74,8 @@ module Zap
       Commands::Install.run(config, command_config)
     when Commands::Patch::Config
       Commands::Patch.run(config, command_config)
+    when Commands::ApproveBuilds::Config
+      Commands::ApproveBuilds.run(config, command_config)
     when Commands::Dlx::Config
       Commands::Dlx.run(config, command_config)
     when Commands::Init::Config

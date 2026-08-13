@@ -91,6 +91,7 @@ module Zap::Integration
     @server : HTTP::Server
     @versions = {} of String => Hash(String, Hash(String, Json))
     @tarballs = {} of String => Hash(String, Bytes)
+    @times = {} of String => Hash(String, String)
     @closed = false
 
     def initialize
@@ -126,10 +127,14 @@ module Zap::Integration
     # Registers a package version. `files` are stored at the package root
     # (e.g. "index.js", "lib/util.js"); the manifest is written as
     # package.json and a tarball is built with the npm "package/" layout.
-    def add(name : String, version : String, manifest : Hash(String, Json), files : Hash(String, String)) : Nil
+    def add(name : String, version : String, manifest : Hash(String, Json), files : Hash(String, String), *, published_at : Time? = nil) : Nil
       package_json = manifest.merge({"name" => Zap::Integration.json(name), "version" => Zap::Integration.json(version)})
       tarball = build_tarball(package_json, files)
       shasum = Digest::SHA1.hexdigest(tarball)
+
+      if published_at
+        (@times[name] ||= {} of String => String)[version] = published_at.to_utc.to_s("%Y-%m-%dT%H:%M:%S.%LZ")
+      end
 
       dist : Hash(String, Json) = {
         "tarball" => Zap::Integration.json("#{base_url}/#{name}/-/#{File.basename(name)}-#{version}.tgz"),
@@ -213,10 +218,14 @@ module Zap::Integration
     private def packument(name : String, versions : Hash(String, Hash(String, Json))) : String
       latest = versions.keys.max_by { |v| Semver::Version.parse(v) }
       dist_tags : Hash(String, Json) = {"latest" => Zap::Integration.json(latest)}
-      {
+      packument = {
         "dist-tags" => Zap::Integration.json(dist_tags),
         "versions"  => Json.new(versions.transform_values { |v| Json.new(v) }),
-      }.to_json
+      }
+      if times = @times[name]?
+        packument["time"] = Json.new(times.transform_values { |t| Json.new(t) })
+      end
+      packument.to_json
     end
 
     private def build_tarball(package_json : Hash(String, Json), files : Hash(String, String)) : Bytes

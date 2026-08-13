@@ -9,11 +9,13 @@ struct Commands::Install::Manifest
   getter dist_tags : Hash(String, String) = Hash(String, String).new
   getter versions_json : Hash(String, String) = Hash(String, String).new
   getter versions : Array(String) = Array(String).new
+  getter times : Hash(String, String) = Hash(String, String).new
 
   def initialize(manifest_string : String | IO)
     @dist_tags = Hash(String, String).new
     @versions_json = Hash(String, String).new
     @versions = Array(String).new
+    @times = Hash(String, String).new
 
     parser = JSON::PullParser.new(manifest_string)
     parser.read_begin_object
@@ -21,7 +23,7 @@ struct Commands::Install::Manifest
 
     loop do
       break if parser.kind.end_object?
-      break if fields_counter >= 2 # all the fields we need are parsed
+      break if fields_counter >= 3 # all the fields we need are parsed
       key = parser.read_object_key
       if key == "dist-tags"
         fields_counter += 1
@@ -40,6 +42,14 @@ struct Commands::Install::Manifest
           @versions_json[version] = parser.read_raw
           @versions << version
         end
+      elsif key == "time"
+        fields_counter += 1
+        parser.read_begin_object
+        loop do
+          break parser.read_end_object if parser.kind.end_object?
+          version = parser.read_object_key
+          @times[version] = parser.read_string
+        end
       else
         # Skip the rest of the fields
         parser.skip
@@ -48,6 +58,16 @@ struct Commands::Install::Manifest
 
     # sort by biggest version first
     @versions.sort! { |a, b| Semver::Version.parse(b) <=> Semver::Version.parse(a) }
+  end
+
+  # The publish time of a version, from the packument's top-level `time`
+  # field. Returns nil when the registry does not expose it.
+  def publish_time?(version : String) : Time?
+    raw = @times[version]?
+    return unless raw
+    Time.parse_iso8601(raw)
+  rescue
+    nil
   end
 
   def get_raw_metadata?(version : Semver::Range | String) : String?
