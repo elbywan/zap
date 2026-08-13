@@ -38,7 +38,7 @@ describe "project commands", tags: "integration" do
         scripts: {"install" => %(#{CMD_MARKER_SCRIPT} x)}),
         {"index.js" => "s", "binding.gyp" => ""})
 
-      It.install_project(registry, %({"name":"app","version":"1.0.0","dependencies":{"scripted":"1.0.0"}})) do |project|
+      It.install_project(registry, %({"name":"app","version":"1.0.0","dependencies":{"scripted":"1.0.0"},"zap":{"only_built_dependencies":["scripted"]}})) do |project|
         marker = project / "node_modules/scripted/order.txt"
         File.read(marker).should eq("x")
 

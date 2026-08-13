@@ -20,7 +20,10 @@ class Data::Package
       package_extensions : Hash(String, PackageExtension) = Hash(String, PackageExtension).new,
       check_peer_dependencies : Bool? = nil,
       patched_dependencies : Hash(String, String)? = nil,
-      allow_unused_patches : Bool? = nil do
+      allow_unused_patches : Bool? = nil,
+      only_built_dependencies : Array(String)? = nil,
+      ignored_built_dependencies : Array(String)? = nil,
+      dangerously_allow_all_builds : Bool? = nil do
       include JSON::Serializable
       include YAML::Serializable
       include MessagePack::Serializable
