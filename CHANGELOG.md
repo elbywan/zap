@@ -1,5 +1,71 @@
 # Changelog
 
+## v0.5.0
+
+- **Strict and safe by default.** Dependency build scripts
+  (preinstall/install/postinstall) no longer run unless the package is
+  allowlisted; the root project's own scripts still run (pnpm v10 parity):
+
+```json
+{
+  "zap": {
+    "only_built_dependencies": ["esbuild", "@swc/core"],
+    "ignored_built_dependencies": ["fsevents"]
+  }
+}
+```
+
+`zap approve-builds` lists the dependencies with pending build scripts
+(including the implicit `binding.gyp` node-gyp builds) and persists your
+choices. `dangerously_allow_all_builds: true` restores the old
+run-everything behavior, while `--ignore-scripts` still disables
+everything. `zap dlx` and `zap rebuild` remain explicit actions and keep
+running the scripts.
+
+- **Recently-published quarantine.** Newly resolved versions younger than
+  `zap.minimum_release_age` (default `7d`) are refused, blocking
+  typosquats and freshly compromised releases. Lockfile-pinned versions
+  are trusted and exempt. `0` disables the check; `7d`, `24h` or `90m`
+  (or plain minutes) set the window; `minimum_release_age_exemptions`
+  (bare names or `name@range` selectors) and the `--allow-recent` flag
+  bypass it; `minimum_release_age_ignore_missing_time: false` fails
+  closed when a registry has no publish times.
+
+- **A configurable save prefix.** `zap.default_semver_range_prefix`
+  selects the operator used when saving a new dependency: `"^"` (the
+  default), `"~"`, or `""` for exact versions. `--save-exact` still
+  overrides.
+
+- **Exotic transitive dependencies blocked on request.**
+  `zap.block_exotic_subdeps: true` requires transitive dependencies to
+  come from the registry: git, tarball, file and workspace sources are
+  refused for anything you did not explicitly declare.
+
+- **Lockfile tamper detection.** `--check-resolutions` (default on CI)
+  verifies that every lockfile resolution satisfies its pinned range and
+  that each entry matches its key, catching a lockfile that was silently
+  rewritten (yarn's YN0078).
+
+- **Trust policy.** `zap.trust_policy: "no-downgrade"` refuses a version
+  whose trust evidence is weaker than the previously locked versions, so
+  a publisher signature or provenance attestation cannot silently
+  disappear on an update. `trust_policy_exclude` (names or `name@range`
+  selectors) bypasses it, and a prerelease never blocks a stable release.
+
+- **Named registries.** `zap.named_registries` defines registry aliases
+  usable as a specifier prefix, and the lockfile records the registry
+  (`name@work:1.0.0`) so a same-name package from another registry cannot
+  be substituted:
+
+```json
+{
+  "zap": {
+    "named_registries": { "work": "https://npm.work.example.com/" }
+  },
+  "dependencies": { "@corp/lib": "work:^2.0.0" }
+}
+```
+
 ## v0.4.0
 
 - **Apply patch files to installed dependencies**, pnpm style. Extract a
