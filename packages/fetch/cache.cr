@@ -3,9 +3,12 @@ require "utils/directories"
 require "utils/misc"
 require "concurrency/data_structures/safe_hash"
 
-class Fetch(T)
+# The cache container, reopened with the same arity as the parametrized
+# fetch so `Fetch::Cache` stays reachable as a namespace.
+class Fetch(T, Transport)
   abstract class Cache(T)
     Log = ::Log.for("zap.fetch.cache")
+    CACHE_DIR = ".fetch_cache"
 
     abstract def get(key_str : String, etag : String?) : T?
     abstract def get(key_str : String, &etag : -> String?) : T?

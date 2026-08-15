@@ -89,7 +89,11 @@ class Concurrency::Pipeline
 
   def await(*, force_wait = false)
     Fiber.yield
-    if force_wait || @counter.get > 0 || @end_channel.closed?
+    # The error array is populated before the fiber's ensure runs, so a
+    # raise that lands between @counter.sub and the end-channel send is
+    # still visible here (the channel alone would race: counter 0 + the
+    # channel not yet closed).
+    if force_wait || @counter.get > 0 || @end_channel.closed? || @errors.size > 0
       maybe_exceptions = @end_channel.receive?
       raise PipelineException.new(maybe_exceptions) if maybe_exceptions
     end

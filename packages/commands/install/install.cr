@@ -112,7 +112,8 @@ module Commands::Install
           config.store_path,
           npmrc,
           pool_max_size: config.network_concurrency,
-          bypass_staleness_checks: install_config.prefer_offline
+          bypass_staleness_checks: install_config.prefer_offline,
+          network_protocol: ENV["ZAP_NETWORK_PROTOCOL"]? || inferred_context.main_package.zap_config.try(&.network_protocol)
         ),
         pipeline: Concurrency::Pipeline.new(workers: install_config.workers)
       )

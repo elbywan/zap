@@ -36,6 +36,10 @@ shards:
     path: ../git
     version: 0.1.0
 
+  http2:
+    path: ../http2
+    version: 0.5.2
+
   msgpack:
     git: https://github.com/crystal-community/msgpack-crystal.git
     version: 1.3.4

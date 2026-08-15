@@ -16,7 +16,7 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
   DEFAULT_MINIMUM_RELEASE_AGE = "7d"
 
   @clients : RegistryClients
-  @client_pool : Fetch(Manifest)
+  @client_pool : RegistryClients::Pool
   @package_name : String
   getter base_url : URI
 
@@ -108,49 +108,116 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
       # the tarball_url is absolute and can point to an entirely different domain
       # so we need to find the right client pool for it
       pool_key, pool = @clients.find_or_init_pool(tarball_url)
-      pool.client do |client|
-        Log.debug { "Downloading tarball from #{tarball_url}…" }
+      Log.debug { "Downloading tarball from #{tarball_url}…" }
 
-        # we also need to relativize the tarball url to the pool base url
-        # otherwise some registries (verdaccio for instance) will return a 404
-        relative_url = URI.parse(pool_key).relativize(tarball_url).to_s
-        client.get("/" + relative_url) do |response|
-          raise "Invalid status code from #{tarball_url} (#{response.status_code})" unless response.status_code == 200
-
-          content_length = response.headers["Content-Length"]?
-          Log.debug { "Streaming and unpacking tarball from #{tarball_url}… (size: #{content_length || "?"} bytes)" }
-
-          IO::Digest.new(response.body_io, algorithm_instance.call).tap do |io|
-            state.store.unpack_and_store_tarball(metadata, io)
-
-            io.skip_to_end
-            computed_hash = io.final
-            if unsupported_algorithm
-              if computed_hash.hexstring != shasum
-                raise "shasum mismatch for #{tarball_url} (#{shasum})"
-              end
-            else
-              if Base64.strict_encode(computed_hash) != hash
-                raise "integrity mismatch for #{tarball_url} (#{integrity})"
-              end
+      # we also need to relativize the tarball url to the pool base url
+      # otherwise some registries (verdaccio for instance) will return a 404
+      relative_url = URI.parse(pool_key).relativize(tarball_url).to_s
+      case pool
+      when Fetch::HTTP2(Manifest)
+        begin
+          pool.client do |client|
+            client.get("/" + relative_url, Shared::Constants::HEADERS) do |response|
+              raise "Invalid status code from #{tarball_url} (#{response[":status"]})" unless response[":status"] == "200"
+              Log.debug { "Streaming and unpacking tarball from #{tarball_url}… (size: #{response["content-length"] || "?"} bytes)" }
+              unpack_and_verify(response.io, metadata, tarball_url, algorithm_instance, unsupported_algorithm, shasum, hash, integrity, state)
             end
-          rescue e
-            state.store.remove_package(metadata)
-            raise Exception.new("Unable to download package #{metadata.name}@#{metadata.version} from #{tarball_url}: #{e.message}", e)
           end
-          true
+        rescue e : Fetch::HTTP2Transport::Unavailable
+          raise e if pool.fallback.nil?
+          download_tarball(pool.fallback.not_nil!, relative_url, tarball_url, metadata, algorithm_instance, unsupported_algorithm, shasum, hash, integrity, state)
         end
+      else
+        download_tarball(pool, relative_url, tarball_url, metadata, algorithm_instance, unsupported_algorithm, shasum, hash, integrity, state)
       end
     end
+  end
+
+  # Downloads and unpacks the tarball through the HTTP/1.1 pool (the
+  # direct fallback for h2-unavailable registries).
+  private def download_tarball(
+    pool : Fetch(Manifest, Fetch::HTTP1Transport),
+    relative_url : String,
+    tarball_url : String,
+    metadata : Data::Package,
+    algorithm_instance : Proc(::Digest),
+    unsupported_algorithm : Bool,
+    shasum : String?,
+    hash : String?,
+    integrity : String?,
+    state : Commands::Install::State,
+  ) : Bool
+    pool.client do |client|
+      client.get("/" + relative_url) do |response|
+        raise "Invalid status code from #{tarball_url} (#{response.status_code})" unless response.status_code == 200
+        Log.debug { "Streaming and unpacking tarball from #{tarball_url}… (size: #{response.headers["Content-Length"]? || "?"} bytes)" }
+        unpack_and_verify(response.body_io, metadata, tarball_url, algorithm_instance, unsupported_algorithm, shasum, hash, integrity, state)
+      end
+    end
+  end
+
+  # Unpacks the tarball into the store while verifying its digest, cleaning
+  # up the partial state on any failure. IO errors pass through so the pool
+  # retry can re-download the tarball.
+  private def unpack_and_verify(
+    io : IO,
+    metadata : Data::Package,
+    tarball_url : String,
+    algorithm_instance : Proc(::Digest),
+    unsupported_algorithm : Bool,
+    shasum : String?,
+    hash : String?,
+    integrity : String?,
+    state : Commands::Install::State,
+  ) : Bool
+    IO::Digest.new(io, algorithm_instance.call).tap do |digest|
+      state.store.unpack_and_store_tarball(metadata, digest)
+
+      digest.skip_to_end
+      computed_hash = digest.final
+      if unsupported_algorithm
+        raise "shasum mismatch for #{tarball_url} (#{shasum})" if computed_hash.hexstring != shasum
+      elsif Base64.strict_encode(computed_hash) != hash
+        raise "integrity mismatch for #{tarball_url} (#{integrity})"
+      end
+    rescue e : IO::Error
+      state.store.remove_package(metadata)
+      raise e
+    rescue e
+      state.store.remove_package(metadata)
+      raise Exception.new("Unable to download package #{metadata.name}@#{metadata.version} from #{tarball_url}: #{e.message}", e)
+    end
+    true
   end
 
   private def fetch_metadata(*, pinned_version : String? = nil) : Data::Package?
     Log.debug { "(#{@name}@#{specifier}) Fetching metadata… #{@skip_cache ? "(skipping cache)" : ""} #{pinned_version ? "[pinned_version #{pinned_version}]" : ""}" }
     state.store.with_lock("#{@base_url.to_s}/#{@package_name}", state.config) do
       metadata_url = @base_url.relativize("/#{@package_name}").to_s
-      manifest = @skip_cache ? @client_pool.client { |http|
-        Manifest.new(http.get(metadata_url, Shared::Constants::HEADERS).body)
-      } : @client_pool.fetch_with_cache(metadata_url, Shared::Constants::HEADERS) { |body| Manifest.new(body) }
+      manifest = if @skip_cache
+        case http_pool = @client_pool
+        when Fetch::HTTP2(Manifest)
+          begin
+            http_pool.client do |http|
+              headers = Shared::Constants::HEADERS
+              body = ""
+              http.get(metadata_url, headers) { |response| body = response.io.gets_to_end }
+              Manifest.new(body)
+            end
+          rescue e : Fetch::HTTP2Transport::Unavailable
+            raise e if http_pool.fallback.nil?
+            http_pool.fallback.not_nil!.client do |http|
+              Manifest.new(http.get(metadata_url, Shared::Constants::HEADERS).body)
+            end
+          end
+        else
+          @client_pool.client do |http|
+            Manifest.new(http.get(metadata_url, Shared::Constants::HEADERS).body)
+          end
+        end
+      else
+        @client_pool.fetch_with_cache(metadata_url, Shared::Constants::HEADERS) { |body| Manifest.new(body) }
+      end
       Log.debug { "(#{@name}@#{@specifier}) Checking the registry metadata for a match against the version/dist-tag" }
       # With --latest the declared range is ignored and the newest version is
       # picked; the resolved version is still pinned to the lockfile. Only
