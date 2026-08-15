@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.6.0
+
+- **An in-house HTTP/2 client replaces the benchmarked-and-rejected
+  `ysbaddaden/http2` shard.** The RFC 9113 client (with the RFC 7541 HPACK)
+  implements the connection preface and SETTINGS exchange, the frame codec,
+  the stream state machine, the multiplexed requests with 16 MiB flow
+  control windows, the transparent gzip/deflate decompression, and the
+  bounds (frame size, header-list size, response and body timeouts). The
+  HPACK decoder/encoder is verified against the RFC 7541 Appendix C
+  vectors.
+- **HTTP/2 is now the default registry protocol**, with an automatic
+  HTTP/1.1 fallback when the registry does not negotiate h2. The
+  `network_protocol` config selects `http1` (force the HTTP/1.1 pool),
+  `http2` (strict, no fallback), or the default, and the
+  `ZAP_NETWORK_PROTOCOL` environment variable overrides it.
+- **The HTTP/2 fetch multiplexes the requests over a few connections per
+  registry**, opened lazily and in parallel on the first use, so a fully
+  cached install never touches the network. Dropped connections are
+  replaced and retried with a jittered backoff; the pool applies the same
+  TLS options and Authorization header as the HTTP/1.1 pool, including on
+  reconnects. Cold installs measure about 2x faster than the HTTP/1.1
+  pool.
+- **Reliability fixes.** The pipeline `await` race that could silently
+  swallow a resolution error is closed, and the npmrc registry auth lookup
+  is fixed for registries with ports.
+- **A verdaccio end-to-end suite** (`spec/e2e`) boots a real registry
+  (https, HTTP/1.1-only) and covers the h2 to h1 fallback, the explicit
+  http1, the TLS CA verification, the registry auth, and the failure
+  modes. A dedicated CI job runs it on ubuntu, macos, and windows.
+- **The HTTP/2 protocol is specified** in `specifications/http2.md`.
+
 ## v0.5.2
 
 - **Catalogs are now a first-class specifier.** The `catalog:` and
