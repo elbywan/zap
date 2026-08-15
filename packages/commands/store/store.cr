@@ -21,7 +21,7 @@ module Commands::Store
   end
 
   def self.clear_http_cache(config : Core::Config, store_config : Store::Config)
-    http_cache_path = Path.new(config.store_path) / Fetch::CACHE_DIR
+    http_cache_path = Path.new(config.store_path) / Fetch::Cache::CACHE_DIR
     puts "💣 Nuking http cache at '#{http_cache_path}'…"
     FileUtils.rm_rf(http_cache_path)
     puts "💥 Done!"
