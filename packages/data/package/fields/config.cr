@@ -33,7 +33,8 @@ class Data::Package
       trust_policy_exclude : Array(String)? = nil,
       named_registries : Hash(String, String)? = nil,
       catalog : Hash(String, String)? = nil,
-      catalogs : Hash(String, Hash(String, String))? = nil do
+      catalogs : Hash(String, Hash(String, String))? = nil,
+      network_protocol : String? = nil do
       include JSON::Serializable
       include YAML::Serializable
       include MessagePack::Serializable
