@@ -37,7 +37,10 @@ module Commands::Install::Linker
       end
     end
 
-    # Prune unused dependencies from the filesystem
+    # Prune unused dependencies from the filesystem. The classic linker's
+    # writer already removes stale nested copies as it re-derives each
+    # package's placement; this walk only clears the top-level orphans
+    # whose key left the lockfile.
     def prune_orphan_modules
       prune_workspace_orphans(Path.new(state.config.node_modules))
       state.context.workspaces.try &.each do |workspace|
@@ -47,6 +50,7 @@ module Commands::Install::Linker
 
     private def prune_workspace_orphans(modules_directory : Path, *, unlink_binaries : Bool = true)
       if Dir.exists?(modules_directory)
+        remaining = 0
         # For each hoisted or direct dependency
         Dir.each_child(modules_directory) do |package_dir|
           package_path = modules_directory / package_dir
@@ -54,6 +58,7 @@ module Commands::Install::Linker
           if package_dir.starts_with?('@')
             # Scoped package - recurse on children
             prune_workspace_orphans(package_path, unlink_binaries: unlink_binaries)
+            remaining += 1 if Dir.exists?(package_path)
           else
             if should_prune_orphan?(package_path)
               Log.debug { "Pruning orphan package: #{package_dir}" }
@@ -65,12 +70,15 @@ module Commands::Install::Linker
               end
               FileUtils.rm_rf(package_path)
               state.installed_state.delete(package_path.to_s)
+            else
+              remaining += 1
             end
           end
         end
 
-        # Remove modules directory if empty
-        if (size = Dir.children(modules_directory).size) < 1
+        # Remove modules directory if empty (the walk counted the remaining
+        # children, so no second enumeration is needed)
+        if remaining < 1
           FileUtils.rm_rf(modules_directory)
         end
       end

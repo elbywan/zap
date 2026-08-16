@@ -69,6 +69,14 @@ struct Commands::Install::Config < Core::CommandConfig
   getter engine_strict : Bool = false
   @[Env]
   getter prefer_offline : Bool = false
+  # prefer-dedupe: reuse the highest already-used version that satisfies
+  # the declared range instead of resolving a fresh one (pnpm parity).
+  @[Env]
+  getter prefer_dedupe : Bool? = nil
+  # One-shot deduplication (`zap dedupe`): re-resolve the whole tree with
+  # the prefer-dedupe preference to collapse compatible versions already
+  # pinned in the lockfile. Command-only, no env var.
+  getter dedupe : Bool = false
   # Single-threaded by default: fetches run in the caller's fiber, so extra
   # pipeline threads only add overhead (measured ~30% slower cold installs).
   # Bump with --workers / ZAP_WORKERS when more parallelism pays off.

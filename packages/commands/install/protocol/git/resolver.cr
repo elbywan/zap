@@ -9,7 +9,12 @@ end
 
 module Commands::Install::Protocol::Git::Resolver
   private abstract struct Base < Commands::Install::Protocol::Resolver
-    getter git_remote : ::Git::Remote
+    # Lazily constructed: a bare commit-hash specifier (the on_resolve pin
+    # in the parent's lockfile deps) is resolved entirely from the lockfile,
+    # so the remote must not be built (and validated) for the pinned path.
+    getter git_remote : ::Git::Remote do
+      ::Git::Remote.new(@specifier.to_s, Reporter::ReporterPrependPipe.new(@state.reporter))
+    end
 
     def initialize(
       state,
@@ -20,7 +25,6 @@ module Commands::Install::Protocol::Git::Resolver
       skip_cache = false
     )
       super
-      @git_remote = ::Git::Remote.new(@specifier.to_s, Reporter::ReporterPrependPipe.new(@state.reporter))
     end
 
     def resolve(*, pinned_version : String? = nil) : Data::Package
@@ -34,8 +38,14 @@ module Commands::Install::Protocol::Git::Resolver
     end
 
     def fetch_metadata : Data::Package
-      commit_hash = @git_remote.commitish_hash
-      cache_key = Digest::SHA1.hexdigest("#{@git_remote.short_key}")
+      # A bare commit-hash specifier is the on_resolve pin: the entry must
+      # already be in the lockfile, so a fetch here means the lockfile is
+      # inconsistent (the pin exists without the resolved entry).
+      if specifier.to_s.matches?(/\A[0-9a-f]{40}\z/)
+        raise "The git commit #{specifier} for #{@name} is pinned in the lockfile but its entry is missing. Regenerate it with `zap i`."
+      end
+      commit_hash = git_remote.commitish_hash
+      cache_key = Digest::SHA1.hexdigest("#{git_remote.short_key}")
       metadata_cache_key = "#{@name}__git:#{cache_key}.package.json"
       cloned_repo_path = Path.new(Dir.tempdir, cache_key)
 
@@ -47,7 +57,7 @@ module Commands::Install::Protocol::Git::Resolver
           clone_to(cloned_repo_path) unless cloned || metadata_cached
           Data::Package.init(metadata_cached && metadata_path ? metadata_path : cloned_repo_path, append_filename: !metadata_cached).tap do |pkg|
             @state.store.store_file(metadata_cache_key, pkg.to_json) unless metadata_cached
-            pkg.dist = Data::Package::Dist::Git.new(commit_hash, specifier.to_s, @git_remote.key, cache_key)
+            pkg.dist = Data::Package::Dist::Git.new(commit_hash, specifier.to_s, git_remote.key, cache_key)
           end
         end
       end
@@ -91,7 +101,7 @@ module Commands::Install::Protocol::Git::Resolver
     end
 
     protected def clone_to(path : Path | String)
-      @git_remote.clone(path)
+      git_remote.clone(path)
     end
 
     private def prepare_package(
@@ -144,7 +154,7 @@ module Commands::Install::Protocol::Git::Resolver
     end
 
     protected def clone_to(path : Path | String)
-      api_url = "https://api.github.com/repos/#{@raw_version.to_s.split('#')[0]}/tarball/#{@git_remote.commitish || ""}"
+      api_url = "https://api.github.com/repos/#{@raw_version.to_s.split('#')[0]}/tarball/#{git_remote.commitish || ""}"
       tarball_url = HTTP::Client.get(api_url).headers["Location"]?
       raise "Failed to fetch package location from Github at #{api_url}" unless tarball_url && !tarball_url.empty?
       Utils::TarGzip.download_and_unpack(tarball_url, path)

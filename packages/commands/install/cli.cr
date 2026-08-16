@@ -18,6 +18,10 @@ class Commands::Install::CLI < Commands::CLI
     Helpers.command(["update", "up", "upgrade"], "Update the lockfile to use the newest package versions.", "[options] <package(s)>") do
       on_install(parser, command_config, update_packages: true)
     end
+
+    Helpers.command(["dedupe"], "Collapse compatible duplicate package versions into the highest version in use.", "[options]") do
+      on_install(parser, command_config, dedupe: true)
+    end
   end
 
   def on_install(
@@ -26,8 +30,9 @@ class Commands::Install::CLI < Commands::CLI
     *,
     update_packages : Bool = false,
     remove_packages : Bool = false,
+    dedupe : Bool = false,
   ) : Nil
-    command_config.ref = Config.new(ENV, "ZAP_INSTALL").copy_with(update_all: update_packages)
+    command_config.ref = Config.new(ENV, "ZAP_INSTALL").copy_with(update_all: update_packages || dedupe, update_recursive: dedupe, dedupe: dedupe, force_metadata_retrieval: dedupe)
 
     Helpers.separator("Options")
 

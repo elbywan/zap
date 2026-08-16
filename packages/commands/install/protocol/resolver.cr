@@ -32,6 +32,13 @@ abstract struct Commands::Install::Protocol::Resolver
   abstract def valid?(metadata : Data::Package) : Bool
   abstract def store?(metadata : Data::Package, &on_downloading) : Bool
 
+  # The highest already-used version of the package that satisfies the
+  # declared range (prefer-dedupe). Only the registry resolver has
+  # already-resolved candidates; the other protocols resolve fresh.
+  def dedupe_candidate(name : String, declared_range : String) : Data::Package?
+    nil
+  end
+
   protected def on_resolve(pkg : Data::Package)
     aliased_name = @name.pipe { |name| name.is_a?(Aliased) ? name.alias : nil }
     parent_package = parent

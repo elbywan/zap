@@ -68,6 +68,30 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
     )
   end
 
+  # The highest already-resolved version of the package whose declared
+  # range accepts it, or nil when none does (prefer-dedupe). The candidates
+  # are the versions actually in use in the tree: the lockfile entries and
+  # the resolutions of the current run, across the root, the workspace
+  # members, and third-party subtrees of the same registry.
+  def dedupe_candidate(name : String, declared_range : String) : Data::Package?
+    range = Semver.parse?(declared_range)
+    return nil unless range
+    best = nil
+    state.lockfile.packages_lock.read do
+      state.lockfile.packages.each_value do |pkg|
+        next unless pkg.name == name
+        next unless pkg.kind.registry?
+        dist = pkg.dist
+        # The tarball must come from the same registry base (the trailing
+        # slash avoids matching a sibling registry with a longer path).
+        next unless dist.is_a?(Data::Package::Dist::Registry) && dist.tarball.starts_with?(@base_url.to_s.rstrip('/') + "/")
+        next unless range.satisfies?(pkg.version)
+        best = pkg if best.nil? || Semver::Version.parse(pkg.version) > Semver::Version.parse(best.version)
+      end
+    end
+    best
+  end
+
   def store?(metadata : Data::Package, &on_downloading) : Bool
     state.store.with_lock(metadata, state.config) do
       next false if state.store.package_is_cached?(metadata)

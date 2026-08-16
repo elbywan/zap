@@ -423,14 +423,14 @@ module Commands::Install
         next if overrides.try(&.has_key?(dep_name))
         next unless declared.is_a?(String)
         next unless range = Semver.parse?(declared)
-        resolved =
-          if type.optional_dependency?
-            pkg.optional_dependencies_refs.find { |ref| ref.name == dep_name }
-          else
-            pkg.dependencies_refs.find { |ref| ref.name == dep_name }
-          end
+        refs = type.optional_dependency? ? pkg.optional_dependencies_refs : pkg.dependencies_refs
+        # An aliased dependency resolves to the same real package, so its ref
+        # (which carries the real name) can precede the direct dependency's
+        # ref. The lockfile is only inconsistent when no ref for the name
+        # satisfies the declared range.
+        next if refs.any? { |ref| ref.name == dep_name && range.satisfies?(ref.version) }
+        resolved = refs.find { |ref| ref.name == dep_name }
         next unless resolved
-        next if range.satisfies?(resolved.version)
         errors << "#{pkg.key} resolves #{dep_name} to #{resolved.key}, which does not satisfy the declared range #{declared}"
       end
     end
@@ -574,9 +574,11 @@ module Commands::Install
                end
       Log.debug { "• Pruning previous install" }
       linker.remove(pruned_direct_dependencies)
-      linker.prune_orphan_modules
-      Log.debug { "• Installing packages" }
       linker.install
+      # The classic writer removes stale nested copies as it re-derives
+      # each package's placement; this walk only clears the top-level
+      # orphans whose key left the lockfile.
+      linker.prune_orphan_modules
       linker
     end
   end
