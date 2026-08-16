@@ -46,4 +46,28 @@ describe "git dependencies", tags: "integration" do
       end
     end
   end
+
+  it "reinstalls a transitive git dependency from the lockfile pin" do
+    It.with_registry do |registry|
+      repo = Path.new(Dir.tempdir, "zap-git-#{Random::Secure.hex(4)}")
+      begin
+        It.make_git_repo(repo, %({"name":"git-pkg","version":"1.0.0","main":"index.js"}), {"index.js" => "from-git"})
+        registry.add("parent", "1.0.0", It.pkg("parent", "1.0.0", dependencies: {"git-pkg" => "git+file://#{repo}"}), {"index.js" => "p"})
+
+        It.install_project(registry, %({"name":"app","version":"1.0.0","dependencies":{"parent":"1.0.0"}})) do |project|
+          # The parent's lockfile deps pin the git dependency by its resolved
+          # commit hash; a second install must route the bare-hash specifier
+          # back to the git resolver instead of the registry fallback.
+          Commands::Install.run(
+            Core::Config.new.copy_with(prefix: project.to_s, store_path: (project / "store").to_s, silent: true),
+            Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true),
+            raise_on_failure: true, reporter: Reporter::Null.new
+          )
+          File.read(project / "node_modules/parent/node_modules/git-pkg/index.js").should eq("from-git")
+        end
+      ensure
+        FileUtils.rm_rf(repo)
+      end
+    end
+  end
 end

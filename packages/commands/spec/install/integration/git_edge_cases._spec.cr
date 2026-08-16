@@ -44,7 +44,7 @@ describe "git dependencies edge cases", tags: "integration" do
         File.write(repo / "index.js", "v2")
         Process.run("git", ["-C", repo.to_s, "add", "."])
         env = {"GIT_AUTHOR_NAME" => "zap-tests", "GIT_AUTHOR_EMAIL" => "zap-tests@example.com", "GIT_COMMITTER_NAME" => "zap-tests", "GIT_COMMITTER_EMAIL" => "zap-tests@example.com"}
-        Process.run("git", ["-C", repo.to_s, "commit", "-q", "-m", "v2"], env: env)
+        Process.run("git", ["-C", repo.to_s, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "v2"], env: env)
         Process.run("git", ["-C", repo.to_s, "tag", "2.0.0"])
 
         It.install_project(registry, %({"name":"app","version":"1.0.0","dependencies":{"git-semver":"git+file://#{repo}#semver:^1.0.0"}})) do |project|

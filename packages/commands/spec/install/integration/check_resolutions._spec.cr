@@ -16,6 +16,21 @@ describe "check resolutions", tags: "integration" do
     end
   end
 
+  it "passes when an aliased and a direct dependency resolve the same package to different versions" do
+    It.with_registry do |registry|
+      registry.add("real", "1.0.0", It.pkg("real", "1.0.0"), {"index.js" => "1.0.0"})
+      registry.add("real", "2.0.0", It.pkg("real", "2.0.0"), {"index.js" => "2.0.0"})
+      # The aliased dep resolves the real package first (manifest order), so
+      # its ref (which carries the real name) precedes the direct dep's ref.
+      registry.add("parent", "1.0.0", It.pkg("parent", "1.0.0", dependencies: {"al" => "npm:real@^1.0.0", "real" => "^2.0.0"}), {"index.js" => "p"})
+
+      ic = Commands::Install::Config.new.copy_with(check_resolutions: true)
+      It.install_project(registry, %({"name":"app","version":"1.0.0","dependencies":{"parent":"1.0.0"}}), install_config: ic) do |project|
+        File.read(project / "node_modules/real/index.js").should eq("2.0.0")
+      end
+    end
+  end
+
   it "raises when a direct resolution was tampered in place" do
     It.with_registry do |registry|
       registry.add("a", "1.0.0", It.pkg("a", "1.0.0"), {"index.js" => "a"})

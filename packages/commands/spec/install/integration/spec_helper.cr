@@ -262,7 +262,9 @@ module Zap::Integration
     Process.run("git", ["init", "-q", "-b", "main", repo.to_s])
     Process.run("git", ["-C", repo.to_s, "add", "."])
     env = {"GIT_AUTHOR_NAME" => "zap-tests", "GIT_AUTHOR_EMAIL" => "zap-tests@example.com", "GIT_COMMITTER_NAME" => "zap-tests", "GIT_COMMITTER_EMAIL" => "zap-tests@example.com"}
-    Process.run("git", ["-C", repo.to_s, "commit", "-q", "-m", "init"], env: env)
+    # Signing is disabled so the helper works regardless of the developer's
+    # global git config (e.g. commit.gpgsign with an unavailable agent).
+    Process.run("git", ["-C", repo.to_s, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "init"], env: env)
   end
 
   # Runs a block with a fresh fixture registry, stopping it afterwards.
