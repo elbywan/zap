@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.7.0
+
+- **Prefer-dedupe is enabled by default.** Compatible direct and transitive
+  ranges reuse the highest already-used version, across workspaces and
+  third-party subtrees. `zap.prefer_dedupe` and
+  `ZAP_INSTALL_PREFER_DEDUPE` control the behavior.
+- **One-shot dedupe.** `zap dedupe` collapses compatible resolutions in an
+  existing tree, including transitive ranges, package extensions, overrides,
+  catalogs, aliases, and all install strategies.
+- **Placement-aware cleanup.** Classic hoisting removes stale nested copies
+  from the placement decision without a recursive dependency-tree crawl.
+- **Lockfile and reinstall hardening.** Exact pins, workspace roots,
+  aliases, git dependencies, partial installs, and frozen installs remain
+  stable through dedupe and updates.
+- **Expanded verification.** The release includes 403 command examples,
+  seven real-registry end-to-end examples, and coverage for workspaces,
+  partial node_modules deletion, and all install strategies.
+
 ## v0.6.0
 
 - **An in-house HTTP/2 client replaces the benchmarked-and-rejected
