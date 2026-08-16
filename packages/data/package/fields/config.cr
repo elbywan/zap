@@ -34,7 +34,8 @@ class Data::Package
       named_registries : Hash(String, String)? = nil,
       catalog : Hash(String, String)? = nil,
       catalogs : Hash(String, Hash(String, String))? = nil,
-      network_protocol : String? = nil do
+      network_protocol : String? = nil,
+      prefer_dedupe : Bool? = nil do
       include JSON::Serializable
       include YAML::Serializable
       include MessagePack::Serializable

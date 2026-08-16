@@ -49,6 +49,13 @@ struct Commands::Install::Protocol::Git < Commands::Install::Protocol::Base
     when .matches?(Shared::Constants::GH_SHORT_REGEX)
       Log.debug { "(#{name}@#{specifier}) Resolved as a github dependency" }
       Resolver::Github.new(state, name, specifier, parent, dependency_type, skip_cache)
+    when .matches?(/\A[0-9a-f]{40}\z/)
+      # A bare 40-hex specifier is the resolved commit hash pinned in the
+      # parent's lockfile deps by on_resolve. Route it back to the git
+      # resolver: the registry fallback would find the git-keyed entry and
+      # fail while trying to store a git dist as a registry tarball.
+      Log.debug { "(#{name}@#{specifier}) Resolved as a pinned git commit" }
+      Resolver::Git.new(state, name, specifier, parent, dependency_type, skip_cache)
     end
   end
 end

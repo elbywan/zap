@@ -66,10 +66,11 @@ module Commands::Install::Resolver
       # Bust the lockfile cache for the packages being updated. With
       # --recursive the whole transitive tree under a matched package is
       # re-resolved too (an ancestor match propagates the bust downwards).
-      bust_pinned_cache = (is_root || config.update_recursive) && (config.update_all || update_target?(config.updated_packages, name) || (config.update_recursive && config.updated_packages.any? do |pattern|
+      bust_pinned_cache = !dedupe_disabled(state) && (is_root || config.update_recursive) && (config.update_all || update_target?(config.updated_packages, name) || (config.update_recursive && config.updated_packages.any? do |pattern|
         name_pattern, _range = Utils::Misc.parse_key(pattern)
         !name_pattern.starts_with?('!') && ancestors.any? { |a| ::File.match?(name_pattern, a.name) }
       end))
+
 
       if version_or_alias.is_a?(Data::Package::Alias)
         version = version_or_alias.to_s
@@ -89,6 +90,30 @@ module Commands::Install::Resolver
       )
     end
     changed
+  end
+
+  # Whether the install is an update run (any re-resolution is
+  # deliberate and must not be deduplicated against the stale lockfile).
+  private def self.update_in_progress(config : Commands::Install::Config) : Bool
+    config.update_all || config.update_latest || config.updated_packages.size > 0
+  end
+
+  # Whether prefer-dedupe is enabled: the install config env var wins,
+  # then the package.json zap config, then the default (on).
+  private def self.prefer_dedupe(state : Commands::Install::State) : Bool
+    env = state.install_config.prefer_dedupe
+    return env unless env.nil?
+    config = state.context.main_package.zap_config.try(&.prefer_dedupe)
+    config.nil? ? true : config
+  end
+
+  # Whether the one-shot dedupe pass (`zap dedupe`) is ineffective: the
+  # prefer-dedupe option gates the whole dedupe machinery. With the option
+  # off the pass degrades to a plain install — the pins stay authoritative
+  # and nothing re-resolves or collapses — instead of silently upgrading
+  # the tree to the newest registry versions.
+  private def self.dedupe_disabled(state : Commands::Install::State) : Bool
+    state.install_config.dedupe && !prefer_dedupe(state)
   end
 
   # Whether a dependency is targeted by the update patterns (pnpm parity):
@@ -280,6 +305,25 @@ module Commands::Install::Resolver
       end
       # Attempt to use the package data from the lockfile
       maybe_metadata = resolver.get_pinned_metadata(name) unless bust_pinned_cache
+      # prefer-dedupe: when no exact lockfile key matches, reuse the
+      # highest already-used version of the package that satisfies the
+      # declared range instead of resolving a fresh one. Skip during
+      # updates: an update re-resolves deliberately and must not collapse
+      # back to the stale lockfile versions. A dedupe pass (`zap dedupe`)
+      # always resolves to the used versions: with the option off it
+      # collapses nothing but keeps the pins instead of re-resolving
+      # fresh (no surprise update).
+      if maybe_metadata.nil? && ((state.install_config.dedupe && !dedupe_disabled(state)) || (!bust_pinned_cache && !update_in_progress(state.install_config) && prefer_dedupe(state)))
+        maybe_metadata = resolver.dedupe_candidate(name, version)
+        if maybe_metadata && package
+          # The dedupe candidate reuses an already-resolved version without
+          # a fresh `resolver.resolve`, so the `on_resolve` pin (the resolved
+          # version recorded in the parent's specifier) never runs. Record it
+          # in the parent — the lockfile root for direct dependencies — to
+          # keep the lockfile's exact-pin invariant.
+          parent.try &.dependency_specifier(name, maybe_metadata.not_nil!.version, type)
+        end
+      end
       # Check if the data from the lockfile is still valid (direct deps can be modified in the package.json file or through the cli)
       if maybe_metadata && is_direct_dependency
         maybe_metadata = nil unless resolver.valid?(maybe_metadata)
@@ -302,7 +346,7 @@ module Commands::Install::Resolver
         # In update contexts the lockfile entry is stale (its dependency pins
         # are resolved versions, not declared ranges), so the freshly resolved
         # metadata drives the subtree resolution.
-        _metadata = (state.install_config.update_recursive ? metadata_ref : (lockfile_metadata || metadata_ref))
+        _metadata = ((state.install_config.update_recursive && !dedupe_disabled(state)) ? metadata_ref : (lockfile_metadata || metadata_ref))
         # The infinite-loop guard is per key, tracked on the state: the fresh
         # metadata is a new object on every visit (with --recursive), so a
         # flag on the package itself would never trip, re-resolving the same
@@ -310,26 +354,33 @@ module Commands::Install::Resolver
         already_resolved = !state.resolved_keys.add?(metadata_key)
 
         # Forcefully fetch the metadata from the registry if the force_metadata_retrieval option is enabled
-        if (forced_retrieval = lockfile_cached && force_metadata_retrieval && !already_resolved)
+        if (forced_retrieval = lockfile_cached && force_metadata_retrieval && !dedupe_disabled(state) && !already_resolved)
           Log.debug { "(#{metadata_key}) Forcing metadata retrieval #{(package ? "[parent: #{package.key}]" : "")}" }
           fresh_metadata = resolver.resolve(pinned_version: _metadata.version)
-          _metadata.override_dependencies!(fresh_metadata)
+          if state.install_config.dedupe
+            # The dedupe pass re-resolves transitives against the declared
+            # ranges: the lockfile pins are exact versions, so keeping them
+            # would make the subtree uncollapsible. The fresh manifest's
+            # declared ranges replace the pins for the subtree resolution.
+            _metadata.dependencies = fresh_metadata.dependencies
+            _metadata.optional_dependencies = fresh_metadata.optional_dependencies
+            _metadata.peer_dependencies = fresh_metadata.peer_dependencies
+            _metadata.peer_dependencies_meta = fresh_metadata.peer_dependencies_meta
+          else
+            _metadata.override_dependencies!(fresh_metadata)
+          end
         end
 
-        # Apply package extensions unless the package is already in the lockfile
-        apply_package_extensions(_metadata, state: state) if forced_retrieval || !lockfile_metadata || state.install_config.update_recursive
+        # Apply package extensions unless the package is already in the
+        # lockfile, or when an update re-resolved it for the first time in
+        # this run (a later visit must not re-apply the extension over the
+        # pins the subtree resolution just wrote).
+        should_store = !lockfile_metadata || forced_retrieval || (state.install_config.update_recursive && !dedupe_disabled(state) && !already_resolved)
+        apply_package_extensions(_metadata, state: state) if should_store
         # Flag transitive overrides
         flag_transitive_overrides(_metadata, ancestors, state)
-        # Mark the package and store its parents
-        # Used to prevent packages being pruned in the lockfile
-        _metadata.dependents << package if package
 
-        # Mutate only if the package is not already in the lockfile, or when
-        # an update re-resolved it for the first time in this run. The
-        # dependency pins are written after this store (as the children
-        # resolve), so re-storing a fresh manifest on a later visit would
-        # wipe them and replace them with the declared ranges.
-        if !lockfile_metadata || forced_retrieval || (state.install_config.update_recursive && !already_resolved)
+        if should_store
           Log.debug { "(#{metadata_key}) Saving package metadata in the lockfile #{(package ? "[parent: #{package.key}]" : "")}" }
           # Remove dev dependencies
           _metadata.dev_dependencies = nil
@@ -339,6 +390,14 @@ module Commands::Install::Resolver
           end
         end
 
+        # Register the parent in the entry that survives in the lockfile:
+        # the re-stored metadata on the first visit, the existing entry on
+        # later visits. The update_recursive resolution re-runs on fresh
+        # objects, so registering into _metadata alone would lose the
+        # dependents (and the roots attribution) of every visit after the
+        # first.
+        stored_metadata = should_store ? _metadata : lockfile_metadata
+        stored_metadata.try { |m| m.dependents << package } if package
         package.add_dependency_ref(_metadata, type) if package
 
         _metadata

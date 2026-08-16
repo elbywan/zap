@@ -7,6 +7,7 @@ class Commands::Install::Linker::Classic
         return self
       end
 
+      parent_location = location
       hoist_location = location
       while !hoist_location.nil?
         location = hoist_location.parent.as(LocationNode?)
@@ -14,11 +15,43 @@ class Commands::Install::Linker::Classic
         return update_location(hoist_location) if location.nil?
         case action = hoisting_action?(location)
         in .no_install?
+          # The dependency is already satisfied at or above this level:
+          # any copy left at the direct parent's own node_modules is
+          # obsolete (the placement moved, e.g. a sibling subtree now
+          # provides the version at a higher level).
+          remove_stale_copy(parent_location)
           return
         in .stop?
           return update_location(hoist_location)
         in .continue?
+          # The hoist moved above the direct parent's level: a stale copy
+          # may still be present at the parent's own node_modules from a
+          # previous tree. The writer knows the new placement, so it can
+          # drop the obsolete copy without crawling the tree.
+          remove_stale_copy(parent_location) if hoist_location != parent_location
           hoist_location = location
+        end
+      end
+    end
+
+    # Removes the physical copy of this dependency at the direct parent's
+    # node_modules: it is only valid while the dependency is installed at
+    # the parent's own level, and the hoist above just decided otherwise.
+    private def remove_stale_copy(parent_location : LocationNode)
+      stale_path = parent_location.value.node_modules / (aliased_name || dependency.name)
+      return unless Dir.exists?(stale_path)
+      package = Data::Package.init?(stale_path)
+      if package
+        linker.unlink_binaries(package, stale_path)
+        state.reporter.on_package_removed("#{aliased_name || dependency.name}@#{package.version}")
+      end
+      FileUtils.rm_rf(stale_path)
+      state.installed_state.delete(stale_path.to_s)
+      # Drop the now-empty parent node_modules (except the root's).
+      unless parent_location.value.root
+        modules_dir = stale_path.parent
+        if Dir.exists?(modules_dir) && Dir.children(modules_dir).size < 1
+          FileUtils.rm_rf(modules_dir)
         end
       end
     end
