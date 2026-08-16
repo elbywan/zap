@@ -135,9 +135,14 @@ jobs:
         if: ${{ env.needs_release == 1 }}
         with:
           script: |
-            const { version } = require("./npm/zap/package.json")
+            const fs = require("fs")
+            const shard = fs.readFileSync("shard.yml", "utf8")
+            const match = shard.match(/^version:\s*(\S+)/m)
+            if (!match) throw new Error("version missing from shard.yml")
+            const version = match[1]
             const semverRegex = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
-            const [, major, minor, patch, prerelease, metadata] = version.match(semverRegex)
+            const [, major, minor, patch, prerelease, metadata] = version.match(semverRegex) || []
+            if (!major) throw new Error(`invalid shard.yml version: ${version}`)
             const data = {
               version,
               major,
@@ -147,10 +152,9 @@ jobs:
               metadata,
               distTag: prerelease ? prerelease.split(".")[0] : "latest"
             }
-
             console.log(data)
-
             return data
+
       - name: Trigger release
         if: ${{ env.needs_release == 1 }}
         env:
