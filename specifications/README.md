@@ -45,6 +45,7 @@ A readable example, rendered exactly like the real specs:
 - [Workspaces](workspaces.md) — monorepo support.
 - [Configuration](config.md) — the `zap` section and the npmrc.
 - [Catalogs](catalogs.md) — the `catalog:` protocol (pnpm / yarn parity).
+- [Dedupe](dedupe.md) — collapsing compatible resolutions (prefer-dedupe).
 
 ## The process: specification-first development
 

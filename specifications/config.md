@@ -11,7 +11,7 @@ registry access lives in the npmrc files.
   | Key | Type | Default | Meaning |
   | --- | --- | --- | --- |
   | `strategy` | enum | auto | `classic`, `classic_shallow`, `isolated`, `pnp` |
-  | `hoist_patterns`, `public_hoist_patterns` | string[] | built-in | classic hoisting |
+  | `hoist_patterns`, `public_hoist_patterns` | string[] | built-in | hoisting patterns (classic + isolated) |
   | `package_extensions` | map | `{}` | merge fields into matched packages |
   | `check_peer_dependencies` | bool | false | fail on unmet peers |
   | `patched_dependencies` | map | — | package selector to patch file |
@@ -27,12 +27,24 @@ registry access lives in the npmrc files.
   | `trust_policy` | string | off | `no-downgrade` |
   | `trust_policy_exclude` | string[] | — | names or `name@range` |
   | `named_registries` | map | — | alias to registry URL |
+  | `catalog`, `catalogs` | map | — | the catalog protocol (see [Catalogs](catalogs.md)) |
+  | `prefer_dedupe` | bool | true | reuse the highest already-used compatible version |
 
 - **Resolve the registries from the npmrc.** The default `registry`, the
   `@scope:registry` entries, and `strict_ssl` are shared by the resolution and
   the download phases ([data/npmrc.cr](../packages/data/npmrc.cr)
   `Data::Npmrc`, [install/registry_clients.cr](../packages/commands/install/registry_clients.cr)
   `RegistryClients`).
+
+- **Hoisting patterns come from the `zap` section only.** pnpm reads
+  `public-hoist-pattern`, `hoist-pattern` and `hoist` from the project
+  `.npmrc`; zap does not follow those keys. A repository configured for pnpm
+  should mirror them into `zap.public_hoist_patterns` /
+  `zap.hoist_patterns` (the defaults are `*` for `hoist_patterns` and
+  `*eslint*`, `*prettier*` for `public_hoist_patterns`). Packages matching
+  `public_hoist_patterns` are linked at the root `node_modules`, which is
+  what build tools and lifecycle scripts relying on hoisted types (e.g.
+  `@types/react`) resolve from.
 
 - **Write the `zap` section only through the commands that own it.** The
   save paths (`patch-commit`, `approve-builds`) edit the manifest in place and
