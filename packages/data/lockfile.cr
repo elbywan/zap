@@ -1,4 +1,5 @@
 require "json"
+require "log"
 require "yaml"
 require "msgpack"
 require "digest"
@@ -365,7 +366,14 @@ class Data::Lockfile
   private def peer_resolved_by?(package : Data::Package, peer_name : String, peer_range : Semver::Range) : Bool
     return true if package.name == peer_name && peer_range.satisfies?(package.version)
     if specifier = package.dependency_specifier?(peer_name)
-      peer_range.satisfies?(specifier.is_a?(Data::Package::Alias) ? specifier.version : specifier)
+      version = if specifier.is_a?(Data::Package::Alias)
+                  specifier.version
+                else
+                  # A workspace: (or file:) pin is not a semver string: the
+                  # resolved package version decides.
+                  get_package?(peer_name, specifier).try(&.version) || specifier
+                end
+      peer_range.satisfies?(version)
     else
       false
     end

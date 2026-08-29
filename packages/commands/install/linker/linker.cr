@@ -123,8 +123,14 @@ module Commands::Install::Linker
       ancestors.each do |ancestor|
         ancestor.each_dependency do |ancestor_name, version_or_alias, _|
           next unless ancestor_name == name
-          pinned_version = version_or_alias.is_a?(String) ? version_or_alias : version_or_alias.version
-          satisfied ||= range.satisfies?(pinned_version)
+          version = if version_or_alias.is_a?(Data::Package::Alias)
+                      version_or_alias.version
+                    else
+                      # A workspace: (or file:) pin is not a semver string:
+                      # the resolved package version decides.
+                      state.lockfile.get_package?(ancestor_name, version_or_alias).try(&.version) || version_or_alias
+                    end
+          satisfied ||= range.satisfies?(version)
         end
       end
       satisfied
@@ -164,10 +170,10 @@ module Commands::Install::Linker
               next unless dependency
 
               if peer_ranges = peers[dependency.name]?
-                pinned_version = version_or_alias.is_a?(String) ? version_or_alias : version_or_alias.version
-
+                # The dependency's resolved version decides: the pin can be
+                # a workspace:/file: specifier that is not a semver string.
                 peer_ranges.each do |range|
-                  if range.satisfies?(pinned_version)
+                  if range.satisfies?(dependency.version)
                     resolved_peers << dependency
                   end
                 end

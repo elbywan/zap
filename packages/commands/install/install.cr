@@ -147,7 +147,7 @@ module Commands::Install
       unmet_peers_by_root = state.lockfile.mark_transitive_peers
       if state.install_config.check_peer_dependencies
         Log.debug { "• Checking for unmet peer dependencies" }
-        unmet_peers_hash = check_unmet_peer_dependencies(unmet_peers_by_root)
+        unmet_peers_hash = check_unmet_peer_dependencies(state, unmet_peers_by_root)
       end
 
       if state.install_config.frozen_lockfile
@@ -702,7 +702,7 @@ module Commands::Install
     end
   end
 
-  private def self.check_unmet_peer_dependencies(unmet_peers_by_roots : Array(Tuple(Data::Lockfile::Root, Array(Tuple(String, Semver::Range, Data::Package))))) : Hash(String, Hash(Semver::Range, Set(String)))
+  private def self.check_unmet_peer_dependencies(state : Commands::Install::State, unmet_peers_by_roots : Array(Tuple(Data::Lockfile::Root, Array(Tuple(String, Semver::Range, Data::Package))))) : Hash(String, Hash(Semver::Range, Set(String)))
     # Hash(peer dependency name, Hash(peer dependency version, Set(dependent)))
     Hash(String, Hash(Semver::Range, Set(String))).new.tap do |unmet_peers|
       unmet_peers_by_roots.each do |root, unmet_peers_by_root|
@@ -711,7 +711,16 @@ module Commands::Install
           unless package.peer_dependencies_meta.try(&.[peer_name]?.try(&.["optional"]?))
             next if root.name == peer_name && peer_range.satisfies?(root.version)
             specifier = root.dependency_specifier?(peer_name)
-            next if specifier && specifier.is_a?(String) && peer_range.satisfies?(specifier)
+            if specifier
+              version = if specifier.is_a?(Data::Package::Alias)
+                          specifier.version
+                        else
+                          # A workspace: (or file:) pin is not a semver
+                          # string: the resolved package version decides.
+                          state.lockfile.get_package?(peer_name, specifier).try(&.version) || specifier
+                        end
+              next if peer_range.satisfies?(version)
+            end
 
             unmet_peers_by_name = (unmet_peers[peer_name] ||= Hash(Semver::Range, Set(String)).new)
             unmet_peers_by_name_and_version = (unmet_peers_by_name[peer_range] ||= Set(String).new)
