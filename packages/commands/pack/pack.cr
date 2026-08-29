@@ -182,20 +182,7 @@ module Commands::Pack
         gzip.header.modification_time = Time.unix(0)
         tar = Crystar::Writer.new(gzip, sync_close: true)
         files.each do |rel|
-          full = dir / rel
-          info = File.info(full)
-          header = Crystar::Header.new(
-            # npm strips one directory layer when installing (the tarball
-            # contents live under the "package/" prefix).
-            name: Path.new("package", rel).to_s,
-            mode: bin.includes?(rel) ? 0o755_i64 : 0o644_i64,
-            size: info.size,
-            flag: Crystar::REG.ord.to_u8,
-          )
-          tar.write_header(header)
-          File.open(full, "r") do |file|
-            IO.copy(file, tar.curr)
-          end
+          Utils::TarGzip.pack_file(Path.new(rel), dir / rel, tar, mode: bin.includes?(rel) ? 0o755_i64 : 0o644_i64)
         end
         tar.close
       end

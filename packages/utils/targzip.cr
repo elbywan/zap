@@ -46,14 +46,17 @@ module Utils::TarGzip
     end
   end
 
-  def self.pack_file(relative_path : Path, full_path : Path, tw : Crystar::Writer) : Nil
+  def self.pack_file(relative_path : Path, full_path : Path, tw : Crystar::Writer, *, mode : Int64? = nil) : Nil
     info = ::File.info(full_path)
     hdr = Crystar::Header.new(
       # See: https://docs.npmjs.com/cli/v9/commands/npm-install?v=true#description
       # The package contents should reside in a subfolder inside the tarball (usually it is called package/).
       # npm strips one directory layer when installing the package (an equivalent of tar x --strip-components=1 is run).
       name: Path.new("package", relative_path).to_s,
-      mode: info.permissions.to_i64,
+      # An explicit *mode* overrides the on-disk permissions (used by the
+      # pack command to normalize the entry modes); the mod_time defaults
+      # to the epoch, keeping the archive deterministic.
+      mode: mode || info.permissions.to_i64,
       size: info.size,
       flag: Crystar::REG.ord.to_u8,
     )
