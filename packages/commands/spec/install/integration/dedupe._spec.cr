@@ -590,6 +590,32 @@ describe "dedupe corner cases", tags: "integration" do
     end
   end
 
+  it "does not dedupe onto versions locked only by omitted dependencies" do
+    It.with_registry do |registry|
+      registry.add("dep", "1.0.0", It.pkg("dep", "1.0.0"), {"index.js" => "1.0.0"})
+      registry.add("dep", "1.2.0", It.pkg("dep", "1.2.0"), {"index.js" => "1.2.0"})
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0", dependencies: {"dep" => "^1.0.0"}), {"index.js" => "a"})
+      registry.add("b", "1.0.0", It.pkg("b", "1.0.0", dependencies: {"dep" => "1.0.0"}), {"index.js" => "b"})
+      project = Path.new(Dir.tempdir, "zap-dedupe-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(project)
+        File.write(project / "package.json", %({"name":"app","version":"1.0.0","dependencies":{"a":"1.0.0"},"devDependencies":{"b":"1.0.0"}}))
+        File.write(project / ".npmrc", "registry=#{registry.base_url}/\n")
+        config = Core::Config.new.copy_with(prefix: project.to_s, store_path: (project / "store").to_s, silent: true)
+        ic = Commands::Install::Config.new.copy_with(workers: 1, frozen_lockfile: false, save: true, omit: [Commands::Install::Config::Omit::Dev])
+        Commands::Install.run(config, ic, raise_on_failure: true, reporter: Reporter::Null.new)
+        # a's ^1.0.0 must resolve fresh to the highest version: the locked
+        # dep@1.0.0 is reachable only through the omitted dev edge and is
+        # not a prefer-dedupe candidate.
+        JSON.parse(File.read(project / "node_modules/dep/package.json"))["version"].as_s.should eq("1.2.0")
+        # The lockfile still keeps the full graph.
+        Data::Lockfile.new(project).packages.keys.select { |k| k.starts_with?("dep@") }.sort.should eq(["dep@1.0.0", "dep@1.2.0"])
+      ensure
+        FileUtils.rm_rf(project)
+      end
+    end
+  end
+
   it "keeps declared ranges in the lockfile root through the one-shot dedupe pass" do
     It.with_registry do |registry|
       registry.add("dep", "1.0.0", It.pkg("dep", "1.0.0"), {"index.js" => "1.0.0"})
