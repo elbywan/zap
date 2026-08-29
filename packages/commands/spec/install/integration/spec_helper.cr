@@ -19,6 +19,14 @@ module Zap
   def self.print_banner; end
 end
 
+# The in-process installs never run the CLI epilogue that closes the
+# global registry client pools (Zap.run does it after a real command):
+# close them once the suite is done, so no persistent HTTP/2 connection
+# or its reconnect fiber outlives the process.
+Spec.after_suite do
+  Commands::Install::RegistryClients.close
+end
+
 alias It = Zap::Integration
 
 module Zap::Integration
