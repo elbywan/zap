@@ -1,4 +1,5 @@
 require "ini"
+require "uri"
 require "utils/misc"
 
 struct Data::Npmrc
@@ -105,7 +106,7 @@ struct Data::Npmrc
 
   protected def self.parse_value(value : String)
     String.build do |str|
-      previous_char = nil
+      pending_dollar = false
       parsing_env_var = false
       env_var = String::Builder.new
 
@@ -118,13 +119,18 @@ struct Data::Npmrc
           else
             env_var << char
           end
-        elsif char == '{' && previous_char == '$'
+        elsif char == '{' && pending_dollar
+          # "${VAR}": the pending '$' opens the env var and is not emitted.
           parsing_env_var = true
+          pending_dollar = false
         else
-          str << char
+          # A '$' not followed by '{' (or a run of them) stays literal.
+          str << '$' if pending_dollar
+          pending_dollar = char == '$'
+          str << char unless pending_dollar
         end
-        previous_char = char
       end
+      str << '$' if pending_dollar
     end
   end
 end
