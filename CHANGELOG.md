@@ -1,6 +1,30 @@
 # Changelog
 
-## v0.7.1
+## v0.8.0
+
+- **Add the `pack` command.** Bundle a package into a deterministic,
+  self-contained tarball that both zap and npm can install: `files`
+  whitelist and `.gitignore` aware, `-o`/`--out` with `%s`/`%v` name and
+  version placeholders, and a malformed `files` field now fails loudly
+  instead of silently packing everything.
+- **Rework the help output.** `-h` shows the short help (description,
+  usage, the command's own flags only) and `--help` the full one with the
+  inherited Common/Workspace options; a bare invocation shows the command
+  list. Entries are laid out flag line + description at the terminal
+  width, options are sorted alphabetically within each section, and the
+  banner gains labeled Description and Usage sections. Every label has
+  its own color (yellow title, red Description, magenta Usage, green
+  sections, blue sub-headings, cyan flags), and `[env: ...]` hints move
+  onto the flag line.
+- **Fix prefer-dedupe under `--omit`.** With omitted dev/optional
+  dependencies, dedupe no longer collapses a dependency onto versions
+  locked only through the omitted subtrees — the previously flaky
+  "dedupes with dev dependencies omitted" spec is deterministic.
+- **Exit quietly when the output pipe closes.** `zap ... | head -1`
+  exits 141 silently instead of printing an `IO::Error: Broken pipe`
+  backtrace.
+
+
 
 - **Fix a crash on installs with exotic overrides.** An override whose
   specifier is not a semver range (an `npm:` alias, a git URL, `file:`,
