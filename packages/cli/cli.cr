@@ -16,6 +16,10 @@ class CLI
   def parse
     # Parse options and extract configs
     parser = OptionParser.new do |parser|
+      # The two-space flag indent must match the stdlib's summary_indent:
+      # the subcommand select! uses it to tell flag entries apart.
+      parser.summary_indent = "  "
+
       banner_desc = <<-DESCRIPTION
           #{"A package manager for the Javascript language.".colorize.bold}
 
@@ -25,6 +29,9 @@ class CLI
 
       Commands::Helpers.separator("Commands")
       @commands.each &.register(parser, @command_config_ref)
+
+      # Compact help (-h, bare invocations) shows the commands only.
+      parser.help_scope = parser.@flags.size
 
       Commands::Helpers.separator("Options")
       Commands::Helpers.common_options(true)
