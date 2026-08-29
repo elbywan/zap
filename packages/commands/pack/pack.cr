@@ -123,7 +123,10 @@ module Commands::Pack
   # semantics: the plain pattern only matches the directory entry itself).
   private def self.include_patterns(manifest : JSON::Any) : Array(String)
     includes = [] of String
-    if files_field = manifest["files"]?.try(&.as_a?)
+    if manifest["files"]?
+      # A malformed whitelist silently packing everything would leak
+      # files the author meant to exclude: fail loudly instead.
+      files_field = manifest["files"]?.try(&.as_a?) || raise "Cannot pack: the \"files\" field must be an array of strings"
       files_field.each do |entry|
         if pattern = entry.as_s?
           includes << pattern

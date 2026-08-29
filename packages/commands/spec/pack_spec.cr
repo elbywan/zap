@@ -400,6 +400,24 @@ describe Commands::Pack do
     end
   end
 
+  it "raises a clear error when the files field is malformed" do
+    dir = Path.new(Dir.tempdir, "zap-pack-#{Random::Secure.hex(4)}")
+    begin
+      Dir.mkdir_p(dir)
+      File.write(dir / "package.json", %({"name":"demo","version":"1.0.0","files":"lib"}))
+      File.write(dir / "lib.js", "lib\n")
+      expect_raises(Exception, /files" field must be an array/) do
+        Commands::Pack.run(
+          Core::Config.new.copy_with(prefix: dir.to_s, silent: true),
+          Commands::Pack::Config.new,
+          raise_on_failure: true,
+        )
+      end
+    ensure
+      FileUtils.rm_rf(dir)
+    end
+  end
+
   it "packs a workspace member directory" do
     root = Path.new(Dir.tempdir, "zap-pack-ws-#{Random::Secure.hex(4)}")
     member = root / "packages" / "member"
