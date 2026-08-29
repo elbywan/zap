@@ -29,7 +29,11 @@ module Zap
   # Colorize is tty-only by default since Crystal 1.17; no explicit call needed.
   Zap.run
 
-  VERSION = {{ `shards version`.stringify }}.chomp
+  # The version is baked from the root shard.yml (the single source of
+  # truth): `shards version` would read the cwd's shard.yml, which depends
+  # on where the compiler runs and desyncs the binary from the release
+  # (the npm wrapper is versioned from the root shard.yml at publish time).
+  VERSION = {{ read_file(__DIR__ + "/../../shard.yml").match(/^version:\s*(\S+)/m)[1] }}
 
   Log = ::Log.for("zap.entry")
 
