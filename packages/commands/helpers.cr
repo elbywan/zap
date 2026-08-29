@@ -2,14 +2,23 @@ require "extensions/option_parser"
 
 module Commands::Helpers
   def self.banner(parser, command, description, *, args = "[options]")
+    description = description.gsub('\n', "\n    ")
     parser.banner = <<-BANNER
     ⚡ #{"Zap".colorize.yellow.bold.underline} #{"(v#{Zap::VERSION})".colorize.dim}
 
-    #{description}
+    #{"Description".colorize.underline.red.bold}:
+        #{description}
 
-    #{"Usage".colorize.underline.magenta.bold}: zap #{command} #{args}
-    #{"       zap [command] --help for more information on a specific command".colorize.dim}
+    #{"Usage".colorize.underline.magenta.bold}:
+        zap #{command} #{args}
     BANNER
+
+    hint = if command == "[command]"
+      "zap [command] --help for more information on a specific command."
+    else
+      %(Use "zap #{command} --help" to show all options.)
+    end
+    parser.help_hint = hint.colorize.dim.to_s
   end
 
   macro common_options(sub = false)
@@ -58,8 +67,13 @@ module Commands::Helpers
       @config = @config.copy_with(prefix: @config.deduce_global_prefix, global: true)
     end
 
-    Commands::Helpers.flag("-h", "--help", "Show this help.") do
+    Commands::Helpers.flag("-h", "Show the short help.") do
       puts parser
+      exit
+    end
+
+    Commands::Helpers.flag("--help", "Show the full help.") do
+      STDOUT.print parser.full_help
       exit
     end
 
@@ -110,7 +124,7 @@ module Commands::Helpers
 
   macro subSeparator(text, *, early_line_break = true)
     prefix = "#{ {% if early_line_break %}Shared::Constants::NEW_LINE{% else %}nil{% end %} }"
-    parser.separator("#{prefix}    #{ {{text}} }\n".colorize.blue.bold)
+    parser.separator("#{prefix}  #{ {{text}} }\n".colorize.blue.bold)
   end
 
   # @command_color_index = 0
@@ -119,11 +133,11 @@ module Commands::Helpers
     # flag.colorize(COLORS[@command_color_index % COLORS.size]).bold.tap {
     #   @command_color_index += 1
     # }.to_s
-    flag.colorize.bold.to_s
+    flag.colorize.bold.cyan.to_s
   end
 
   def self.flag_formatter(flag)
-    flag
+    flag.colorize.bold.cyan.to_s
   end
 
   macro flag(*args, &block)
@@ -134,36 +148,42 @@ module Commands::Helpers
     {% if input.is_a?(StringLiteral) %}
       parser.on({{input}},{{description}}, ->::Commands::Helpers.command_formatter(String)) do
         ::Commands::Helpers.banner(parser, {{input}}, {{description}} {% if args %}, args: {{args}}{% end %})
-        ::Commands::Helpers.separator("Inherited", prepend: true)
+        ::Commands::Helpers.separator("Inherited", prepend: true) unless parser.@flags.empty?
         %flags_bak = parser.@flags.dup
         parser.@flags.clear
         {{ yield }}
+        parser.help_scope = parser.@flags.size
         %flags_bak.each { |flag| parser.@flags << flag }
       end
     {% else %}
       {% for a, idx in input %}
         %aliases = {{input}}[...{{idx}}] + {{input}}[({{idx}} + 1)...]
-        %desc = {{description}} + %( alias(es): #{%aliases.join(", ")}).colorize.dim.to_s
+        %alias_desc = %aliases.empty? ? "" : %(\nalias(es): #{%aliases.join(", ")}).colorize.dim.to_s
+        %desc = {{description}} + %alias_desc
         {% if idx == 0 %}
           parser.on({{a}}, %desc, ->::Commands::Helpers.command_formatter(String)) do
             %aliases = {{input}}[...{{idx}}] + {{input}}[({{idx}} + 1)...]
-            %desc = {{description}} + %(\nalias(es): #{%aliases.join(", ")}).colorize.dim.to_s
+            %alias_desc = %aliases.empty? ? "" : %(\nalias(es): #{%aliases.join(", ")}).colorize.dim.to_s
+            %desc = {{description}} + %alias_desc
             ::Commands::Helpers.banner(parser, {{a}}, %desc {% if args %}, args: {{args}}{% end %})
-            ::Commands::Helpers.separator("Inherited", prepend: true)
+            ::Commands::Helpers.separator("Inherited", prepend: true) unless parser.@flags.empty?
             %flags_bak = parser.@flags.dup
             parser.@flags.clear
             {{ yield }}
+            parser.help_scope = parser.@flags.size
             %flags_bak.each { |flag| parser.@flags << flag }
           end
         {% else %}
           parser.on({{a}}, %desc, no_help_text: true) do
             %aliases = {{input}}[...{{idx}}] + {{input}}[({{idx}} + 1)...]
-            %desc = {{description}} + %(\nalias(es): #{%aliases.join(", ")}).colorize.dim.to_s
+            %alias_desc = %aliases.empty? ? "" : %(\nalias(es): #{%aliases.join(", ")}).colorize.dim.to_s
+            %desc = {{description}} + %alias_desc
             ::Commands::Helpers.banner(parser, {{a}}, %desc {% if args %}, args: {{args}}{% end %})
-            ::Commands::Helpers.separator("Inherited", prepend: true)
+            ::Commands::Helpers.separator("Inherited", prepend: true) unless parser.@flags.empty?
             %flags_bak = parser.@flags.dup
             parser.@flags.clear
             {{ yield }}
+            parser.help_scope = parser.@flags.size
             %flags_bak.each { |flag| parser.@flags << flag }
           end
         {% end %}
