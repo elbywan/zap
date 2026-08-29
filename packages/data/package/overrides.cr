@@ -24,7 +24,7 @@ class Data::Package
         (
           version == "*" ||
             specifier == "*" ||
-            Semver.parse(version).satisfies?(metadata.version)
+            (Semver.parse?(version).try(&.satisfies?(metadata.version)) || false)
         ) &&
           !(Semver.parse?(specifier).try &.satisfies?(metadata.version))
       end
@@ -65,7 +65,7 @@ class Data::Package
             next if ancestor.is_a?(Lockfile::Root)
             break if ancestor.is_a?(Iterator::Stop)
             matches = ancestor.name == parent.name && (
-              parent.version == "*" || Semver.parse(parent.version).satisfies?(ancestor.version)
+              parent.version == "*" || (Semver.parse?(parent.version).try(&.satisfies?(ancestor.version)) || false)
             )
             if matches
               yield({ancestor, parent})
@@ -122,7 +122,7 @@ class Data::Package
             b_override = b_overrides.find do |b_override|
               a_override.name == b_override.name &&
                 a_override.version == b_override.version &&
-                Semver.parse(a_override.specifier).satisfies?(b_override.specifier) &&
+                specifier_match?(a_override.specifier, b_override.specifier) &&
                 b_override.parents == a_override.parents
             end
             b_override || a_override
@@ -142,9 +142,17 @@ class Data::Package
     def self.override_matches?(metadata : Data::Package, override : Override) : Bool
       override.version == "*" ||
         override.specifier == "*" ||
-        Semver.parse(override.version).satisfies?(metadata.version) ||
+        (Semver.parse?(override.version).try(&.satisfies?(metadata.version)) || false) ||
         # See: https://github.com/npm/rfcs/blob/main/accepted/0036-overrides.md#overridden-value-matching
-        Semver.parse(override.specifier).satisfies?(metadata.version)
+        (Semver.parse?(override.specifier).try(&.satisfies?(metadata.version)) || false)
+    end
+
+    # An override specifier can be a semver range or an exotic specifier
+    # (npm: alias, git URL, file:, workspace:, catalog:): only semver
+    # specifiers compare as ranges, everything else matches literally.
+    private def self.specifier_match?(a : String, b : String) : Bool
+      semver = Semver.parse?(a)
+      semver ? semver.satisfies?(b) : a == b
     end
 
     protected def read_object(pull : JSON::PullParser, *, parents : Array(Parent)? = nil, current_raw : Hash(String, JSON::Any) = @inner_raw)
