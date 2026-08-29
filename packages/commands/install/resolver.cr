@@ -384,10 +384,8 @@ module Commands::Install::Resolver
           Log.debug { "(#{metadata_key}) Saving package metadata in the lockfile #{(package ? "[parent: #{package.key}]" : "")}" }
           # Remove dev dependencies
           _metadata.dev_dependencies = nil
-          # Store the package data in the lockfile
-          state.lockfile.packages_lock.write do
-            state.lockfile.packages[metadata_key] = _metadata
-          end
+          # Store the package data in the lockfile (keeps the name index in sync)
+          state.lockfile.set_package(_metadata)
         end
 
         # Register the parent in the entry that survives in the lockfile:

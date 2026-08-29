@@ -55,6 +55,7 @@ class Data::Lockfile
   # Not serialized
   internal { @roots_lock = Concurrency::Mutex.new }
   internal { getter packages_lock = Concurrency::RWLock.new }
+  internal { getter packages_by_name : Hash(String, Array(Data::Package)) = Hash(String, Array(Data::Package)).new }
   internal { property read_status : ReadStatus = ReadStatus::NotFound }
   internal { property format : Format = Format::YAML }
   internal { property! lockfile_path : Path }
@@ -89,8 +90,39 @@ class Data::Lockfile
       instance.format = default_format
     end
     instance.lockfile_path = lockfile_path
+    instance.rebuild_packages_index
 
     instance
+  end
+
+  # Inserts or replaces a resolved package under the write lock, keeping
+  # the name index in sync (prefer-dedupe scans by name).
+  def set_package(metadata : Data::Package) : Nil
+    packages_lock.write do
+      packages[metadata.key] = metadata
+      entries = (packages_by_name[metadata.name] ||= [] of Data::Package)
+      if index = entries.index { |pkg| pkg.key == metadata.key }
+        entries[index] = metadata
+      else
+        entries << metadata
+      end
+    end
+  end
+
+  # The already-resolved packages with the given name (prefer-dedupe).
+  def packages_named(name : String) : Array(Data::Package)
+    packages_lock.read do
+      packages_by_name[name]? || [] of Data::Package
+    end
+  end
+
+  # Rebuilds the name index from the packages hash: called after the
+  # lockfile is loaded from disk and after prune removes entries.
+  def rebuild_packages_index : Nil
+    packages_by_name.clear
+    packages.each_value do |pkg|
+      (packages_by_name[pkg.name] ||= [] of Data::Package) << pkg
+    end
   end
 
   def get_package(name : String, specifier : String | Package::Alias)
@@ -156,6 +188,8 @@ class Data::Lockfile
         Log.debug { "(#{pkg.key}) Pruned from lockfile" } unless kept
       end
     end
+
+    rebuild_packages_index
 
     if pruned_direct_dependencies.size > 0
       Log.debug { "Pruned #{pruned_direct_dependencies.size} direct dependencies: #{pruned_direct_dependencies.join(" ")}" }
