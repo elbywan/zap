@@ -13,8 +13,10 @@ class Data::Package
     def initialize(specifier : String)
       stripped_version = specifier[4..]
       parts = stripped_version.split('@')
-      if parts[0] == "@"
-        @name = parts[0] + parts[1]
+      # A leading '@' makes split yield an empty first element: the scope
+      # belongs to the name ("npm:@scope/pkg@^1" -> name "@scope/pkg").
+      if stripped_version.starts_with?('@')
+        @name = "@#{parts[1]}"
         @version = parts[2]? || "*"
       else
         @name = parts[0]
