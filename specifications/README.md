@@ -46,6 +46,7 @@ A readable example, rendered exactly like the real specs:
 - [Configuration](config.md) — the `zap` section and the npmrc.
 - [Catalogs](catalogs.md) — the `catalog:` protocol (pnpm / yarn parity).
 - [Dedupe](dedupe.md) — collapsing compatible resolutions (prefer-dedupe).
+- [Pack](pack.md) — the self-contained, deterministic package tarball.
 
 ## The process: specification-first development
 

@@ -52,6 +52,7 @@ zap --help
 | `zap patch`   |                       | Extract a package for editing, to be patched           | ✅       |
 | `zap patch-commit` |                 | Generate and register a patch from an edited package   | ✅       |
 | `zap dedupe`       |                 | Collapse compatible duplicate versions into the highest in use | ✅ |
+| `zap pack`        |                 | Generate a self-contained, deterministic tarball from a package | ✅ |
 
 #### Check the [project board](https://github.com/users/elbywan/projects/1/views/1) for the current status of the project.
 
