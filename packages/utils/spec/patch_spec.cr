@@ -198,4 +198,61 @@ describe Utils::Patch do
       FileUtils.rm_rf(b)
     end
   end
+
+  it "parses a removed line whose content starts with '-- '" do
+    dir = Path.new(Dir.tempdir, "zap-patch-#{Random::Secure.hex(4)}")
+    begin
+      Dir.mkdir_p(dir)
+      File.write(dir / "a.txt", "keep\n-- signature\nend\n")
+      # The removed line yields the body line "--- signature", which must
+      # not be mistaken for the next file-section header.
+      patch = "--- a/a.txt\n+++ b/a.txt\n@@ -1,3 +1,2 @@\n keep\n--- signature\n end\n"
+      Utils::Patch.apply(patch, dir)
+      File.read(dir / "a.txt").should eq("keep\nend\n")
+    ensure
+      FileUtils.rm_rf(dir)
+    end
+  end
+
+  it "parses an added line whose content starts with '++ '" do
+    dir = Path.new(Dir.tempdir, "zap-patch-#{Random::Secure.hex(4)}")
+    begin
+      Dir.mkdir_p(dir)
+      File.write(dir / "a.txt", "one\n")
+      patch = "--- a/a.txt\n+++ b/a.txt\n@@ -1,1 +1,2 @@\n one\n+++ counter\n"
+      Utils::Patch.apply(patch, dir)
+      File.read(dir / "a.txt").should eq("one\n++ counter\n")
+    ensure
+      FileUtils.rm_rf(dir)
+    end
+  end
+
+  it "writes the trailing newline when only the original lacked it" do
+    dir = Path.new(Dir.tempdir, "zap-patch-#{Random::Secure.hex(4)}")
+    begin
+      Dir.mkdir_p(dir)
+      File.write(dir / "a.txt", "foo") # no trailing newline
+      # git diff of "foo" -> "foo\nbar\n": the marker follows the '-' line,
+      # so only the original side lacks the newline.
+      patch = "--- a/a.txt\n+++ b/a.txt\n@@ -1 +1,2 @@\n-foo\n\\ No newline at end of file\n+foo\n+bar\n"
+      Utils::Patch.apply(patch, dir)
+      File.read(dir / "a.txt").should eq("foo\nbar\n")
+    ensure
+      FileUtils.rm_rf(dir)
+    end
+  end
+
+  it "drops the trailing newline when the modified file lacks it" do
+    dir = Path.new(Dir.tempdir, "zap-patch-#{Random::Secure.hex(4)}")
+    begin
+      Dir.mkdir_p(dir)
+      File.write(dir / "a.txt", "foo\nbar\n")
+      patch = "--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,2 @@\n foo\n-bar\n+bar\n\\ No newline at end of file\n"
+      Utils::Patch.apply(patch, dir)
+      File.read(dir / "a.txt").should eq("foo\nbar")
+      File.read(dir / "a.txt").ends_with?('\n').should be_false
+    ensure
+      FileUtils.rm_rf(dir)
+    end
+  end
 end

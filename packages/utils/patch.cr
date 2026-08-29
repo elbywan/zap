@@ -25,7 +25,11 @@ module Utils::Patch
     property path : String = ""
     property source : String = ""
     property status : Status = Status::Modified
+    # Whether the modified file ends with a trailing newline. The "\ No
+    # newline at end of file" marker is tracked per side: it follows the
+    # last '-' line (original) and/or the last '+' line (modified).
     property newline : Bool = true
+    property old_newline : Bool = true
     property hunks : Array(Hunk) = [] of Hunk
   end
 
@@ -184,51 +188,81 @@ module Utils::Patch
     sections = [] of FileSection
     current : FileSection? = nil
     current_hunk : Hunk? = nil
+    last_body_prefix : Char? = nil
 
     text.each_line do |raw|
       line = raw.chomp('\n')
+      hunk = current_hunk
       if line.starts_with?("@@ ")
-        if hunk = current_hunk
-          push_hunk(current, hunk)
-        end
+        push_hunk(current, hunk) if hunk
         current_hunk = parse_hunk_header(line)
+        last_body_prefix = nil
       elsif line.starts_with?("--- ") || line.starts_with?("+++ ")
-        if hunk = current_hunk
-          push_hunk(current, hunk)
-          current_hunk = nil
-        end
-        if line.starts_with?("--- ")
-          current = FileSection.new
-          old_path = line[4..]
-          if old_path == "/dev/null"
-            current.status = Status::Created
-          else
-            current.source = strip_prefix(old_path)
-            current.path = strip_prefix(old_path)
-          end
-          sections << current
+        if hunk && !hunk_complete?(hunk)
+          # A hunk body line can itself start with "--- "/"+++ " (a removed
+          # line whose content begins with "-- " yields the body line
+          # "--- x"): the header counts disambiguate, so the body wins
+          # until its counts are met (matching git's own parsing).
+          hunk.lines << line
+          last_body_prefix = line[0]?
         else
-          section = current
-          raise "Cannot parse patch: +++ without ---" unless section
-          new_path = line[4..]
-          if new_path == "/dev/null"
-            section.status = Status::Deleted
+          push_hunk(current, hunk) if hunk
+          current_hunk = nil
+          last_body_prefix = nil
+          if line.starts_with?("--- ")
+            current = FileSection.new
+            old_path = line[4..]
+            if old_path == "/dev/null"
+              current.status = Status::Created
+            else
+              current.source = strip_prefix(old_path)
+              current.path = strip_prefix(old_path)
+            end
+            sections << current
           else
-            # Always take the new name: a rename (git diff) has a `+++` path
-            # that differs from the `---` path.
-            section.path = strip_prefix(new_path)
+            section = current
+            raise "Cannot parse patch: +++ without ---" unless section
+            new_path = line[4..]
+            if new_path == "/dev/null"
+              section.status = Status::Deleted
+            else
+              # Always take the new name: a rename (git diff) has a `+++` path
+              # that differs from the `---` path.
+              section.path = strip_prefix(new_path)
+            end
           end
         end
       elsif line == "\\ No newline at end of file"
-        current.try &.newline = false
-      elsif hunk = current_hunk
+        if hunk
+          # The marker follows the last body line of a side: '-' (or a
+          # context line) means the original file lacks the trailing
+          # newline, '+' means the modified one does.
+          case last_body_prefix
+          when '-'
+            current.try &.old_newline = false
+          when '+'
+            current.try &.newline = false
+          when ' '
+            current.try &.old_newline = false
+            current.try &.newline = false
+          end
+        end
+      elsif hunk
         hunk.lines << line
+        last_body_prefix = line[0]?
       end
     end
     if hunk = current_hunk
       push_hunk(current, hunk)
     end
     sections
+  end
+
+  # Whether the hunk body has seen all the lines its header counts claim.
+  private def self.hunk_complete?(hunk : Hunk) : Bool
+    old_count = hunk.lines.count { |l| l[0]? == ' ' || l[0]? == '-' }
+    new_count = hunk.lines.count { |l| l[0]? == ' ' || l[0]? == '+' }
+    old_count >= hunk.old_count && new_count >= hunk.new_count
   end
 
   private def self.push_hunk(section : FileSection?, hunk : Hunk) : Nil
