@@ -32,5 +32,10 @@ module Commands::Install
     # this run; guards the recursive dependency crawl against infinite loops
     # (a fresh object is used for the metadata on every visit, so the flag
     # cannot live on the package itself).
-    resolved_keys : Concurrency::SafeSet(String) = Concurrency::SafeSet(String).new
+    resolved_keys : Concurrency::SafeSet(String) = Concurrency::SafeSet(String).new,
+    # Lockfile keys reachable from the non-omitted roots, for the
+    # omit-aware prefer-dedupe filter. Filled once, before the resolution
+    # pipeline starts, only when --omit is active; the candidate scan
+    # consults it only then.
+    reachable_packages : Concurrency::SafeSet(String) = Concurrency::SafeSet(String).new
 end

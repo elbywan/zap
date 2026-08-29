@@ -92,6 +92,40 @@ module Commands::Install::Resolver
     changed
   end
 
+  # The lockfile keys reachable from the non-omitted roots — the packages
+  # that will actually be installed. With --omit, prefer-dedupe must not
+  # collapse onto versions that only exist in the lockfile through omitted
+  # dev/optional dependencies (the lockfile keeps the full graph, pnpm
+  # parity), so the candidate scan is filtered to this set. Computed once
+  # per install, before the resolution pipeline starts; nil when nothing
+  # is omitted (the filter is then a no-op and costs nothing).
+  def self.reachable_packages(state : Commands::Install::State, reachable : Concurrency::SafeSet(String)) : Nil
+    omit = state.install_config.omit
+    return if omit.empty?
+    omit_dev = omit.includes?(Config::Omit::Dev)
+    omit_optional = omit.includes?(Config::Omit::Optional)
+
+    queue = Deque(String).new
+    state.lockfile.roots.each_value do |root|
+      root.each_dependency(include_dev: !omit_dev, include_optional: !omit_optional) do |name, specifier, _|
+        key = specifier.is_a?(Data::Package::Alias) ? specifier.key : "#{name}@#{specifier}"
+        if reachable.add?(key)
+          queue << key
+        end
+      end
+    end
+    while key = queue.shift?
+      pkg = state.lockfile.packages[key]?
+      next unless pkg
+      pkg.each_dependency(include_dev: false, include_optional: !omit_optional) do |name, specifier, _|
+        child_key = specifier.is_a?(Data::Package::Alias) ? specifier.key : "#{name}@#{specifier}"
+        if reachable.add?(child_key)
+          queue << child_key
+        end
+      end
+    end
+  end
+
   # Whether the install is an update run (any re-resolution is
   # deliberate and must not be deduplicated against the stale lockfile).
   private def self.update_in_progress(config : Commands::Install::Config) : Bool

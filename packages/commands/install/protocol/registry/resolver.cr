@@ -76,10 +76,15 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
   def dedupe_candidate(name : String, declared_range : String) : Data::Package?
     range = Semver.parse?(declared_range)
     return nil unless range
+    omit = state.install_config.omit
     best = nil
     # The name index keeps the scan to this package's entries instead of
     # the whole lockfile (O(entries) per dependency, not O(packages)).
     state.lockfile.packages_named(name).each do |pkg|
+      # With --omit, only the versions reachable from the installed roots
+      # are candidates: a version locked solely through an omitted
+      # dev/optional dependency is not in use.
+      next if !omit.empty? && !state.reachable_packages.includes?(pkg.key)
       next unless pkg.kind.registry?
       dist = pkg.dist
       # The tarball must come from the same registry base (the trailing

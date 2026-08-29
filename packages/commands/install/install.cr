@@ -128,6 +128,11 @@ module Commands::Install
         state = Commands::Install::Interactive.run(state)
       end
 
+      # Omit-aware prefer-dedupe: compute the reachable set from the
+      # pre-existing lockfile before the resolution pipeline starts (it
+      # must not see the current run's resolutions).
+      Resolver.reachable_packages(state, state.reachable_packages) if state.install_config.omit.size > 0
+
       # Resolve all dependencies
       update_changed = resolve_dependencies(state)
 

@@ -72,6 +72,11 @@ module Zap
       ].map(&.as(Commands::CLI))
       Log.debug { "• Parsing the CLI arguments" }
       config, command_config = CLI.new(commands).parse
+    rescue e : IO::Error
+      # A consumer that closed the pipe early (zap ... | head) is not an
+      # error: exit quietly, like a SIGPIPE death would have.
+      exit 141 if e.os_error == Errno::EPIPE
+      raise e
     rescue e
       puts e.message
       exit Shared::Constants::ErrorCodes::EARLY_EXIT.to_i32
@@ -114,5 +119,10 @@ module Zap
 
     # Release the registry client pools (no-op when no install ran)
     Commands::Install::RegistryClients.close
+  rescue e : IO::Error
+    # A consumer that closed the pipe early (zap ... | head) is not an
+    # error: exit quietly, like a SIGPIPE death would have.
+    exit 141 if e.os_error == Errno::EPIPE
+    raise e
   end
 end
