@@ -1,9 +1,21 @@
 require "log"
 require "utils/macros"
+require "utils/misc"
 require "../linker"
 
 class Commands::Install::Linker::Classic < Commands::Install::Linker::Base
   Log = ::Log.for("zap.commands.install.linker.classic")
+
+  # The hoisting patterns gate which packages the classic walk may hoist
+  # to the root node_modules (specifications/config.md: the patterns apply
+  # to classic + isolated). Parsed once per install.
+  getter hoist_patterns : Array(Regex) do
+    (main_package.zap_config.try(&.hoist_patterns) || Shared::Constants::DEFAULT_HOIST_PATTERNS).map { |p| Utils::Misc.parse_pattern(p) }
+  end
+
+  getter public_hoist_patterns : Array(Regex) do
+    (main_package.zap_config.try(&.public_hoist_patterns) || Shared::Constants::DEFAULT_PUBLIC_HOIST_PATTERNS).map { |p| Utils::Misc.parse_pattern(p) }
+  end
 
   record DependencyItem,
     # the dependency to install

@@ -101,6 +101,14 @@ class Commands::Install::Linker::Classic
         return true if do_not_hoist
       end
 
+      # Do not hoist packages that match neither hoisting pattern list
+      # (specifications/linking.md: a package goes to the root node_modules
+      # when it matches the hoisting patterns and nothing conflicts; the
+      # patterns apply to the classic strategy too). They stay nested under
+      # their dependent, like the isolated strategy's private store.
+      return true unless linker.hoist_patterns.any?(&.=~ dependency.name) ||
+        linker.public_hoist_patterns.any?(&.=~ dependency.name)
+
       false
     end
 
