@@ -399,4 +399,49 @@ describe Commands::Pack do
       FileUtils.rm_rf(project)
     end
   end
+
+  it "packs a workspace member directory" do
+    root = Path.new(Dir.tempdir, "zap-pack-ws-#{Random::Secure.hex(4)}")
+    member = root / "packages" / "member"
+    begin
+      Dir.mkdir_p(member / "src")
+      File.write(root / "package.json", %({"name":"ws-root","version":"1.0.0","workspaces":["packages/*"]}))
+      File.write(member / "package.json", %({"name":"@ws/member","version":"0.5.0","main":"src/index.js"}))
+      File.write(member / "src/index.js", "member\n")
+      Commands::Pack.run(
+        Core::Config.new.copy_with(prefix: root.to_s, silent: true),
+        Commands::Pack::Config.new(path: member.to_s),
+        raise_on_failure: true,
+      )
+      entries = read_archive(member / "package.tgz").map(&.[:name])
+      entries.should contain("package/src/index.js")
+      entries.should contain("package/package.json")
+    ensure
+      FileUtils.rm_rf(root)
+    end
+  end
+
+  it "packs a large tree deterministically" do
+    dir = Path.new(Dir.tempdir, "zap-pack-big-#{Random::Secure.hex(4)}")
+    begin
+      Dir.mkdir_p(dir)
+      files = {} of String => String
+      300.times do |i|
+        files["src/mod#{i / 10}/file#{i}.js"] = "content #{i}\n"
+      end
+      archive = pack_fixture(dir, %({"name":"big","version":"1.0.0"}), files)
+      entries = read_archive(archive)
+      entries.size.should eq(301) # 300 files + package.json
+      entries.map(&.[:name]).should eq(entries.map(&.[:name]).sort)
+      first = File.read(archive)
+      Commands::Pack.run(
+        Core::Config.new.copy_with(prefix: dir.to_s, silent: true),
+        Commands::Pack::Config.new,
+        raise_on_failure: true,
+      )
+      File.read(archive).should eq(first)
+    ensure
+      FileUtils.rm_rf(dir)
+    end
+  end
 end
