@@ -1,6 +1,6 @@
 ---
 name: data
-version: 0.6.0
+version: 0.7.1
 dependencies:
   msgpack:
     github: crystal-community/msgpack-crystal

@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.7.1
+
+- **Fix a crash on installs with exotic overrides.** An override whose
+  specifier is not a semver range (an `npm:` alias, a git URL, `file:`,
+  `workspace:` or `catalog:`) raised on every install after the first when
+  the lockfile carried overrides; non-semver specifiers now merge and match
+  literally.
+- **Fix `${VAR}` expansion in the npmrc.** The `$` of `${VAR}` leaked into
+  the expanded value, corrupting `_authToken` (the Authorization header
+  became `Bearer $secret`) and breaking private-registry auth; literal
+  `$`-prefixed values are unchanged.
+- **Fix scoped `npm:` aliases.** `npm:@scope/pkg@^1.0.0` parsed with an
+  empty name, so pins were never merged for scoped aliases and update runs
+  silently re-resolved them.
+- **Recognize workspace-provided peer dependencies.** A peer provided by a
+  workspace member (a `workspace:` pin) is not a semver string, so it never
+  satisfied any range: spurious unmet-peer warnings under `--peers` and
+  duplicate nested peer copies under the classic strategy are gone.
+- **Apply the hoisting patterns in the classic strategy.**
+  `hoist_patterns` and `public_hoist_patterns` now gate classic hoisting
+  like they already did for isolated, matching the specification.
+- **Fix the patch parser for git-style patches.** Hunk bodies are consumed
+  by the header counts, so a removed line whose content starts with `-- `
+  is no longer mistaken for a file-section header; the `\ No newline at
+  end of file` marker is tracked per side, so a file that gains a trailing
+  newline keeps it.
+- **Faster dedupe scans.** The dedupe candidate lookup uses a name index
+  instead of scanning the whole lockfile per dependency.
+- **Versioned from the root manifest.** `zap --version` is baked from the
+  root `shard.yml` at build time; previously the CLI shard's stale version
+  was baked, so the published 0.7.0 binary reported 0.6.0.
+
 ## v0.7.0
 
 - **Prefer-dedupe is enabled by default.** Compatible direct and transitive
