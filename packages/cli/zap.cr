@@ -24,6 +24,8 @@ require "commands/store/cli"
 require "commands/store"
 require "commands/why/cli"
 require "commands/why"
+require "commands/pack/cli"
+require "commands/pack"
 
 module Zap
   # Colorize is tty-only by default since Crystal 1.17; no explicit call needed.
@@ -66,6 +68,7 @@ module Zap
         Commands::Run::CLI.new,
         Commands::Store::CLI.new,
         Commands::Why::CLI.new,
+        Commands::Pack::CLI.new,
       ].map(&.as(Commands::CLI))
       Log.debug { "• Parsing the CLI arguments" }
       config, command_config = CLI.new(commands).parse
@@ -103,6 +106,8 @@ module Zap
       Commands::Store.run(config, command_config)
     when Commands::Why::Config
       Commands::Why.run(config, command_config)
+    when Commands::Pack::Config
+      Commands::Pack.run(config, command_config)
     else
       raise "Unknown command config: #{command_config}"
     end
