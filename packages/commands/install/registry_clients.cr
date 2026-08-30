@@ -20,8 +20,14 @@ class Commands::Install::RegistryClients
       io.to_slice
     end
 
-    def deserialize(value : IO, path : Path) : Manifest
+    def deserialize(value : IO, path : Path) : Manifest?
       Manifest.load_cache(path, value)
+    rescue
+      # An unreadable body - an older cache format, a truncated or
+      # corrupted file - reports a miss so the caller re-fetches. The
+      # format version lives in the body header, so future format changes
+      # need no cache directory bump.
+      nil
     end
   end
   # The pool of clients for each registry

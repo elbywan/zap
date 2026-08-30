@@ -4,6 +4,13 @@ require "semver"
 struct Commands::Install::Manifest
   include JSON::Serializable
 
+  # Raised when a cache body is not in the expected format (an older cache
+  # format version, or a corrupted/foreign file). The serializer treats it
+  # as a cache miss so the caller re-fetches, instead of failing the
+  # install or requiring a cache directory bump.
+  class CacheFormatError < Exception
+  end
+
   # The on-disk cache format: a compact header (the dist-tags, the publish
   # times and the versions sorted descending) followed by the raw JSON of
   # every version. Loading reads only the header; a version's raw metadata
@@ -179,8 +186,8 @@ struct Commands::Install::Manifest
   # Loads the header of the on-disk cache format; the raw per-version JSON
   # blobs are skipped and read on demand from *path*.
   def self.load_cache(path : Path, io : IO) : Manifest
-    raise "Invalid manifest cache (bad magic)" unless io.read_bytes(UInt32, IO::ByteFormat::BigEndian) == CACHE_MAGIC
-    raise "Unsupported manifest cache version" unless io.read_bytes(UInt16, IO::ByteFormat::BigEndian) == CACHE_VERSION
+    raise CacheFormatError.new("Invalid manifest cache (bad magic)") unless io.read_bytes(UInt32, IO::ByteFormat::BigEndian) == CACHE_MAGIC
+    raise CacheFormatError.new("Unsupported manifest cache version") unless io.read_bytes(UInt16, IO::ByteFormat::BigEndian) == CACHE_VERSION
     dist_tags = read_string_map(io)
     times = read_string_map(io)
     count = io.read_bytes(UInt32, IO::ByteFormat::BigEndian)

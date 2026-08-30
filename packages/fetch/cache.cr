@@ -8,10 +8,10 @@ require "concurrency/data_structures/safe_hash"
 class Fetch(T, Transport)
   abstract class Cache(T)
     Log = ::Log.for("zap.fetch.cache")
-    # v2: the Manifest cache switched from a full msgpack payload to the
-    # index + lazy raw reads; the dir is bumped so stale v1 files (which
-    # fail the new decoder) are never read.
-    CACHE_DIR = ".fetch_cache_v2"
+    # The on-disk cache bodies are self-describing (magic + version in
+    # the header), so format mismatches degrade to misses and the
+    # directory name stays stable across format changes.
+    CACHE_DIR = ".fetch_cache"
 
     abstract def get(key_str : String, etag : String?) : T?
     abstract def get(key_str : String, &etag : -> String?) : T?
@@ -77,8 +77,10 @@ class Fetch(T, Transport)
       abstract struct Serializer(T)
         abstract def serialize(value : T) : Bytes | String | IO
         # *path* is the cache body file: a deserializer may keep it for
-        # lazy reads instead of decoding the whole payload.
-        abstract def deserialize(value : IO, path : Path) : T
+        # lazy reads instead of decoding the whole payload. Returns nil
+        # when the body is not in the expected format: the caller treats
+        # it as a cache miss and re-fetches.
+        abstract def deserialize(value : IO, path : Path) : T?
       end
 
       struct NoopSerializer < Serializer(String)
