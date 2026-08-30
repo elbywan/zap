@@ -12,8 +12,18 @@ module Utils::TarGzip
           # Strip the leading directory (usually "package/") and neutralize any
           # ".", ".." or empty component to prevent directory traversal
           # from malicious tarballs.
-          components = entry.name.split(/[\/\\]/)[1..-1].reject { |c| c == "." || c == ".." || c.empty? }
-          file_path = Path.new(components.join("/"))
+          name = entry.name
+          # Fast path: npm tarballs are "package/<path>" with no traversal,
+          # dot or empty components; the split/reject/join below allocates
+          # several objects per entry (~116k entries per cold install).
+          # Any suspicious component falls back to the full sanitization.
+          if name.starts_with?("package/") &&
+             !name.includes?("\\") && !name.includes?("..") && !name.includes?("/.") && !name.includes?("//")
+            file_path = Path.new(name.byte_slice(8))
+          else
+            components = name.split(/[\/\\]/)[1..-1].reject { |c| c == "." || c == ".." || c.empty? }
+            file_path = Path.new(components.join("/"))
+          end
           yield entry, file_path, entry.io
         end
       end
