@@ -1,6 +1,7 @@
 require "log"
 require "data/package"
 require "../state"
+require "concurrency/data_structures/safe_hash"
 
 module Commands::Install::Linker
   Log = ::Log.for("zap.commands.install.linker")
@@ -12,9 +13,33 @@ module Commands::Install::Linker
 
     alias Ancestors = Deque(Data::Package | Data::Lockfile::Root)
 
+    # Memoized semver range parses: the placement walk re-parses the same
+    # declared ranges once per visit per ancestor, and parsing dominates
+    # the walk's CPU cost. The parses are pure, so caching them cannot
+    # change the outcome; failed parses are cached as nil, so an invalid
+    # range is not re-parsed either. The walk runs on the worker pool, so
+    # the cache is thread-safe. (The version side of a satisfaction check
+    # is left to Range#satisfies?, which parses and tolerates invalid
+    # input.)
+    @range_cache = Concurrency::SafeHash(String, Semver::Range?).new
+
     def initialize(state : Commands::Install::State)
       @state = state
       @main_package = state.main_package
+    end
+
+    # The parsed range of *range*, parsed once per install; failed parses
+    # are cached as nil, so an invalid range is not re-parsed either.
+    protected def parse_range?(range : String) : Semver::Range?
+      if @range_cache.has_key?(range)
+        @range_cache[range]
+      elsif parsed = Semver.parse?(range)
+        @range_cache[range] = parsed
+        parsed
+      else
+        @range_cache[range] = nil
+        nil
+      end
     end
 
     abstract def install : Nil
@@ -118,7 +143,7 @@ module Commands::Install::Linker
       if peer_range.starts_with?("catalog:")
         peer_range = Commands::Install::Protocol::Catalog.expand(name, peer_range, state)
       end
-      range = Semver.parse?(peer_range) || Semver::ANY
+      range = parse_range?(peer_range) || Semver::ANY
       satisfied = false
       ancestors.each do |ancestor|
         ancestor.each_dependency do |ancestor_name, version_or_alias, _|
@@ -146,7 +171,7 @@ module Commands::Install::Linker
             peer_range = Commands::Install::Protocol::Catalog.expand(direct_peer, peer_range, state)
           end
           peers[direct_peer] = Set(Semver::Range){
-            Semver.parse?(peer_range).or(Semver::ANY),
+            parse_range?(peer_range).or(Semver::ANY),
           }
         end
       end
