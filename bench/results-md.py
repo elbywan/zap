@@ -10,9 +10,9 @@ Usage:
   results-md.py <README>          splice the table into the README in place
   results-md.py <README> --table  print the table to stdout only
   results-md.py <README> --check  update bench/results.json and print "true"
-                                  if the change is material (medians beyond
-                                  the per-scenario thresholds, or different
-                                  versions), "false" otherwise
+                                  if the change is material (zap's ratio vs
+                                  any contender moved by more than 25%, or
+                                  different versions), "false" otherwise
 """
 
 import json
@@ -23,15 +23,12 @@ from pathlib import Path
 BENCH_DIR = Path(__file__).resolve().parent
 RESULTS_JSON = BENCH_DIR / "results.json"
 
-# A change is material when a median moves by more than these fractions
-# (the cold scenario is network-bound and far noisier) or when the
-# measured versions change.
-THRESHOLDS = {
-    "cold.json": 0.25,
-    "only-cache.json": 0.10,
-    "without-lockfile.json": 0.10,
-    "without-node-modules.json": 0.10,
-}
+# A change is material when zap's performance relative to any other
+# contender moves by more than this fraction, or when the measured
+# versions change. Ratios absorb the machine-wide noise that moves all
+# medians together (observed up to ~20% between GitHub runner runs),
+# which absolute thresholds cannot.
+RATIO_CHANGE = 0.25
 
 SCENARIOS = [
     ("cold.json", "Without cache, lockfile or node modules"),
@@ -86,9 +83,12 @@ def is_material(versions, medians):
     if any(versions.get(name) != previous["versions"].get(name) for name in TOOLS):
         return True
     for json_name, by_tool in medians.items():
-        for tool, value in by_tool.items():
-            old = previous["medians"][json_name][tool]
-            if abs(value - old) / old > THRESHOLDS[json_name]:
+        for tool in TOOLS:
+            if tool == "zap":
+                continue
+            ratio = by_tool["zap"] / by_tool[tool]
+            old = previous["medians"][json_name]["zap"] / previous["medians"][json_name][tool]
+            if abs(ratio - old) / old > RATIO_CHANGE:
                 return True
     return False
 
