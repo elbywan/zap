@@ -25,7 +25,10 @@ COMMANDS=(
   "env YARN_ENABLE_SCRIPTS=false YARN_ENABLE_IMMUTABLE_INSTALLS=false YARN_NODE_LINKER=node-modules $YARN"
   "$PNPM i --ignore-scripts"
   "$BUN i --ignore-scripts"
-  'zap i --ignore-scripts --frozen-lockfile=false'
+  # --check-resolutions=false: the flag defaults to on under CI, which
+  # disables the up-to-date fast path; the benchmark measures the local
+  # (default) behavior.
+  'zap i --ignore-scripts --frozen-lockfile=false --check-resolutions=false'
 )
 
 hyperfine --warmup 1 --runs 3 --export-json cold.json --prepare "$PREPARE_COLD" "${COMMANDS[@]}"
