@@ -8,7 +8,10 @@ require "concurrency/data_structures/safe_hash"
 class Fetch(T, Transport)
   abstract class Cache(T)
     Log = ::Log.for("zap.fetch.cache")
-    CACHE_DIR = ".fetch_cache"
+    # v2: the Manifest cache switched from a full msgpack payload to the
+    # index + lazy raw reads; the dir is bumped so stale v1 files (which
+    # fail the new decoder) are never read.
+    CACHE_DIR = ".fetch_cache_v2"
 
     abstract def get(key_str : String, etag : String?) : T?
     abstract def get(key_str : String, &etag : -> String?) : T?
@@ -73,7 +76,9 @@ class Fetch(T, Transport)
 
       abstract struct Serializer(T)
         abstract def serialize(value : T) : Bytes | String | IO
-        abstract def deserialize(value : IO) : T
+        # *path* is the cache body file: a deserializer may keep it for
+        # lazy reads instead of decoding the whole payload.
+        abstract def deserialize(value : IO, path : Path) : T
       end
 
       struct NoopSerializer < Serializer(String)
@@ -81,7 +86,7 @@ class Fetch(T, Transport)
           value
         end
 
-        def deserialize(value : IO) : String
+        def deserialize(value : IO, path : Path) : String
           value.gets_to_end
         end
       end
@@ -91,7 +96,7 @@ class Fetch(T, Transport)
           value.to_msgpack
         end
 
-        def deserialize(value : IO) : T
+        def deserialize(value : IO, path : Path) : T
           T.from_msgpack(value)
         end
       end
@@ -144,7 +149,7 @@ class Fetch(T, Transport)
           end
         }.try do |path|
           io = ::File.open(path)
-          @serializer.deserialize(io)
+          @serializer.deserialize(io, path)
         ensure
           io.try &.close
         end
@@ -180,7 +185,7 @@ class Fetch(T, Transport)
           end
         }.try do |path|
           io = ::File.open(path)
-          @serializer.deserialize(io)
+          @serializer.deserialize(io, path)
         ensure
           io.try &.close
         end

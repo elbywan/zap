@@ -7,6 +7,23 @@ require "concurrency/mutex"
 #
 # The pools are lazily initialized and cached.
 class Commands::Install::RegistryClients
+  # The on-disk cache serializer for Manifests: the custom index format
+  # (see Manifest#write_cache / Manifest.load_cache). Loading only reads
+  # the header; the raw per-version JSON is read on demand from the cache
+  # file, so an install never deserializes the whole packument.
+  private struct ManifestCacheSerializer < Fetch::Cache::InStore::Serializer(Manifest)
+    def serialize(value : Manifest) : Bytes | String | IO
+      io = IO::Memory.new
+      value.write_cache(io)
+      # Bytes, not the IO: the memory's position sits at the end after the
+      # writes, and File.write(path, io) would copy nothing.
+      io.to_slice
+    end
+
+    def deserialize(value : IO, path : Path) : Manifest
+      Manifest.load_cache(path, value)
+    end
+  end
   # The pool of clients for each registry
   alias Pool = Fetch(Manifest, Fetch::HTTP1Transport) | Fetch::HTTP2(Manifest)
   @@client_pool_by_registry : Hash(String, Pool) = Hash(String, Pool).new
@@ -75,7 +92,7 @@ class Commands::Install::RegistryClients
     filesystem_cache = Fetch::Cache::InStore(Manifest).new(
       @store_path,
       bypass_staleness_checks: bypass_staleness_checks,
-      serializer: Fetch::Cache::InStore::MessagePackSerializer(Manifest).new
+      serializer: ManifestCacheSerializer.new
     )
 
     # The npmrc authentication for *base_url*: the config keys keep the
