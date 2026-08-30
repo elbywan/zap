@@ -2,11 +2,51 @@ require "./manifest"
 require "fetch"
 require "fetch/http2"
 require "concurrency/mutex"
+require "data/package"
 
 # Exposes a pool of http(s) clients for each registry and convenience methods to access the pools.
 #
 # The pools are lazily initialized and cached.
 class Commands::Install::RegistryClients
+  # The on-disk cache serializer for Manifests: the custom index format
+  # (see Manifest#write_cache / Manifest.load_cache). Loading only reads
+  # the header; the raw per-version JSON is read on demand from the cache
+  # file, so an install never deserializes the whole packument.
+  private struct ManifestCacheSerializer < Fetch::Cache::InStore::Serializer(Manifest)
+    def serialize(value : Manifest) : Bytes | String | IO
+      io = IO::Memory.new
+      value.write_cache(io)
+      # Bytes, not the IO: the memory's position sits at the end after the
+      # writes, and File.write(path, io) would copy nothing.
+      io.to_slice
+    end
+
+    def deserialize(value : IO, path : Path) : Manifest?
+      Manifest.load_cache(path, value)
+    rescue
+      # An unreadable body - an older cache format, a truncated or
+      # corrupted file - reports a miss so the caller re-fetches. The
+      # format version lives in the body header, so future format changes
+      # need no cache directory bump.
+      nil
+    end
+  end
+
+  # The on-disk cache serializer for the resolved packages: the msgpack
+  # roundtrip is far cheaper than the raw packument JSON parse. A corrupted
+  # body degrades to a miss (the caller re-resolves) instead of failing the
+  # install, like the manifest cache.
+  private struct PackageCacheSerializer < Fetch::Cache::InStore::Serializer(Data::Package)
+    def serialize(value : Data::Package) : Bytes | String | IO
+      value.to_msgpack
+    end
+
+    def deserialize(value : IO, path : Path) : Data::Package?
+      Data::Package.from_msgpack(value)
+    rescue
+      nil
+    end
+  end
   # The pool of clients for each registry
   alias Pool = Fetch(Manifest, Fetch::HTTP1Transport) | Fetch::HTTP2(Manifest)
   @@client_pool_by_registry : Hash(String, Pool) = Hash(String, Pool).new
@@ -26,7 +66,19 @@ class Commands::Install::RegistryClients
     @bypass_staleness_checks : Bool = false,
     @network_protocol : String? = nil,
   )
+    @package_cache = Fetch::Cache::InStore(Data::Package).new(
+      @store_path,
+      bypass_staleness_checks: @bypass_staleness_checks,
+      serializer: PackageCacheSerializer.new
+    )
   end
+
+  # The per-version resolved-package cache shared by every registry pool:
+  # the msgpack roundtrip is far cheaper than parsing the raw packument
+  # JSON again on the next install. The key embeds the registry url, and
+  # the manifest cache's own staleness still gates every resolve, so the
+  # cache cannot outlive the packument data it was built from.
+  getter package_cache : Fetch::Cache::InStore(Data::Package)
 
   # Closes every client pool. Called once the CLI command has finished;
   # a no-op when no install ever created a pool.
@@ -75,7 +127,7 @@ class Commands::Install::RegistryClients
     filesystem_cache = Fetch::Cache::InStore(Manifest).new(
       @store_path,
       bypass_staleness_checks: bypass_staleness_checks,
-      serializer: Fetch::Cache::InStore::MessagePackSerializer(Manifest).new
+      serializer: ManifestCacheSerializer.new
     )
 
     # The npmrc authentication for *base_url*: the config keys keep the

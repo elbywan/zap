@@ -8,6 +8,9 @@ require "concurrency/data_structures/safe_hash"
 class Fetch(T, Transport)
   abstract class Cache(T)
     Log = ::Log.for("zap.fetch.cache")
+    # The on-disk cache bodies are self-describing (magic + version in
+    # the header), so format mismatches degrade to misses and the
+    # directory name stays stable across format changes.
     CACHE_DIR = ".fetch_cache"
 
     abstract def get(key_str : String, etag : String?) : T?
@@ -73,7 +76,11 @@ class Fetch(T, Transport)
 
       abstract struct Serializer(T)
         abstract def serialize(value : T) : Bytes | String | IO
-        abstract def deserialize(value : IO) : T
+        # *path* is the cache body file: a deserializer may keep it for
+        # lazy reads instead of decoding the whole payload. Returns nil
+        # when the body is not in the expected format: the caller treats
+        # it as a cache miss and re-fetches.
+        abstract def deserialize(value : IO, path : Path) : T?
       end
 
       struct NoopSerializer < Serializer(String)
@@ -81,7 +88,7 @@ class Fetch(T, Transport)
           value
         end
 
-        def deserialize(value : IO) : String
+        def deserialize(value : IO, path : Path) : String
           value.gets_to_end
         end
       end
@@ -91,7 +98,7 @@ class Fetch(T, Transport)
           value.to_msgpack
         end
 
-        def deserialize(value : IO) : T
+        def deserialize(value : IO, path : Path) : T
           T.from_msgpack(value)
         end
       end
@@ -144,7 +151,7 @@ class Fetch(T, Transport)
           end
         }.try do |path|
           io = ::File.open(path)
-          @serializer.deserialize(io)
+          @serializer.deserialize(io, path)
         ensure
           io.try &.close
         end
@@ -180,7 +187,7 @@ class Fetch(T, Transport)
           end
         }.try do |path|
           io = ::File.open(path)
-          @serializer.deserialize(io)
+          @serializer.deserialize(io, path)
         ensure
           io.try &.close
         end
@@ -190,9 +197,14 @@ class Fetch(T, Transport)
         key = self.class.hash(key_str)
         root_path = @path / key
         body_file_path = root_path / BODY_FILE_NAME
-        body_file_path_temp = root_path / BODY_FILE_NAME_TEMP
         meta_file_path = root_path / META_FILE_NAME
-        meta_file_path_temp = root_path / META_FILE_NAME_TEMP
+        # The temp names embed a per-write suffix: concurrent sets for the
+        # same key (two fibers resolving the same package) must not clobber
+        # each other's temps, or the second rename would fail with ENOENT.
+        # The final rename is atomic, so the last writer wins consistently.
+        suffix = "#{Process.pid}-#{Random::Secure.hex(4)}"
+        body_file_path_temp = root_path / "#{BODY_FILE_NAME_TEMP}.#{suffix}"
+        meta_file_path_temp = root_path / "#{META_FILE_NAME_TEMP}.#{suffix}"
         Log.debug { "(#{key_str}) Storing metadata at #{root_path}" }
         Utils::Directories.mkdir_p(root_path)
         ::File.write(body_file_path_temp, @serializer.serialize(value))

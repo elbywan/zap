@@ -32,7 +32,7 @@ describe "command execution", tags: "integration" do
         File.exists?(project / ".pnp.loader.mjs").should be_true
         # No packages are linked into node_modules; only the .pnp data dir
         # (and the installed-state file)
-        Dir.children(project / "node_modules").sort.should eq([".pnp", ".zap-state"])
+        Dir.children(project / "node_modules").sort.should eq([".pnp", ".zap-fingerprint", ".zap-state"])
       end
     end
   end

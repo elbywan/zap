@@ -260,11 +260,24 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
         else
           self.specifier
         end
-      raw_metadata = manifest.get_raw_metadata?(version_for_selection)
-      unless raw_metadata
+      selected_version = manifest.select_version(version_for_selection)
+      unless selected_version
         raise "No version matching range or dist-tag #{specifier} for package #{@name} found in the module registry"
       end
-      pkg = Data::Package.from_json(raw_metadata)
+      # A per-version package cache: the msgpack roundtrip is far cheaper
+      # than re-reading the raw packument JSON and parsing it (~20KB per
+      # package). The manifest's own staleness still gates the resolve, so
+      # this cannot outlive the packument data it was built from.
+      cache_key = "#{@base_url.to_s}/#{@package_name}@#{selected_version}"
+      pkg = @skip_cache ? nil : @clients.package_cache.get(cache_key)
+      unless pkg
+        raw_metadata = manifest.get_raw_metadata?(version_for_selection)
+        unless raw_metadata
+          raise "No version matching range or dist-tag #{specifier} for package #{@name} found in the module registry"
+        end
+        pkg = Data::Package.from_json(raw_metadata)
+        @clients.package_cache.set(cache_key, pkg, 30.days) unless @skip_cache
+      end
       # Record the named registry on the resolved dist so the lockfile key
       # becomes registry-qualified (pnpm parity) and the package cannot be
       # quietly substituted by another registry publishing the same version.

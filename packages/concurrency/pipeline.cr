@@ -3,9 +3,7 @@ require "./data_structures/safe_array"
 class Concurrency::Pipeline
   getter counter = Atomic(Int32).new(0)
   @errors = SafeArray(Exception).new
-  @end_channel = Channel(SafeArray(Exception)?).new(1)
   @max_fibers_channel : Channel(Nil)? = nil
-  @closing = Atomic(Int32).new(0)
   @execution_context : Fiber::ExecutionContext
 
   def initialize(*, workers : Int32 = 1)
@@ -20,11 +18,8 @@ class Concurrency::Pipeline
   def reset
     @counter = Atomic(Int32).new(0)
     @errors = SafeArray(Exception).new
-    @end_channel.close unless @end_channel.closed?
-    @end_channel = Channel(SafeArray(Exception)?).new(1)
     @max_fibers_channel.try { |c| c.close unless c.closed? }
     @max_fibers_channel = nil
-    @closing = Atomic(Int32).new(0)
   end
 
   def set_concurrency(max_fibers : Int32 | Nil)
@@ -54,13 +49,6 @@ class Concurrency::Pipeline
 
   def process(&block)
     return if @errors.size > 0
-    # Starting a fresh phase on a reused pipeline: the previous phase's last
-    # fiber closed the end channel, so give the new fibers a channel to
-    # deliver their results to.
-    if @counter.get == 0 && @end_channel.closed?
-      @end_channel = Channel(SafeArray(Exception)?).new(1)
-      @closing = Atomic(Int32).new(0)
-    end
     @counter.add(1)
     @execution_context.spawn do
       check_max_fibers do
@@ -71,12 +59,7 @@ class Concurrency::Pipeline
       rescue ex
         @errors << ex
       ensure
-        counter = @counter.sub(1)
-        # Use atomic swap to ensure only one fiber closes the channel
-        if counter <= 1 && @closing.swap(1) == 0 && !@end_channel.closed?
-          @end_channel.send(@errors) if @errors.size > 0
-          @end_channel.close
-        end
+        @counter.sub(1)
       end
     end
   end
@@ -87,15 +70,23 @@ class Concurrency::Pipeline
     end
   end
 
-  def await(*, force_wait = false)
+  # Blocks until every fiber dispatched with `process` has completed, then
+  # raises if any of them failed. The caller parks on a short timer instead
+  # of spinning: the periodic wakeups keep it runnable so the scheduler can
+  # run fibers dispatched from other fibers (a fully blocked caller would
+  # stall them - the nested dependency resolution only runs while the
+  # caller yields), and the counter - not a channel - decides completion.
+  def await
     Fiber.yield
-    # The error array is populated before the fiber's ensure runs, so a
-    # raise that lands between @counter.sub and the end-channel send is
-    # still visible here (the channel alone would race: counter 0 + the
-    # channel not yet closed).
-    if force_wait || @counter.get > 0 || @end_channel.closed? || @errors.size > 0
-      maybe_exceptions = @end_channel.receive?
-      raise PipelineException.new(maybe_exceptions) if maybe_exceptions
+    until @counter.get <= 0
+      sleep 1.millisecond
+    end
+    if @errors.size > 0
+      # Consume the phase's errors: a reused pipeline must start its next
+      # phase clean (the caller may catch the exception and keep going).
+      exceptions = @errors
+      @errors = SafeArray(Exception).new
+      raise PipelineException.new(exceptions)
     end
   end
 
