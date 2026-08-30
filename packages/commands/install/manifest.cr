@@ -22,15 +22,17 @@ struct Commands::Install::Manifest
 
   getter dist_tags : Hash(String, String) = Hash(String, String).new
   getter versions : Array(String) = Array(String).new
-  getter times : Hash(String, String) = Hash(String, String).new
   # The raw JSON of every version; only populated when the manifest was
   # freshly parsed from the registry (the cache loads lazily instead).
   getter versions_json : Hash(String, String) = Hash(String, String).new
 
   # The on-disk cache file and the byte range of each version's raw JSON
-  # inside it, for the lazy reads.
+  # inside it, for the lazy reads. The publish times are stored the same
+  # way and read on demand: only the selected version's time is ever
+  # consulted, so the load skips the whole time-value section.
   @cache_path : Path? = nil
   @cache_offsets : Hash(String, {Int32, Int32})? = nil
+  @times_offsets : Hash(String, {Int32, Int32})? = nil
 
   def initialize(manifest_string : String | IO)
     @dist_tags = Hash(String, String).new
@@ -90,16 +92,34 @@ struct Commands::Install::Manifest
     @versions_json : Hash(String, String),
     @cache_path : Path?,
     @cache_offsets : Hash(String, {Int32, Int32})?,
+    @times_offsets : Hash(String, {Int32, Int32})?,
   )
   end
 
   # The publish time of a version, from the packument's top-level `time`
   # field. Returns nil when the registry does not expose it.
   def publish_time?(version : String) : Time?
-    raw = @times[version]?
+    raw = if offsets = @times_offsets
+      read_cached_time(version, offsets)
+    else
+      @times[version]?
+    end
     return unless raw
     Time.parse_iso8601(raw)
   rescue
+    nil
+  end
+
+  private def read_cached_time(version : String, offsets : Hash(String, {Int32, Int32})) : String?
+    return unless path = @cache_path
+    offset_len = offsets[version]?
+    return unless offset_len
+    offset, len = offset_len
+    ::File.open(path) do |file|
+      file.seek(offset)
+      file.read_string(len)
+    end
+  rescue ::File::NotFoundError
     nil
   end
 
@@ -189,7 +209,9 @@ struct Commands::Install::Manifest
     raise CacheFormatError.new("Invalid manifest cache (bad magic)") unless io.read_bytes(UInt32, IO::ByteFormat::BigEndian) == CACHE_MAGIC
     raise CacheFormatError.new("Unsupported manifest cache version") unless io.read_bytes(UInt16, IO::ByteFormat::BigEndian) == CACHE_VERSION
     dist_tags = read_string_map(io)
-    times = read_string_map(io)
+    # The time values are skipped: the keys and their byte offsets are kept
+    # and the selected version's value is read on demand.
+    times_offsets = read_string_offsets(io)
     count = io.read_bytes(UInt32, IO::ByteFormat::BigEndian)
     versions = Array(String).new(count)
     offsets = Hash(String, {Int32, Int32}).new
@@ -200,7 +222,7 @@ struct Commands::Install::Manifest
       io.skip(len)
       versions << version
     end
-    new(dist_tags, versions, times, Hash(String, String).new, path, offsets)
+    new(dist_tags, versions, Hash(String, String).new, Hash(String, String).new, path, offsets, times_offsets)
   end
 
   private def write_string_map(io : IO, map : Hash(String, String)) : Nil
@@ -217,6 +239,20 @@ struct Commands::Install::Manifest
     count.times do
       key = read_cache_string(io)
       map[key] = read_cache_string(io)
+    end
+    map
+  end
+
+  # Reads a string map's keys and records the byte range of each value
+  # without materializing it (the lazy publish times).
+  private def self.read_string_offsets(io : IO) : Hash(String, {Int32, Int32})
+    count = io.read_bytes(UInt16, IO::ByteFormat::BigEndian)
+    map = Hash(String, {Int32, Int32}).new(initial_capacity: count)
+    count.times do
+      key = read_cache_string(io)
+      len = io.read_bytes(UInt16, IO::ByteFormat::BigEndian)
+      map[key] = {io.pos.to_i32, len.to_i32}
+      io.skip(len)
     end
     map
   end
