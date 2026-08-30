@@ -1,4 +1,35 @@
-# Changelog
+## v0.9.0
+
+- **Skip the install pass when nothing relevant changed.** After a
+  successful install, a fingerprint of the project (the workspace
+  package.jsons, the `.npmrc`, the install strategy, the omit set, the
+  lockfile, the configured patches and the installed state) is recorded;
+  when nothing changed, `zap i` reports up to date and skips the
+  resolution, download and linking passes entirely (the root lifecycle
+  scripts still run, npm/yarn parity). `--check-resolutions` disables
+  the fast path.
+- **Faster repeated installs.** The packument cache stores a compact
+  index instead of the full msgpack payload (measured 196ms vs 362ms to
+  load), publish times are read on demand, and the resolved package
+  metadata is cached per version — the raw JSON parse is skipped on
+  repeat installs.
+- **Parallel resolution by default.** The install workers now default to
+  half the logical cores (capped at 4): cold installs measured ~30-35%
+  faster. Override with `ZAP_WORKERS` or `--workers`.
+- **Fix a race in the resolution pipeline.** The install pass now
+  actually waits for the resolution to complete before writing the
+  lockfile (the old await could return early, racing the lockfile write
+  and dropping errors); concurrent cache writes use unique temp files
+  (the shared temps could collide and fail with ENOENT).
+- **More robust caches.** Cache bodies are self-describing (magic +
+  version in the header): format mismatches and corruption degrade to a
+  re-fetch instead of failing the install, and the cache directory is
+  stable across format changes.
+- **Faster extraction and placement.** Tar entry paths are sanitized
+  without per-entry allocations, and the placement walk memoizes semver
+  range parses.
+- **More resilient downloads.** The HTTP/2 per-stream buffer is larger,
+  so a slow stream no longer gates the whole connection.
 
 ## v0.8.0
 

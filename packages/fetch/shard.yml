@@ -1,6 +1,6 @@
 ---
 name: fetch
-version: 0.8.0
+version: 0.9.0
 dependencies:
   msgpack:
     github: crystal-community/msgpack-crystal
