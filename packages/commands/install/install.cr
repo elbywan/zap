@@ -1,4 +1,5 @@
 require "benchmark"
+require "digest/sha256"
 require "log"
 require "concurrency/pipeline"
 require "reporter/reporter"
@@ -128,6 +129,19 @@ module Commands::Install
         state = Commands::Install::Interactive.run(state)
       end
 
+      # Up-to-date fast path (issue #48): when nothing relevant changed
+      # since the last completed install — the package.json files, the
+      # .npmrc, the strategy, the omit set, the lockfile format, the patch
+      # files and the installed state — skip the resolution, download and
+      # linking passes entirely. The root project's own lifecycle scripts
+      # still run (npm/yarn parity); a requested --check-resolutions
+      # disables the fast path (its ref walk needs a full resolution).
+      if up_to_date?(state)
+        state.reporter.info("Dependencies are up to date — nothing to install.")
+        run_own_install_hooks(state)
+        next
+      end
+
       # Omit-aware prefer-dedupe: compute the reachable set from the
       # pre-existing lockfile before the resolution pipeline starts (it
       # must not see the current run's resolutions).
@@ -205,6 +219,9 @@ module Commands::Install
       # Persist the installed state (keys + applied patch hashes) after the
       # linking, so the freshly installed packages are recorded.
       Backend::InstalledState.save(state.installed_state_path, state.installed_state)
+      # Record the project fingerprint, the basis of the up-to-date fast
+      # path on the next install.
+      ::File.write(fingerprint_path(state), project_fingerprint(state))
     end
 
     # Print the report
@@ -239,6 +256,95 @@ module Commands::Install
       end
     end
     {realtime, memory}
+  end
+
+  # The file recording the project fingerprint, next to the installed
+  # state at the node_modules root (gitignored by convention, like the
+  # state file itself).
+  FINGERPRINT_FILE_NAME = ".zap-fingerprint"
+  FINGERPRINT_FORMAT    = "zap-install-fingerprint-v1"
+
+  private def self.fingerprint_path(state : State) : Path
+    Path.new(state.config.node_modules) / FINGERPRINT_FILE_NAME
+  end
+
+  # A SHA-256 over everything that can change the resolved tree: the
+  # package.json contents of the install scope (main package + workspaces),
+  # the project .npmrc, the install strategy, the omit set, the lockfile
+  # format, the configured patch files and the installed-state file.
+  # Hoisting / package-extensions / patched-dependencies option changes are
+  # already handled by their dedicated lockfile shasum checks, which force
+  # a re-install before this check runs.
+  private def self.project_fingerprint(state : State) : String
+    digest = Digest::SHA256.new
+    digest.update(FINGERPRINT_FORMAT)
+    digest.update(state.install_config.strategy.to_s)
+    digest.update(state.config.lockfile_format.to_s)
+    state.install_config.omit.map(&.to_s).sort.each do |omit|
+      digest.update("omit:")
+      digest.update(omit)
+    end
+    state.context.scope_packages_and_paths(:install).map { |(_, path)| path.to_s }.uniq!.sort!.each do |path|
+      digest.update(path)
+      digest.update(::File.read(Path.new(path) / "package.json"))
+    end
+    npmrc_path = Path.new(state.config.prefix) / ".npmrc"
+    digest.update(::File.read(npmrc_path)) if ::File.exists?(npmrc_path)
+    # The lockfile itself: a tampered or manually edited lockfile must
+    # trigger a full install (which re-resolves and repairs the tree)
+    # instead of silently keeping the old one. The file existence is
+    # checked directly: the loaded lockfile's read status reflects the
+    # initial load, which is stale once the resolution wrote it.
+    if ::File.exists?(state.lockfile.lockfile_path)
+      digest.update("lockfile:")
+      digest.update(::File.read(state.lockfile.lockfile_path))
+    end
+    # The configured patch files: a content change re-applies the patches
+    # (the patched_dependencies keys themselves live in package.json).
+    if patches = state.context.main_package.zap_config.try(&.patched_dependencies)
+      patches.values.sort.each do |patch_file|
+        digest.update("patch:")
+        digest.update(patch_file)
+        patch_path = Path.new(patch_file).expand(Path.new(state.config.prefix))
+        digest.update(::File.read(patch_path)) if ::File.exists?(patch_path)
+      end
+    end
+    # The installed-state file: an edited or stale record (e.g. a manual
+    # tampering) must trigger a full install, which prunes and repairs.
+    if ::File.exists?(state.installed_state_path)
+      digest.update("state:")
+      digest.update(::File.read(state.installed_state_path))
+    end
+    digest.final.hexstring
+  end
+
+  # Whether the previous install is still up to date: the lockfile exists,
+  # no change intent or forced refresh is requested, the recorded
+  # fingerprint matches the current one, and every recorded install path
+  # still exists (a partially deleted node_modules is repaired by a full
+  # install).
+  private def self.up_to_date?(state : State) : Bool
+    install_config = state.install_config
+    return false if install_config.refresh_install
+    return false if install_config.force_metadata_retrieval
+    return false if install_config.interactive
+    return false if install_config.dedupe
+    return false if install_config.update_all || install_config.update_latest || install_config.update_recursive
+    return false if install_config.added_packages.size > 0 || install_config.removed_packages.size > 0 || install_config.updated_packages.size > 0
+    # The lockfile verification walks the resolution refs, which only a
+    # full resolution populates: a requested check disables the fast path.
+    return false if install_config.check_resolutions
+    return false unless state.lockfile.read_status.from_disk?
+    return false unless ::File.exists?(state.installed_state_path)
+    fingerprint_path = self.fingerprint_path(state)
+    return false unless ::File.exists?(fingerprint_path)
+    return false unless ::File.read(fingerprint_path) == project_fingerprint(state)
+    # One stat per recorded install path: a missing entry means the tree
+    # was partially deleted and must be rebuilt (relocation repair).
+    state.installed_state.each_key do |path|
+      return false unless Dir.exists?(path)
+    end
+    true
   end
 
   private def self.print_info(
