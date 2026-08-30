@@ -197,9 +197,14 @@ class Fetch(T, Transport)
         key = self.class.hash(key_str)
         root_path = @path / key
         body_file_path = root_path / BODY_FILE_NAME
-        body_file_path_temp = root_path / BODY_FILE_NAME_TEMP
         meta_file_path = root_path / META_FILE_NAME
-        meta_file_path_temp = root_path / META_FILE_NAME_TEMP
+        # The temp names embed a per-write suffix: concurrent sets for the
+        # same key (two fibers resolving the same package) must not clobber
+        # each other's temps, or the second rename would fail with ENOENT.
+        # The final rename is atomic, so the last writer wins consistently.
+        suffix = "#{Process.pid}-#{Random::Secure.hex(4)}"
+        body_file_path_temp = root_path / "#{BODY_FILE_NAME_TEMP}.#{suffix}"
+        meta_file_path_temp = root_path / "#{META_FILE_NAME_TEMP}.#{suffix}"
         Log.debug { "(#{key_str}) Storing metadata at #{root_path}" }
         Utils::Directories.mkdir_p(root_path)
         ::File.write(body_file_path_temp, @serializer.serialize(value))
