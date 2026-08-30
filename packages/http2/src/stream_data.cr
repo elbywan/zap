@@ -2,8 +2,14 @@
 # the connection and closed at END_STREAM.
 module HTTP2
   class StreamData < IO
+    # The per-stream chunk buffer: 64 x 16 KiB frames (1 MiB) of slack
+    # before the connection fiber blocks on a slow consumer and stalls
+    # the connection's other streams (16 chunks made one slow stream gate
+    # the whole connection after 256 KiB of buffered data).
+    CHUNK_CAPACITY = 64
+
     def initialize
-      @chunks = Channel(Bytes).new(16)
+      @chunks = Channel(Bytes).new(CHUNK_CAPACITY)
       @pending = Bytes.empty
       @error = nil
     end
