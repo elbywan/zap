@@ -1,0 +1,96 @@
+name: Benchmark
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "bench/**"
+      - "packages/**"
+      - "shard.yml"
+      - ".github/workflows/benchmark.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: benchmark
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Crystal
+        uses: crystal-lang/install-crystal@v1
+
+      - name: Install hyperfine
+        run: sudo apt-get update && sudo apt-get install -y hyperfine
+
+      # Caching is disabled on purpose: bench/.prototools lives in a
+      # sub-directory (the action only hashes the root config) and its
+      # post-step `proto clean` would wipe the bench tools from the cache.
+      # A fresh `proto install` also re-resolves the `latest`/`lts` aliases.
+      - name: Install proto
+        uses: moonrepo/setup-toolchain@v0
+        with:
+          cache: false
+
+      - name: Install pinned tool versions
+        working-directory: bench
+        run: |
+          proto install
+          # Surface stale `latest`/`lts` aliases in the logs (non-fatal)
+          proto outdated || true
+
+      - name: Install plotting dependencies
+        working-directory: bench
+        run: |
+          PYTHON="$(proto -r text bin python)"
+          "$PYTHON" -m pip install --quiet numpy matplotlib
+
+      - name: Build zap and run the benchmarks
+        working-directory: bench
+        env:
+          # Recorded in bench/versions.txt and linked from the README table
+          BENCH_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: ./bench-local.sh
+
+      - name: Upload benchmark artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            bench/react-app/cold.json
+            bench/react-app/only-cache.json
+            bench/react-app/without-lockfile.json
+            bench/react-app/without-node-modules.json
+            bench/versions.txt
+            bench/*.png
+          if-no-files-found: error
+
+      - name: Refresh the results table in the README
+        working-directory: bench
+        run: |
+          PYTHON="$(proto -r text bin python)"
+          "$PYTHON" results-md.py ../README.md
+          "$PYTHON" results-md.py ../README.md --table >> "$GITHUB_STEP_SUMMARY"
+          echo "changed=$("$PYTHON" results-md.py ../README.md --check)" >> "$GITHUB_ENV"
+
+      # Commit only when the change is material (see results-md.py
+      # --check), otherwise runner noise would churn main's history.
+      # Pushes made with the GITHUB_TOKEN do not re-trigger workflows,
+      # so this cannot loop back into the push trigger. The token is
+      # subject to branch protection: main must stay unprotected, or
+      # "GitHub Actions" must be on the ruleset bypass list.
+      - name: Commit and push the refreshed results
+        if: env.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bench/*.png bench/results.json README.md
+          git commit -m "chore: update benchmark results"
+          git push || { git pull --rebase origin main && git push; }

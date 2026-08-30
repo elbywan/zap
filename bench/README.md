@@ -12,11 +12,13 @@ Install and make sure the binaries are in your path:
 
 ### With the [proto](https://moonrepo.dev/docs/proto) tool
 
-To setup the latest version of the package managers, just run:
+The contender versions are tracked in [`.prototools`](.prototools) with `latest`/`lts` aliases. To install (or refresh) them, run:
 
 ```bash
-proto use
+proto install
 ```
+
+Check for newer releases with `proto outdated` and re-run `proto install` to pick them up. The exact versions measured are printed on the plots.
 
 ### With the [pkgx](https://pkgx.sh/) tool
 
@@ -48,3 +50,12 @@ pip install numpy matplotlib
 # Plot the results
 ./plot.sh
 ```
+
+## CI
+
+The benchmarks also run automatically on GitHub Actions (see the [Benchmark workflow](https://github.com/elbywan/zap/actions/workflows/benchmark.yml)):
+
+- **When:** on every push to main (when `bench/`, `packages/`, `shard.yml` or the workflow change), or on demand from the Actions tab.
+- **What:** the workflow installs the pinned tool versions, builds zap, runs `./bench-local.sh`, uploads the raw results as artifacts and commits the refreshed plots and the results table directly to main, with a link to the exact workflow run that produced them.
+- **Versions:** the exact measured versions are recorded in the plots and in the README table; stale `latest`/`lts` aliases are flagged by `proto outdated` in the workflow logs.
+- **Churn guard:** results are only committed when they change materially (median moved by more than 10%, 25% for the network-bound cold scenario, or different versions) — runner noise rarely touches main. The commit is pushed with the `GITHUB_TOKEN`, which does not re-trigger workflows, and concurrent runs are cancelled in favor of the latest push.
