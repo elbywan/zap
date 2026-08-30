@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -euo pipefail
+
 # Build zap
 ../projects.cr build:cli --production --release --progress -Dpreview_mt -Dexecution_context
 # Run the benchmarks

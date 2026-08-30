@@ -24,3 +24,10 @@ yarn-error.log*
 
 /*.json
 !/package.json
+# lockfiles left behind by interrupted benchmark runs
+/pnpm-lock.yaml
+/yarn.lock
+/bun.lock
+/bun.lockb
+/zap.lock
+/.yarn

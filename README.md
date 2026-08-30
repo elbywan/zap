@@ -294,13 +294,28 @@ Benchmarks consist on installing a fresh [**create-react-app**](https://create-r
 
 **See:** [https://github.com/elbywan/zap/tree/main/bench](/bench)
 
-They are performed on my own personal laptop (Framework Laptop 13, AMD Ryzen 5 7640U, 32 GB 5600 MHz DDR5) with 5G wifi and 1 Gb/s fiber.
+They are run automatically on GitHub Actions (ubuntu-latest) by the [**Benchmark workflow**](https://github.com/elbywan/zap/actions/workflows/benchmark.yml) and refreshed on pushes to main that touch the benchmark or packages.
 
-The benchmarking tool is [**hyperfine**](https://github.com/sharkdp/hyperfine) and to make sure that the results are consistent I re-ran unfavorable results (high error delta).
+The benchmarking tool is [**hyperfine**](https://github.com/sharkdp/hyperfine), with 1 warmup run and 3 measured runs per scenario.
 
-I am aware that this is not a very scientific approach, but it should give rough good idea about what zap is capable of.
+I am aware that this is not a very scientific approach, but it should give rough good idea about what zap is capable of. Absolute times vary between machines — the relative ordering is the signal. Re-measure on your own hardware by running `./bench.sh` locally or by triggering the workflow manually (Actions → Benchmark → Run workflow).
 
 ## Results
+
+[![Benchmark workflow](https://github.com/elbywan/zap/actions/workflows/benchmark.yml/badge.svg)](https://github.com/elbywan/zap/actions/workflows/benchmark.yml)
+
+<!-- bench-results:start -->
+
+| Scenario | npm v11.19.0 | yarn v4.18.0 | pnpm v11.24.0 | bun v1.4.0 | zap v0.8.0 |
+| --- | --- | --- | --- | --- | --- |
+| Without cache, lockfile or node modules | 25.2 s | 7.2 s | 6.6 s | **6.4 s** | 6.8 s |
+| Without lockfile or node modules | 9.6 s | 4.9 s | 5.1 s | **838 ms** | 1.3 s |
+| Without lockfile | 1.0 s | 2.5 s | 474 ms | **81 ms** | 437 ms |
+| Without node modules | 4.5 s | 3.1 s | 2.1 s | **824 ms** | 1.1 s |
+
+Median of 3 runs after 1 warmup, measured on 2026-08-30.
+
+<!-- bench-results:end -->
 
 ![cold](bench/cold.png)
 ![only-cache](bench/only-cache.png)
