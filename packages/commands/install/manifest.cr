@@ -118,26 +118,26 @@ struct Commands::Install::Manifest
     nil
   end
 
-  def get_raw_metadata?(version : Semver::Range | String) : String?
-    result = nil
-
+  # The version string selected by *version* (a dist-tag, an exact version
+  # or a range), or nil when nothing matches.
+  def select_version(version : Semver::Range | String) : String?
     case version
     in String
       # Find the version that matches the dist-tag
-      tag_version = dist_tags[version]?
-      result = raw_metadata(tag_version) if tag_version
+      dist_tags[version]?
     in Semver::Range
       if version.exact_match?
         # For exact comparisons - we compare the version string
-        result = raw_metadata(version.to_s)
+        version.to_s
       else
         # For range comparisons - take the highest version that matches the range
-        highest_matching_version = @versions.find { |v| version.satisfies?(v) }
-        result = raw_metadata(highest_matching_version) if highest_matching_version
+        @versions.find { |v| version.satisfies?(v) }
       end
     end
+  end
 
-    result
+  def get_raw_metadata?(version : Semver::Range | String) : String?
+    select_version(version).try { |v| raw_metadata(v) }
   end
 
   # The raw JSON of *version*, from the freshly parsed packument or, for a
