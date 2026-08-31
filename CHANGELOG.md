@@ -1,3 +1,17 @@
+# Changelog
+
+## v0.9.1
+
+- **Fix a performance regression in the link phase.** The install
+  pipeline's await parked for a full millisecond per package while
+  linking, adding roughly 1.4s to installs that re-link (a fresh
+  `node_modules`): the link-heavy benchmark scenarios measured up to
+  2.3x slower. Short phases now complete without parking.
+- **Event-driven completion.** The await now parks on a completion
+  channel instead of polling a timer: the moment the last package
+  finishes, the caller wakes immediately (no dead time at the end of a
+  phase), and long phases still burn no CPU while waiting.
+
 ## v0.9.0
 
 - **Skip the install pass when nothing relevant changed.** After a
