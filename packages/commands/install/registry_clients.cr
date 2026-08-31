@@ -2,6 +2,7 @@ require "./manifest"
 require "fetch"
 require "fetch/http2"
 require "concurrency/mutex"
+require "concurrency/data_structures/safe_hash"
 require "data/package"
 
 # Exposes a pool of http(s) clients for each registry and convenience methods to access the pools.
@@ -79,6 +80,15 @@ class Commands::Install::RegistryClients
   # the manifest cache's own staleness still gates every resolve, so the
   # cache cannot outlive the packument data it was built from.
   getter package_cache : Fetch::Cache::InStore(Data::Package)
+
+  # Run-scoped in-memory layers over the on-disk caches: two parents
+  # resolving the same package re-read and re-decode the same packument
+  # and package from disk (~150 duplicates on a full install). The pools
+  # are process-wide, so a shared layer there would go stale across
+  # installs; these live on the RegistryClients instance, which is
+  # per-install, and are dropped with it.
+  getter manifest_memory = Concurrency::SafeHash(String, Manifest).new
+  getter package_memory = Concurrency::SafeHash(String, Data::Package).new
 
   # Closes every client pool. Called once the CLI command has finished;
   # a no-op when no install ever created a pool.

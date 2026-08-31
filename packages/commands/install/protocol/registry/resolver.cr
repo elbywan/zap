@@ -243,8 +243,14 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
             Manifest.new(http.get(metadata_url, Shared::Constants::HEADERS).body)
           end
         end
+      elsif (cached_manifest = @clients.manifest_memory[metadata_url]?)
+        # The same packument was already loaded this run: skip the disk
+        # read and the index parse.
+        cached_manifest
       else
-        @client_pool.fetch_with_cache(metadata_url, Shared::Constants::HEADERS) { |body| Manifest.new(body) }
+        @client_pool.fetch_with_cache(metadata_url, Shared::Constants::HEADERS) { |body| Manifest.new(body) }.tap do |m|
+          @clients.manifest_memory[metadata_url] = m
+        end
       end
       Log.debug { "(#{@name}@#{@specifier}) Checking the registry metadata for a match against the version/dist-tag" }
       # With --latest the declared range is ignored and the newest version is
@@ -269,7 +275,7 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
       # package). The manifest's own staleness still gates the resolve, so
       # this cannot outlive the packument data it was built from.
       cache_key = "#{@base_url.to_s}/#{@package_name}@#{selected_version}"
-      pkg = @skip_cache ? nil : @clients.package_cache.get(cache_key)
+      pkg = @skip_cache ? nil : (@clients.package_memory[cache_key]? || @clients.package_cache.get(cache_key))
       unless pkg
         raw_metadata = manifest.get_raw_metadata?(version_for_selection)
         unless raw_metadata
@@ -277,6 +283,7 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
         end
         pkg = Data::Package.from_json(raw_metadata)
         @clients.package_cache.set(cache_key, pkg, 30.days) unless @skip_cache
+        @clients.package_memory[cache_key] = pkg unless @skip_cache
       end
       # Record the named registry on the resolved dist so the lockfile key
       # becomes registry-qualified (pnpm parity) and the package cannot be

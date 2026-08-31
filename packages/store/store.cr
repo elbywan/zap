@@ -1,6 +1,7 @@
 require "utils/targzip"
 require "utils/directories"
 require "concurrency/mutex"
+require "concurrency/data_structures/safe_set"
 require "data/package"
 require "core/config"
 
@@ -10,6 +11,12 @@ struct Store
 
   @global_package_store_path : String
   @global_locks_store_path : String
+
+  # The directories already created during this extraction pass: the tar
+  # entries are grouped per package, so a package's directories repeat
+  # across its files. Skipping mkdir_p (a stat plus a path walk per entry)
+  # collapses ~116k calls to the few thousand unique directories.
+  getter created_dirs = Concurrency::SafeSet(String).new
 
   def initialize(store_path : String)
     @global_package_store_path = ::File.join(store_path, PACKAGES_STORE_PREFIX)
@@ -140,7 +147,11 @@ struct Store
 
   private def store_package_file(package : Data::Package, relative_file_path : String | Path, file_io : IO, permissions : Int64 = DEFAULT_CREATE_PERMISSIONS)
     file_path = package_path(package) / relative_file_path
-    Utils::Directories.mkdir_p(file_path.dirname)
+    dir = file_path.dirname
+    unless created_dirs.includes?(dir)
+      Utils::Directories.mkdir_p(dir)
+      created_dirs << dir
+    end
     File.open(file_path, "w", perm: permissions.to_i32) do |file|
       IO.copy file_io, file
     end
@@ -148,6 +159,10 @@ struct Store
 
   private def store_package_dir(package : Data::Package, relative_dir_path : String | Path)
     file_path = package_path(package) / relative_dir_path
-    Utils::Directories.mkdir_p(file_path)
+    dir = file_path.to_s
+    unless created_dirs.includes?(dir)
+      Utils::Directories.mkdir_p(dir)
+      created_dirs << dir
+    end
   end
 end
