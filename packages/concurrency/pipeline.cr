@@ -71,15 +71,23 @@ class Concurrency::Pipeline
   end
 
   # Blocks until every fiber dispatched with `process` has completed, then
-  # raises if any of them failed. The caller parks on a short timer instead
-  # of spinning: the periodic wakeups keep it runnable so the scheduler can
-  # run fibers dispatched from other fibers (a fully blocked caller would
-  # stall them - the nested dependency resolution only runs while the
-  # caller yields), and the counter - not a channel - decides completion.
+  # raises if any of them failed. The caller stays runnable so the
+  # scheduler can run fibers dispatched from other fibers (a fully blocked
+  # caller would stall them - the nested dependency resolution only runs
+  # while the caller yields); the counter - not a channel - decides
+  # completion. The first iterations are free yields so short phases (the
+  # per-package link wraps) complete immediately; longer phases then park
+  # on a timer so no CPU is burned while waiting.
   def await
     Fiber.yield
+    spins = 0
     until @counter.get <= 0
-      sleep 1.millisecond
+      if spins < 64
+        Fiber.yield
+        spins += 1
+      else
+        sleep 1.millisecond
+      end
     end
     if @errors.size > 0
       # Consume the phase's errors: a reused pipeline must start its next
