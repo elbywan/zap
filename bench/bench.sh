@@ -12,7 +12,11 @@ BUN="$(resolve_tool bun)"
 
 cd react-app
 
-PREPARE_COLD="rm -Rf node_modules .yarn \$($PNPM store path) ~/.bun/ package-lock.json pnpm-lock.yaml yarn.lock bun.lock bun.lockb zap.lock; $YARN cache clean --all; $NPM cache clean --force; zap store clear; true"
+# The pnpm metadata cache lives in the cache-dir, separate from the store
+# (tarballs) that `pnpm store path` reports: without clearing it the "cold"
+# scenario resolves from a warm packument cache, and hyperfine's mean mixes
+# one truly-cold warmup with warm-metadata runs.
+PREPARE_COLD="rm -Rf node_modules .yarn \$($PNPM store path) ~/.cache/pnpm ~/Library/Caches/pnpm ~/.bun/ package-lock.json pnpm-lock.yaml yarn.lock bun.lock bun.lockb zap.lock; $YARN cache clean --all; $NPM cache clean --force; zap store clear; true"
 
 PREPARE_ONLY_CACHE="rm -Rf node_modules package-lock.json pnpm-lock.yaml yarn.lock bun.lock bun.lockb zap.lock; true"
 
