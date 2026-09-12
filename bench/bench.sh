@@ -20,7 +20,13 @@ PREPARE_COLD="rm -Rf node_modules .yarn \$($PNPM store path) ~/.cache/pnpm ~/Lib
 
 PREPARE_ONLY_CACHE="rm -Rf node_modules package-lock.json pnpm-lock.yaml yarn.lock bun.lock bun.lockb zap.lock; true"
 
-PREPARE_WITHOUT_LOCKFILE="rm -f package-lock.json pnpm-lock.yaml yarn.lock bun.lock bun.lockb zap.lock; true"
+# Deleting the root lockfiles is not enough: npm, yarn and pnpm keep
+# lockfile copies/state inside node_modules (pnpm's `.pnpm/lock.yaml` is a
+# full lockfile copy and it answers "Already up to date" in ~40ms without
+# ever re-resolving). Clear them too so the scenario measures what it
+# claims. bun keeps no state file (it reconstructs from the installed
+# packages), so it genuinely skips; that is its design.
+PREPARE_WITHOUT_LOCKFILE="rm -f package-lock.json pnpm-lock.yaml yarn.lock bun.lock bun.lockb zap.lock node_modules/.pnpm/lock.yaml node_modules/.modules.yaml node_modules/.package-lock.json node_modules/.yarn-state.yml node_modules/.package-map.json; true"
 
 PREPARE_WITHOUT_NODE_MODULES="rm -Rf node_modules; true"
 
