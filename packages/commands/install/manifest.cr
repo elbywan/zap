@@ -1,5 +1,6 @@
 require "json"
 require "semver"
+require "./packument_scanner"
 
 struct Commands::Install::Manifest
   include JSON::Serializable
@@ -34,11 +35,32 @@ struct Commands::Install::Manifest
   @cache_offsets : Hash(String, {Int32, Int32})? = nil
   @times_offsets : Hash(String, {Int32, Int32})? = nil
 
+  # The source body and the byte range of every version's raw JSON inside
+  # it, recorded by the vectorized scanner (the pull-parser fallback
+  # records per-version strings instead). The raw is sliced on demand for
+  # the selected versions only.
+  @source_body : String?
+  @version_spans : Hash(String, {Int32, Int32})?
+
   def initialize(manifest_string : String | IO)
     @dist_tags = Hash(String, String).new
     @versions_json = Hash(String, String).new
     @versions = Array(String).new
     @times = Hash(String, String).new
+
+    # The vectorized fast path: finds the three fields and the version
+    # spans without tokenizing the whole document. Anything unexpected
+    # returns nil and the parser below takes over.
+    if (body = manifest_string.is_a?(String) ? manifest_string : nil) &&
+       (scanned = PackumentScanner.scan(body))
+      @dist_tags = scanned.dist_tags
+      @versions = scanned.versions
+      @times = scanned.times
+      @source_body = body
+      @version_spans = scanned.version_spans
+      sort_versions!
+      return
+    end
 
     parser = JSON::PullParser.new(manifest_string)
     parser.read_begin_object
@@ -79,8 +101,12 @@ struct Commands::Install::Manifest
       end
     end
 
-    # sort by biggest version first, parsing each version once (the
-    # previous comparator-based sort parsed on every comparison)
+    sort_versions!
+  end
+
+  # Sort by biggest version first, parsing each version once (the previous
+  # comparator-based sort parsed on every comparison).
+  private def sort_versions! : Nil
     @versions.sort_by! { |v| Semver::Version.parse(v) }
     @versions.reverse!
   end
@@ -94,6 +120,8 @@ struct Commands::Install::Manifest
     @cache_offsets : Hash(String, {Int32, Int32})?,
     @times_offsets : Hash(String, {Int32, Int32})?,
   )
+    @source_body = nil
+    @version_spans = nil
   end
 
   # The publish time of a version, from the packument's top-level `time`
@@ -163,6 +191,10 @@ struct Commands::Install::Manifest
   # The raw JSON of *version*, from the freshly parsed packument or, for a
   # cache-loaded manifest, from the on-disk cache (one seek per version).
   private def raw_metadata(version : String) : String?
+    if (spans = @version_spans) && (span = spans[version]?) && (body = @source_body)
+      offset, len = span
+      return body.byte_slice(offset, len)
+    end
     @versions_json[version]? || read_cached_raw(version)
   end
 
@@ -197,7 +229,7 @@ struct Commands::Install::Manifest
     io.write_bytes(@versions.size.to_u32, IO::ByteFormat::BigEndian)
     @versions.each do |version|
       write_cache_string(io, version)
-      raw = @versions_json[version]? || ""
+      raw = raw_metadata(version) || ""
       io.write_bytes(raw.bytesize.to_u32, IO::ByteFormat::BigEndian)
       io.print(raw)
     end
