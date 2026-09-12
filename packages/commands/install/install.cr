@@ -148,7 +148,9 @@ module Commands::Install
       Resolver.reachable_packages(state, state.reachable_packages) if state.install_config.omit.size > 0
 
       # Resolve all dependencies
+      t0 = Time.monotonic
       update_changed = resolve_dependencies(state)
+      puts "PHASE resolution: #{(Time.monotonic - t0).total_milliseconds.round(1)}ms"
 
       # Verify the lockfile resolutions satisfy the declared ranges (yarn's
       # --check-resolutions / YN0078): a mismatch means the lockfile was
@@ -193,7 +195,9 @@ module Commands::Install
       end
 
       # Install dependencies to the appropriate node_modules folder
+      t0 = Time.monotonic
       linker = link_packages(state, pruned_direct_dependencies)
+      puts "PHASE link+extract: #{(Time.monotonic - t0).total_milliseconds.round(1)}ms"
 
       # Verify every configured patch matched an installed package (pnpm's
       # unused-patch check: a stale or mistyped key is an error, or a warning

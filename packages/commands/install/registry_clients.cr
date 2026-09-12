@@ -232,7 +232,7 @@ class Commands::Install::RegistryClients
     # HTTP/1.1 pool size suffices; it still scales with the user's
     # network_concurrency. The connections open on the first use, so a
     # fully cached install never touches the network.
-    connection_count = Math.max(1, @pool_max_size // 4)
+    connection_count = Math.max(1, @pool_max_size // 2)
     Log.debug { "HTTP/2 pool for #{base_url} (#{connection_count} connections, opened on demand)" }
 
     # The Authorization header for the private registries; reconnects keep
