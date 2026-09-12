@@ -9,6 +9,11 @@ on:
       - "shard.yml"
       - ".github/workflows/benchmark.yml"
   workflow_dispatch:
+    inputs:
+      commit_results:
+        description: "Commit the refreshed plots and results table when they change materially"
+        type: boolean
+        default: true
 
 concurrency:
   group: benchmark
@@ -87,7 +92,7 @@ jobs:
       # subject to branch protection: main must stay unprotected, or
       # "GitHub Actions" must be on the ruleset bypass list.
       - name: Commit and push the refreshed results
-        if: env.changed == 'true'
+        if: ${{ env.changed == 'true' && (github.event_name == 'push' || inputs.commit_results) }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
