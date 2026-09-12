@@ -55,7 +55,7 @@ pip install numpy matplotlib
 
 The benchmarks also run automatically on GitHub Actions (see the [Benchmark workflow](https://github.com/elbywan/zap/actions/workflows/benchmark.yml)):
 
-- **When:** on every push to main (when `bench/`, `packages/`, `shard.yml` or the workflow change), or on demand from the Actions tab.
+- **When:** on every push to main (when `bench/`, `packages/`, `shard.yml` or the workflow change), or on demand from the Actions tab. A manual dispatch takes a `commit_results` input (default on): turn it off to run the benchmark without committing the refreshed results — useful for measuring a branch.
 - **What:** the workflow installs the pinned tool versions, builds zap, runs `./bench-local.sh`, uploads the raw results as artifacts and commits the refreshed plots and the results table directly to main, with a link to the exact workflow run that produced them.
 - **Versions:** the exact measured versions are recorded in the plots and in the README table; stale `latest`/`lts` aliases are flagged by `proto outdated` in the workflow logs.
 - **Churn guard:** results are only committed when they change materially — zap's performance relative to any contender moved by more than 25%, or different versions — so machine-wide runner noise (which moves all medians together) does not touch main. The commit is pushed with the `GITHUB_TOKEN`, which does not re-trigger workflows, and concurrent runs are cancelled in favor of the latest push.
