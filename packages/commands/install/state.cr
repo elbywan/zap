@@ -6,6 +6,7 @@ require "concurrency/pipeline"
 require "core/config"
 require "shared/constants"
 require "./config"
+require "./edge_ranges"
 require "./registry_clients"
 require "reporter/interactive"
 
@@ -37,5 +38,17 @@ module Commands::Install
     # omit-aware prefer-dedupe filter. Filled once, before the resolution
     # pipeline starts, only when --omit is active; the candidate scan
     # consults it only then.
-    reachable_packages : Concurrency::SafeSet(String) = Concurrency::SafeSet(String).new
+    reachable_packages : Concurrency::SafeSet(String) = Concurrency::SafeSet(String).new,
+    # The packages that were in the lockfile before this run resolved
+    # anything, indexed by name: the candidate set for prefer-dedupe.
+    # Scanning the live lockfile instead would include the resolutions of
+    # the current run, and since those land in completion order the
+    # dedupe's outcome (and the whole resolved graph) would vary between
+    # runs over identical inputs.
+    in_use_packages : Hash(String, Array(Data::Package)) = Hash(String, Array(Data::Package)).new,
+    # The declared range of every dependency edge that was resolved this
+    # run, keyed by "<parent key>\u0000<dependency name>": the collapse
+    # pass re-checks each edge against the finished graph and needs the
+    # range, which the lockfile only keeps as a pin.
+    declared_ranges : EdgeRanges = EdgeRanges.new
 end

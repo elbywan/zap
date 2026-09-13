@@ -15,6 +15,7 @@ require "./timings"
 require "./state"
 require "./patches"
 require "./resolver"
+require "./dedupe_pass"
 require "./interactive"
 require "./linker"
 require "./linker/classic"
@@ -504,6 +505,12 @@ module Commands::Install
   end
 
   private def self.resolve_dependencies(state : State)
+    # prefer-dedupe candidates come from the pre-run lockfile only: the
+    # in-run resolutions land in fiber-completion order, so including them
+    # would make the resolved graph nondeterministic on identical inputs.
+    state.lockfile.packages.each_value do |pkg|
+      (state.in_use_packages[pkg.name] ||= [] of Data::Package) << pkg
+    end
     state.pipeline.set_concurrency(state.config.network_concurrency * 5)
     state.reporter.report_resolver_updates do
       # Resolve overrides
@@ -522,6 +529,11 @@ module Commands::Install
         Resolver.resolve_dependencies_of(package, state: state) || acc
       end
       state.pipeline.await
+      # Collapse version duplicates deterministically, now that the graph
+      # is complete (the resolution no longer reuses versions resolved
+      # earlier in the same run: that made the outcome depend on fiber
+      # completion order).
+      DedupePass.collapse(state)
       # Rewrite direct dependency specifiers when --latest bumped them
       update_changed = state.context.scope_packages(:install).reduce(update_changed) do |acc, package|
         Resolver.rewrite_latest_specifiers(package, state) || acc
