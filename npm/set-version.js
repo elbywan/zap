@@ -13,7 +13,6 @@ fs.writeFileSync(yamlPath, yaml);
 
 const packages = [
   "darwin-arm64",
-  "darwin-x64",
   "linux-x64",
   "win32-x64",
   "zap",

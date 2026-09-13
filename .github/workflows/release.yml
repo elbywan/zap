@@ -45,8 +45,6 @@ jobs:
       - name: Prepare the binaries
         run: |
           ls -al ./bin
-          chmod u+x ./bin/zap_x86_64-apple-darwin/zap
-          mv ./bin/zap_x86_64-apple-darwin/zap ./npm/darwin-x64/bin/zap
           chmod u+x ./bin/zap_arm64-apple-darwin/zap
           mv ./bin/zap_arm64-apple-darwin/zap ./npm/darwin-arm64/bin/zap
           chmod u+x ./bin/zap_x86_64-linux-musl/zap
@@ -57,7 +55,6 @@ jobs:
         # Trusted publishing (OIDC): the npm CLI mints a short-lived token
         # from the workflow's OIDC identity; no long-lived npm token needed.
         run: |
-          npm publish ./npm/darwin-x64 --tag ${{ github.event.inputs.dist_tag }} --access public
           npm publish ./npm/darwin-arm64 --tag ${{ github.event.inputs.dist_tag }} --access public
           npm publish ./npm/linux-x64 --tag ${{ github.event.inputs.dist_tag }} --access public
           npm publish ./npm/win32-x64 --tag ${{ github.event.inputs.dist_tag }} --access public

@@ -7,40 +7,6 @@ on:
     branches: [main]
 
 jobs:
-  macos_x86_64:
-    runs-on: macos-15-intel
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-      - name: Install Crystal
-        run: brew update && brew install crystal || true
-      - name: Copy static libraries
-        run: |
-          mkdir -p ./libs
-          # openssl
-          cp $(brew --prefix)/opt/openssl@3/lib/libssl.a ./libs
-          cp $(brew --prefix)/opt/openssl@3/lib/libcrypto.a ./libs
-          # libevent (optional: the default event loop is kqueue on macOS)
-          cp $(brew --prefix)/opt/libevent/lib/libevent_pthreads.a ./libs || true
-          cp $(brew --prefix)/opt/libevent/lib/libevent.a ./libs || true
-          # libyaml
-          cp $(brew --prefix)/opt/libyaml/lib/libyaml.a ./libs
-          # libgc
-          cp $(brew --prefix)/opt/bdw-gc/lib/libgc.a ./libs
-          # libpcre
-          cp $(brew --prefix)/opt/pcre2/lib/libpcre2-8.a ./libs
-      - name: Build the binary
-        # Statically link most non-system libraries
-        run: |
-          env CRYSTAL_LIBRARY_PATH=`pwd`/libs crystal projects.cr build:cli --no-debug --release
-          mkdir bin
-          mv ./packages/cli/bin/zap ./bin/zap
-      - name: Upload a Build Artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: zap_x86_64-apple-darwin
-          path: ./bin/zap
-          if-no-files-found: error
   macos_arm64:
     runs-on: macos-15
     steps:
@@ -118,7 +84,7 @@ jobs:
           if-no-files-found: error
   trigger_release:
     runs-on: ubuntu-latest
-    needs: [macos_x86_64, macos_arm64, linux, windows]
+    needs: [macos_arm64, linux, windows]
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     steps:
       - name: Checkout repository

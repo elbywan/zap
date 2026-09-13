@@ -24,7 +24,6 @@
   },
   "optionalDependencies": {
     "@zap./darwin-arm64": "0.3.0",
-    "@zap./darwin-x64": "0.3.0",
     "@zap./linux-x64": "0.3.0",
     "@zap./win32-x64": "0.3.0"
   }
