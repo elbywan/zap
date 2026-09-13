@@ -74,6 +74,10 @@ module Commands::Install::DedupePass
           # is about to drop.
           next if !omit.empty? && !state.reachable_packages.includes?(candidate.key)
           next unless registry_origin(dist.tarball, name) == origin
+          # The version this edge itself resolved fresh is not an adoption:
+          # the pass exists to prefer a version already in the tree over the
+          # newest one the range allows.
+          next if candidate.version == current
           next unless range.satisfies?(candidate.version)
           target = candidate if target.nil? || Semver::Version.parse(candidate.version) > Semver::Version.parse(target.version)
         end

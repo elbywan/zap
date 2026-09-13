@@ -348,7 +348,18 @@ module Commands::Install::Resolver
       # collapses nothing but keeps the pins instead of re-resolving
       # fresh (no surprise update).
       if maybe_metadata.nil? && ((state.install_config.dedupe && !dedupe_disabled(state)) || (!bust_pinned_cache && !update_in_progress(state.install_config) && prefer_dedupe(state)))
-        maybe_metadata = resolver.dedupe_candidate(name, version)
+        candidate = resolver.dedupe_candidate(name, version)
+        # The candidate could not answer this edge (nothing in use yet —
+        # the pre-run snapshot has nothing to offer): it resolved fresh.
+        # Remember it for the collapse pass, which restores the adoption
+        # after the resolution, deterministically, for versions discovered
+        # later in this run. Edges the candidate answered are already in
+        # use and must never move; updates and `prefer_dedupe: false` never
+        # reach this branch, so neither can collapse.
+        if candidate.nil? && package && !single_resolution
+          state.declared_ranges["#{package.key}\u0000#{name}"] = version
+        end
+        maybe_metadata = candidate
         if maybe_metadata && package
           # The dedupe candidate reuses an already-resolved version without
           # a fresh `resolver.resolve`, so the `on_resolve` pin (the resolved
@@ -364,12 +375,6 @@ module Commands::Install::Resolver
       end
 
       Log.debug { "(#{maybe_metadata.key}) Metatadata found in the lockfile cache #{(package ? "[parent: #{package.key}]" : "")}" if maybe_metadata }
-      # Remember the edge's declared range for the collapse pass, but only
-      # when it resolved fresh: an edge satisfied by a lockfile pin must
-      # never be rewritten (a plain install would silently upgrade it).
-      if package && !single_resolution && maybe_metadata.nil?
-        state.declared_ranges["#{package.key}\u0000#{name}"] = version
-      end
       # If the package is not in the lockfile or if it is a direct dependency, resolve it
       metadata = maybe_metadata || resolver.resolve
       metadata_key = metadata.key
