@@ -36,7 +36,7 @@ SCENARIOS = [
     ("without-lockfile.json", "Without lockfile"),
     ("without-node-modules.json", "Without node modules"),
 ]
-TOOLS = ["npm", "yarn", "pnpm", "bun", "zap"]
+TOOLS = ["npm", "yarn", "zpm", "pnpm", "bun", "zap"]
 
 START = "<!-- bench-results:start -->"
 END = "<!-- bench-results:end -->"
@@ -51,7 +51,7 @@ def read_versions():
 
 
 def tool_of(command):
-    # The yarn command is prefixed with "env KEY=value ..." entries.
+    # The yarn and zpm commands are prefixed with "env KEY=value ..." entries.
     for token in command.split():
         if token != "env" and "=" not in token:
             return token.rsplit("/", 1)[-1]

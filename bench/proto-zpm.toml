@@ -1,0 +1,32 @@
+# A proto plugin for Yarn 6 (`zpm`), the Rust rewrite of Yarn, used by the
+# benchmark. Installed alongside the other tools by `proto install`, which
+# reads the pin and this locator from `.prototools`.
+#
+# proto v0.59 has experimental Yarn v6 support built in, but on glibc Linux
+# it refuses to install ("Only musl is supported") even though the published
+# musl build is static and runs anywhere. Pinning the asset here sidesteps
+# that. The archive ships two binaries: `yarn`, the version-switch manager,
+# and the actual CLI as `yarn-bin` — the benchmark runs the latter.
+#
+# See: https://moonrepo.dev/docs/proto/non-wasm-plugin
+
+name = "zpm"
+type = "package-manager"
+
+[platform.linux]
+archs = ["x86_64", "aarch64"]
+download-file = "yarn-{arch}-unknown-linux-musl.zip"
+
+[platform.macos]
+archs = ["aarch64"]
+download-file = "yarn-{arch}-apple-darwin.zip"
+
+[install]
+download-url = "https://github.com/yarnpkg/zpm/releases/download/v{version}/{download_file}"
+
+[install.exes.zpm]
+exe-path = "yarn-bin"
+primary = true
+
+[resolve]
+git-url = "https://github.com/yarnpkg/zpm"

@@ -6,6 +6,7 @@ Install and make sure the binaries are in your path:
 
 - [npm](https://www.npmjs.com/)
 - [yarn](https://yarnpkg.com/)
+- [zpm](https://v6.yarnpkg.com/concepts/yarn-6) (Yarn 6)
 - [pnpm](https://pnpm.io/)
 - [bun](bun.sh/)
 - [zap](https://github.com/elbywan/zap)
@@ -20,6 +21,8 @@ proto install
 
 Check for newer releases with `proto outdated` and re-run `proto install` to pick them up. The exact versions measured are printed on the plots.
 
+Yarn 6 (`zpm`) is not one of proto's built-in tools: it is installed through the [non-WASM plugin](proto-zpm.toml) pinned in the same file. All of its releases are pre-releases, so `.prototools` pins an exact version rather than an alias.
+
 ### With the [pkgx](https://pkgx.sh/) tool
 
 The pkgx tool can alternatively be used:
@@ -27,6 +30,8 @@ The pkgx tool can alternatively be used:
 ```bash
 pkgx +yarnpkg.com +node +npm +pnpm +bun +python
 ```
+
+Yarn 6 has no pkgx package: install it with proto (above) or drop it from the run.
 
 ## Dependencies
 
