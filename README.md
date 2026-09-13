@@ -30,8 +30,21 @@ I am not looking for contributors at the moment, but feel free to open an issue 
 
 ## Installation
 
+With [Homebrew](https://brew.sh) (macOS and Linux):
+
+```bash
+brew install elbywan/zap/zap
+```
+
+With npm:
+
 ```bash
 npm i -g @zap./zap
+```
+
+Then:
+
+```bash
 zap --help
 ```
 
