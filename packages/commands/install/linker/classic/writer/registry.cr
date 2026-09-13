@@ -69,18 +69,39 @@ class Commands::Install::Linker::Classic
 
     def install : InstallResult
       installation_path = location.value.node_modules / (aliased_name || dependency.name)
-      installed = begin
-        Backend.link(dependency: dependency, target: installation_path, store: state.store, backend: state.config.file_backend, pipeline: state.pipeline, installed_state: state.installed_state, patch_hash: Patches.expected_hash(dependency, state: state)) {
-          state.reporter.on_linking_package
-        }
-      rescue ex
-        state.reporter.log(%(#{aliased_name.try &.+(":")}#{(dependency.name + '@' + dependency.version).colorize.yellow} Failed to install with #{state.config.file_backend} backend: #{ex.message}))
-        # Fallback to the widely supported "plain copy" backend
-        Backend.link(backend: :copy, dependency: dependency, target: installation_path, store: state.store, pipeline: state.pipeline, installed_state: state.installed_state, patch_hash: Patches.expected_hash(dependency, state: state)) { }
+      link_location = self.class.init_location(dependency, installation_path, location)
+      # The BFS visits the same package/location more than once: the first
+      # visit dispatched the link (whose task may still be in flight) and
+      # the installed state is only recorded after the phase's await, so
+      # repeats must neither check nor re-link nor re-dispatch. A different
+      # version targeting an in-flight path takes it over: drain the pool,
+      # invalidate the pending work and relink (the sequential code did the
+      # same via the on-disk key mismatch).
+      if dispatched_key = linker.dispatched_key(installation_path)
+        return {link_location, false} if dispatched_key == dependency.key
+        state.pipeline.await
+        linker.undispatch(installation_path.to_s)
       end
 
-      linker.on_link(dependency, installation_path, state: state, location: location, ancestors: ancestors) if installed
-      {self.class.init_location(dependency, installation_path, location), installed}
+      backend = state.config.file_backend
+      {% unless flag?(:darwin) %}
+        # The synchronous writer used to fall back to a plain copy when the
+        # configured backend failed; the platform-specific backends are
+        # what actually fails here, so swap them before dispatching.
+        if backend.clone_file? || backend.copy_file?
+          state.reporter.log(%(#{aliased_name.try &.+(":")}#{(dependency.name + '@' + dependency.version).colorize.yellow} Failed to install with #{backend} backend: not supported on this platform))
+          backend = Backend::Backends::Copy
+        end
+      {% end %}
+
+      installed = Backend.dispatch_link(dependency: dependency, target: installation_path, store: state.store, backend: backend, pipeline: state.pipeline, installed_state: state.installed_state, patch_hash: Patches.expected_hash(dependency, state: state)) {
+        state.reporter.on_linking_package
+      }
+
+      # The post-link callback needs the linked tree (patches, bin links,
+      # install hooks): it runs after the phase's await, in BFS order.
+      linker.on_dispatched(dependency, installation_path, state: state, location: location, ancestors: ancestors) if installed
+      {link_location, installed}
     end
 
     private def skip_hoisting? : Bool
