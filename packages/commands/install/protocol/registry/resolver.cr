@@ -203,8 +203,14 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
     integrity : String?,
     state : Commands::Install::State,
   ) : Bool
-    IO::Digest.new(io, algorithm_instance.call).tap do |digest|
-      state.store.unpack_and_store_tarball(metadata, digest)
+    # The raw reads are timed below IO::Digest, so tarball.net is the
+    # socket wait while tarball.unpack minus tarball.net is the
+    # inflate/tar/write/digest CPU.
+    source = Timings.enabled ? Timings::TimingIO.new(io, Timings::Phase::TarballNet.label) : io
+    IO::Digest.new(source, algorithm_instance.call).tap do |digest|
+      Timings.measure(Timings::Phase::TarballUnpack) do
+        state.store.unpack_and_store_tarball(metadata, digest)
+      end
 
       digest.skip_to_end
       computed_hash = digest.final
