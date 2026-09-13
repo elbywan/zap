@@ -69,14 +69,16 @@ class Commands::Install::Linker::Classic
 
     def install : InstallResult
       installation_path = location.value.node_modules / (aliased_name || dependency.name)
-      installed = begin
-        Backend.link(dependency: dependency, target: installation_path, store: state.store, backend: state.config.file_backend, pipeline: state.pipeline, installed_state: state.installed_state, patch_hash: Patches.expected_hash(dependency, state: state)) {
-          state.reporter.on_linking_package
-        }
-      rescue ex
-        state.reporter.log(%(#{aliased_name.try &.+(":")}#{(dependency.name + '@' + dependency.version).colorize.yellow} Failed to install with #{state.config.file_backend} backend: #{ex.message}))
-        # Fallback to the widely supported "plain copy" backend
-        Backend.link(backend: :copy, dependency: dependency, target: installation_path, store: state.store, pipeline: state.pipeline, installed_state: state.installed_state, patch_hash: Patches.expected_hash(dependency, state: state)) { }
+      installed = Timings.measure(Timings::Phase::LinkBackend) do
+        begin
+          Backend.link(dependency: dependency, target: installation_path, store: state.store, backend: state.config.file_backend, pipeline: state.pipeline, installed_state: state.installed_state, patch_hash: Patches.expected_hash(dependency, state: state)) {
+            state.reporter.on_linking_package
+          }
+        rescue ex
+          state.reporter.log(%(#{aliased_name.try &.+(":")}#{(dependency.name + '@' + dependency.version).colorize.yellow} Failed to install with #{state.config.file_backend} backend: #{ex.message}))
+          # Fallback to the widely supported "plain copy" backend
+          Backend.link(backend: :copy, dependency: dependency, target: installation_path, store: state.store, pipeline: state.pipeline, installed_state: state.installed_state, patch_hash: Patches.expected_hash(dependency, state: state)) { }
+        end
       end
 
       linker.on_link(dependency, installation_path, state: state, location: location, ancestors: ancestors) if installed

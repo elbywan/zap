@@ -113,12 +113,14 @@ class Commands::Install::Linker::Classic < Commands::Install::Linker::Base
         check_os_and_cpu!(dependency, early: :next)
 
         # Install a dependency and get the new cache to pass to the subdeps
-        install_location, did_install = install_dependency(
-          dependency,
-          location: dependency_item.location_node,
-          ancestors: dependency_item.ancestors,
-          aliased_name: dependency_item.alias
-        )
+        install_location, did_install = Timings.measure(Timings::Phase::LinkItems) do
+          install_dependency(
+            dependency,
+            location: dependency_item.location_node,
+            ancestors: dependency_item.ancestors,
+            aliased_name: dependency_item.alias
+          )
+        end
 
         if location = install_location
           Log.debug { "(#{dependency.key}) Installed to: #{location.node_modules.parent}" if did_install }
