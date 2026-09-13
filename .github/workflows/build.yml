@@ -13,15 +13,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
       - name: Install Crystal
-        # Not `brew install crystal`: the formula pulls the latest llvm,
-        # which source-builds on images without a bottle for it (macos-15-intel
-        # spent 15+ minutes building LLVM and failed on a formula patch
-        # checksum). The action installs the official release tarball.
-        uses: crystal-lang/install-crystal@v1
-      - name: Install static library dependencies
-        # The crystal formula used to bring these in; they are bottled on
-        # every macOS runner image.
-        run: brew install openssl@3 libyaml bdw-gc pcre2 libevent
+        run: brew update && brew install crystal || true
       - name: Copy static libraries
         run: |
           mkdir -p ./libs
@@ -37,45 +29,10 @@ jobs:
           cp $(brew --prefix)/opt/bdw-gc/lib/libgc.a ./libs
           # libpcre
           cp $(brew --prefix)/opt/pcre2/lib/libpcre2-8.a ./libs
-      - name: Debug toolchain (temporary)
-        run: |
-          which -a crystal; crystal --version
-          crystal env | head -12
-          echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
-          ls -la "$PKG_CONFIG_PATH" 2>&1 | head -4
-          pkg-config --exists libssl; echo "libssl exists exit=$?"
-          echo "libssl flags: [$(pkg-config --libs --silence-errors libssl)]"
-          pkg-config --exists libcrypto; echo "libcrypto exists exit=$?"
-          echo "libcrypto flags: [$(pkg-config --libs --silence-errors libcrypto)]"
-          ls -la ./libs
-          file ./libs/libssl.a ./libs/libcrypto.a | cut -c1-130
-          echo "--- openssl@1.1 lib dir:"
-          ls -la /opt/homebrew/Cellar/openssl@1.1/1.1.1w/lib 2>/dev/null | head -12
-          ls -la /usr/local/Cellar/openssl@1.1/1.1.1w/lib 2>/dev/null | head -12
-          echo "--- ld probe (which libssl does the linker pick?):"
-          cd /tmp && printf 'extern int EVP_MD_size(); int main(){return EVP_MD_size();}\n' > probe.c && \
-            clang -L"$GITHUB_WORKSPACE/libs" -lssl -lcrypto -Wl,-t probe.c -o probe 2>&1 | grep -iE "libssl|libcrypto|error" | head -6
-          echo "--- ld probe with the openssl@1.1 path appended:"
-          clang -L"$GITHUB_WORKSPACE/libs" -L/opt/homebrew/Cellar/openssl@1.1/1.1.1w/lib -L/usr/local/Cellar/openssl@1.1/1.1.1w/lib -lssl -lcrypto -Wl,-t probe.c -o probe2 2>&1 | grep -iE "libssl|libcrypto|error|Undefined" | head -8
       - name: Build the binary
         # Statically link most non-system libraries
         run: |
-          # PKG_CONFIG_PATH is set job-wide by the runner image and points
-          # at an openssl@1.1 keg: pkg-config then emits -L flags for its
-          # dylibs, which shadow the static archives copied into ./libs and
-          # leave openssl symbols unresolved. Neutralize pkg-config so the
-          # link falls back to plain -l flags resolved from ./libs first.
-          # The openssl archives are passed by path: a bare -lcrypto
-          # reaches the linker before the objects do (Crystal emits it in
-          # its default flags), the archive pass pulls nothing, and the
-          # later duplicate -lcrypto is ignored as such. Paths are
-          # resolved after the objects, so the members are pulled.
-          cd packages/cli
-          shards install
-          env CRYSTAL_LIBRARY_PATH="$GITHUB_WORKSPACE/libs" PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR=/nonexistent \
-            crystal build zap.cr --no-debug --release -o bin/zap \
-            --link-flags "$GITHUB_WORKSPACE/libs/libssl.a $GITHUB_WORKSPACE/libs/libcrypto.a"
-          cd "$GITHUB_WORKSPACE"
+          env CRYSTAL_LIBRARY_PATH=`pwd`/libs crystal projects.cr build:cli --no-debug --release
           mkdir bin
           mv ./packages/cli/bin/zap ./bin/zap
       - name: Upload a Build Artifact
@@ -90,15 +47,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
       - name: Install Crystal
-        # Not `brew install crystal`: the formula pulls the latest llvm,
-        # which source-builds on images without a bottle for it (macos-15-intel
-        # spent 15+ minutes building LLVM and failed on a formula patch
-        # checksum). The action installs the official release tarball.
-        uses: crystal-lang/install-crystal@v1
-      - name: Install static library dependencies
-        # The crystal formula used to bring these in; they are bottled on
-        # every macOS runner image.
-        run: brew install openssl@3 libyaml bdw-gc pcre2 libevent
+        run: brew update && brew install crystal || true
       - name: Copy static libraries
         run: |
           mkdir -p ./libs
@@ -114,44 +63,9 @@ jobs:
           cp $(brew --prefix)/opt/bdw-gc/lib/libgc.a ./libs
           # libpcre
           cp $(brew --prefix)/opt/pcre2/lib/libpcre2-8.a ./libs
-      - name: Debug toolchain (temporary)
-        run: |
-          which -a crystal; crystal --version
-          crystal env | head -12
-          echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
-          ls -la "$PKG_CONFIG_PATH" 2>&1 | head -4
-          pkg-config --exists libssl; echo "libssl exists exit=$?"
-          echo "libssl flags: [$(pkg-config --libs --silence-errors libssl)]"
-          pkg-config --exists libcrypto; echo "libcrypto exists exit=$?"
-          echo "libcrypto flags: [$(pkg-config --libs --silence-errors libcrypto)]"
-          ls -la ./libs
-          file ./libs/libssl.a ./libs/libcrypto.a | cut -c1-130
-          echo "--- openssl@1.1 lib dir:"
-          ls -la /opt/homebrew/Cellar/openssl@1.1/1.1.1w/lib 2>/dev/null | head -12
-          ls -la /usr/local/Cellar/openssl@1.1/1.1.1w/lib 2>/dev/null | head -12
-          echo "--- ld probe (which libssl does the linker pick?):"
-          cd /tmp && printf 'extern int EVP_MD_size(); int main(){return EVP_MD_size();}\n' > probe.c && \
-            clang -L"$GITHUB_WORKSPACE/libs" -lssl -lcrypto -Wl,-t probe.c -o probe 2>&1 | grep -iE "libssl|libcrypto|error" | head -6
-          echo "--- ld probe with the openssl@1.1 path appended:"
-          clang -L"$GITHUB_WORKSPACE/libs" -L/opt/homebrew/Cellar/openssl@1.1/1.1.1w/lib -L/usr/local/Cellar/openssl@1.1/1.1.1w/lib -lssl -lcrypto -Wl,-t probe.c -o probe2 2>&1 | grep -iE "libssl|libcrypto|error|Undefined" | head -8
       - name: Build the binary
         run: |
-          # PKG_CONFIG_PATH is set job-wide by the runner image and points
-          # at an openssl@1.1 keg: pkg-config then emits -L flags for its
-          # dylibs, which shadow the static archives copied into ./libs and
-          # leave openssl symbols unresolved. Neutralize pkg-config so the
-          # link falls back to plain -l flags resolved from ./libs first.
-          # The openssl archives are passed by path: a bare -lcrypto
-          # reaches the linker before the objects do (Crystal emits it in
-          # its default flags), the archive pass pulls nothing, and the
-          # later duplicate -lcrypto is ignored as such. Paths are
-          # resolved after the objects, so the members are pulled.
-          cd packages/cli
-          shards install
-          env CRYSTAL_LIBRARY_PATH="$GITHUB_WORKSPACE/libs" PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR=/nonexistent \
-            crystal build zap.cr --no-debug --release -o bin/zap \
-            --link-flags "$GITHUB_WORKSPACE/libs/libssl.a $GITHUB_WORKSPACE/libs/libcrypto.a"
-          cd "$GITHUB_WORKSPACE"
+          env CRYSTAL_LIBRARY_PATH=`pwd`/libs crystal projects.cr build:cli --no-debug --release
           mkdir bin
           mv ./packages/cli/bin/zap ./bin/zap
       - name: Upload a Build Artifact
