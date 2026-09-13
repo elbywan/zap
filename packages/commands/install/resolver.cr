@@ -349,13 +349,13 @@ module Commands::Install::Resolver
       # fresh (no surprise update).
       if maybe_metadata.nil? && ((state.install_config.dedupe && !dedupe_disabled(state)) || (!bust_pinned_cache && !update_in_progress(state.install_config) && prefer_dedupe(state)))
         candidate = resolver.dedupe_candidate(name, version)
-        # The candidate could not answer this edge (nothing in use yet —
-        # the pre-run snapshot has nothing to offer): it resolved fresh.
-        # Remember it for the collapse pass, which restores the adoption
-        # after the resolution, deterministically, for versions discovered
-        # later in this run. Edges the candidate answered are already in
-        # use and must never move; updates and `prefer_dedupe: false` never
-        # reach this branch, so neither can collapse.
+        # No version in use satisfies this edge (the pre-run snapshot has
+        # nothing to offer): it resolved fresh. Remember it for the collapse
+        # pass, which restores the adoption after the resolution,
+        # deterministically, for versions discovered later in this run.
+        # Edges the candidate answered are already in use and must never
+        # move; updates and `prefer_dedupe: false` never reach this branch,
+        # so neither can collapse.
         if candidate.nil? && package && !single_resolution
           state.declared_ranges["#{package.key}\u0000#{name}"] = version
         end
