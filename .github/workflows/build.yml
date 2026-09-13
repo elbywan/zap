@@ -15,19 +15,21 @@ jobs:
       - name: Install Crystal
         # Not `brew install crystal`: the formula depends on llvm@22, which
         # has no Intel macOS bottle (Homebrew no longer builds them), so
-        # Homebrew source-builds LLVM — 15+ minutes, ending in formula patch
-        # checksum failures. The action installs the official release tarball.
+        # Homebrew source-builds LLVM — 15+ minutes, then a formula patch
+        # checksum failure. The action installs the official release tarball.
         uses: crystal-lang/install-crystal@v1
       - name: Install static library dependencies
-        # The crystal formula used to pull these in; all are bottled on
-        # every macOS runner image.
-        run: brew install openssl@3 libyaml bdw-gc pcre2 libevent
+        # These used to arrive with the crystal formula; all are bottled.
+        run: brew install openssl@3 openssl@1.1 libyaml bdw-gc pcre2 libevent
       - name: Copy static libraries
         run: |
           mkdir -p ./libs
-          # openssl
-          cp $(brew --prefix)/opt/openssl@3/lib/libssl.a ./libs
-          cp $(brew --prefix)/opt/openssl@3/lib/libcrypto.a ./libs
+          # openssl@1.1, not @3: openssl@3 3.6 (the runner image ships
+          # 3.6.4) no longer exports EVP_MD_size as a function, which
+          # Crystal's stdlib references. The 1.1 archives provide it and
+          # Crystal supports both ABIs.
+          cp $(brew --prefix)/opt/openssl@1.1/lib/libssl.a ./libs
+          cp $(brew --prefix)/opt/openssl@1.1/lib/libcrypto.a ./libs
           # libevent (optional: the default event loop is kqueue on macOS)
           cp $(brew --prefix)/opt/libevent/lib/libevent_pthreads.a ./libs || true
           cp $(brew --prefix)/opt/libevent/lib/libevent.a ./libs || true
@@ -37,42 +39,14 @@ jobs:
           cp $(brew --prefix)/opt/bdw-gc/lib/libgc.a ./libs
           # libpcre
           cp $(brew --prefix)/opt/pcre2/lib/libpcre2-8.a ./libs
-      - name: Debug openssl symbols (temporary)
-        run: |
-          echo "--- EVP_MD_size in our copied archive:"
-          nm -g libs/libcrypto.a 2>/dev/null | grep -c "EVP_MD_size" || echo "0 (not found)"
-          echo "--- EVP_MD_size in the image's openssl@1.1 dylib:"
-          nm -g /opt/homebrew/Cellar/openssl@1.1/1.1.1w/lib/libcrypto.1.1.dylib 2>/dev/null | grep -c "EVP_MD_size" || echo "0 (not found)"
-          nm -g /usr/local/Cellar/openssl@1.1/1.1.1w/lib/libcrypto.1.1.dylib 2>/dev/null | grep -c "EVP_MD_size" || echo "0 (not found)"
-          echo "--- probe vs our archive:"
-          cd /tmp && printf 'extern int EVP_MD_size(); int main(){return EVP_MD_size();}\n' > p.c
-          clang -L"$GITHUB_WORKSPACE/libs" -Wl,-force_load,"$GITHUB_WORKSPACE/libs/libcrypto.a" p.c -o p1 2>&1 | tail -2; echo "archive probe exit=$?"
-          echo "--- probe vs the 1.1 dylib:"
-          clang -L/opt/homebrew/Cellar/openssl@1.1/1.1.1w/lib -L/usr/local/Cellar/openssl@1.1/1.1.1w/lib -lcrypto p.c -o p2 2>&1 | tail -2; echo "dylib probe exit=$?"
-          echo "--- our archive's openssl version marker:"
-          strings libs/libcrypto.a 2>/dev/null | grep -m2 -E "OpenSSL 3\.[0-9]" || true
       - name: Build the binary
         # Statically link most non-system libraries
         run: |
-          # `crystal build` directly: `shards build` does not forward
-          # --link-flags.
-          #
-          # pkg-config is neutralized: the runner image points
-          # PKG_CONFIG_PATH at an openssl@1.1 keg, and pkg-config then hands
-          # the linker -L flags for its dylibs, which shadow the static
-          # archives copied into ./libs.
-          #
-          # The openssl archives are force-loaded: Crystal emits -lcrypto in
-          # its default flags ahead of the objects, so an ordinary archive
-          # pass pulls nothing and the later duplicate is ignored as such,
-          # leaving the openssl symbols undefined. force_load is
-          # order-independent.
-          cd packages/cli
-          shards install
-          env CRYSTAL_LIBRARY_PATH="$GITHUB_WORKSPACE/libs" PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR=/nonexistent \
-            crystal build zap.cr --no-debug --release -o bin/zap \
-            --link-flags "-Wl,-force_load,$GITHUB_WORKSPACE/libs/libssl.a -Wl,-force_load,$GITHUB_WORKSPACE/libs/libcrypto.a"
-          cd "$GITHUB_WORKSPACE"
+          # pkg-config is neutralized so the link resolves every library
+          # from the archives in ./libs: the runner image points
+          # PKG_CONFIG_PATH at openssl@1.1's keg, whose pkg-config would
+          # otherwise hand the linker -L flags for its dylibs.
+          env CRYSTAL_LIBRARY_PATH=`pwd`/libs PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR=/nonexistent crystal projects.cr build:cli --no-debug --release
           mkdir bin
           mv ./packages/cli/bin/zap ./bin/zap
       - name: Upload a Build Artifact
@@ -89,19 +63,21 @@ jobs:
       - name: Install Crystal
         # Not `brew install crystal`: the formula depends on llvm@22, which
         # has no Intel macOS bottle (Homebrew no longer builds them), so
-        # Homebrew source-builds LLVM — 15+ minutes, ending in formula patch
-        # checksum failures. The action installs the official release tarball.
+        # Homebrew source-builds LLVM — 15+ minutes, then a formula patch
+        # checksum failure. The action installs the official release tarball.
         uses: crystal-lang/install-crystal@v1
       - name: Install static library dependencies
-        # The crystal formula used to pull these in; all are bottled on
-        # every macOS runner image.
-        run: brew install openssl@3 libyaml bdw-gc pcre2 libevent
+        # These used to arrive with the crystal formula; all are bottled.
+        run: brew install openssl@3 openssl@1.1 libyaml bdw-gc pcre2 libevent
       - name: Copy static libraries
         run: |
           mkdir -p ./libs
-          # openssl
-          cp $(brew --prefix)/opt/openssl@3/lib/libssl.a ./libs
-          cp $(brew --prefix)/opt/openssl@3/lib/libcrypto.a ./libs
+          # openssl@1.1, not @3: openssl@3 3.6 (the runner image ships
+          # 3.6.4) no longer exports EVP_MD_size as a function, which
+          # Crystal's stdlib references. The 1.1 archives provide it and
+          # Crystal supports both ABIs.
+          cp $(brew --prefix)/opt/openssl@1.1/lib/libssl.a ./libs
+          cp $(brew --prefix)/opt/openssl@1.1/lib/libcrypto.a ./libs
           # libevent (optional: the default event loop is kqueue on macOS)
           cp $(brew --prefix)/opt/libevent/lib/libevent_pthreads.a ./libs || true
           cp $(brew --prefix)/opt/libevent/lib/libevent.a ./libs || true
@@ -111,41 +87,13 @@ jobs:
           cp $(brew --prefix)/opt/bdw-gc/lib/libgc.a ./libs
           # libpcre
           cp $(brew --prefix)/opt/pcre2/lib/libpcre2-8.a ./libs
-      - name: Debug openssl symbols (temporary)
-        run: |
-          echo "--- EVP_MD_size in our copied archive:"
-          nm -g libs/libcrypto.a 2>/dev/null | grep -c "EVP_MD_size" || echo "0 (not found)"
-          echo "--- EVP_MD_size in the image's openssl@1.1 dylib:"
-          nm -g /opt/homebrew/Cellar/openssl@1.1/1.1.1w/lib/libcrypto.1.1.dylib 2>/dev/null | grep -c "EVP_MD_size" || echo "0 (not found)"
-          nm -g /usr/local/Cellar/openssl@1.1/1.1.1w/lib/libcrypto.1.1.dylib 2>/dev/null | grep -c "EVP_MD_size" || echo "0 (not found)"
-          echo "--- probe vs our archive:"
-          cd /tmp && printf 'extern int EVP_MD_size(); int main(){return EVP_MD_size();}\n' > p.c
-          clang -L"$GITHUB_WORKSPACE/libs" -Wl,-force_load,"$GITHUB_WORKSPACE/libs/libcrypto.a" p.c -o p1 2>&1 | tail -2; echo "archive probe exit=$?"
-          echo "--- probe vs the 1.1 dylib:"
-          clang -L/opt/homebrew/Cellar/openssl@1.1/1.1.1w/lib -L/usr/local/Cellar/openssl@1.1/1.1.1w/lib -lcrypto p.c -o p2 2>&1 | tail -2; echo "dylib probe exit=$?"
-          echo "--- our archive's openssl version marker:"
-          strings libs/libcrypto.a 2>/dev/null | grep -m2 -E "OpenSSL 3\.[0-9]" || true
       - name: Build the binary
         run: |
-          # `crystal build` directly: `shards build` does not forward
-          # --link-flags.
-          #
-          # pkg-config is neutralized: the runner image points
-          # PKG_CONFIG_PATH at an openssl@1.1 keg, and pkg-config then hands
-          # the linker -L flags for its dylibs, which shadow the static
-          # archives copied into ./libs.
-          #
-          # The openssl archives are force-loaded: Crystal emits -lcrypto in
-          # its default flags ahead of the objects, so an ordinary archive
-          # pass pulls nothing and the later duplicate is ignored as such,
-          # leaving the openssl symbols undefined. force_load is
-          # order-independent.
-          cd packages/cli
-          shards install
-          env CRYSTAL_LIBRARY_PATH="$GITHUB_WORKSPACE/libs" PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR=/nonexistent \
-            crystal build zap.cr --no-debug --release -o bin/zap \
-            --link-flags "-Wl,-force_load,$GITHUB_WORKSPACE/libs/libssl.a -Wl,-force_load,$GITHUB_WORKSPACE/libs/libcrypto.a"
-          cd "$GITHUB_WORKSPACE"
+          # pkg-config is neutralized so the link resolves every library
+          # from the archives in ./libs: the runner image points
+          # PKG_CONFIG_PATH at openssl@1.1's keg, whose pkg-config would
+          # otherwise hand the linker -L flags for its dylibs.
+          env CRYSTAL_LIBRARY_PATH=`pwd`/libs PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR=/nonexistent crystal projects.cr build:cli --no-debug --release
           mkdir bin
           mv ./packages/cli/bin/zap ./bin/zap
       - name: Upload a Build Artifact
@@ -183,20 +131,6 @@ jobs:
         uses: actions/checkout@v7
       - name: Install Crystal
         uses: crystal-lang/install-crystal@v1
-      - name: Debug openssl symbols (temporary)
-        run: |
-          echo "--- EVP_MD_size in our copied archive:"
-          nm -g libs/libcrypto.a 2>/dev/null | grep -c "EVP_MD_size" || echo "0 (not found)"
-          echo "--- EVP_MD_size in the image's openssl@1.1 dylib:"
-          nm -g /opt/homebrew/Cellar/openssl@1.1/1.1.1w/lib/libcrypto.1.1.dylib 2>/dev/null | grep -c "EVP_MD_size" || echo "0 (not found)"
-          nm -g /usr/local/Cellar/openssl@1.1/1.1.1w/lib/libcrypto.1.1.dylib 2>/dev/null | grep -c "EVP_MD_size" || echo "0 (not found)"
-          echo "--- probe vs our archive:"
-          cd /tmp && printf 'extern int EVP_MD_size(); int main(){return EVP_MD_size();}\n' > p.c
-          clang -L"$GITHUB_WORKSPACE/libs" -Wl,-force_load,"$GITHUB_WORKSPACE/libs/libcrypto.a" p.c -o p1 2>&1 | tail -2; echo "archive probe exit=$?"
-          echo "--- probe vs the 1.1 dylib:"
-          clang -L/opt/homebrew/Cellar/openssl@1.1/1.1.1w/lib -L/usr/local/Cellar/openssl@1.1/1.1.1w/lib -lcrypto p.c -o p2 2>&1 | tail -2; echo "dylib probe exit=$?"
-          echo "--- our archive's openssl version marker:"
-          strings libs/libcrypto.a 2>/dev/null | grep -m2 -E "OpenSSL 3\.[0-9]" || true
       - name: Build the binary
         shell: bash
         run: |
