@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.10.1
+
+- **Fix a crash on installs whose graph reaches a version through a dev
+  or optional dependency.** The deterministic collapse removed a version
+  that a remaining dependency still pointed at when the reference came
+  from a `devDependencies` or `optionalDependencies` entry — only
+  regular dependencies were counted. The lockfile then kept a dangling
+  reference, and the install failed with `Missing hash key:
+  "<name>@<version>"` (the serializer and the linkers resolve every
+  reference through the packages map). All three maps are counted now.
+
 ## v0.10.0
 
 - **Deterministic resolution.** `zap i` could write different lockfiles
