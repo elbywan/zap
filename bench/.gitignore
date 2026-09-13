@@ -1,1 +1,3 @@
 versions.txt
+.tools/
+__pycache__/

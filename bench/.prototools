@@ -2,4 +2,8 @@ bun = "latest"
 node = "lts"
 pnpm = "latest"
 yarn = "latest"
+zpm = "6.0.0-rc.20"
 python = "3.12.14"
+
+[plugins]
+zpm = "file://./proto-zpm.toml"
