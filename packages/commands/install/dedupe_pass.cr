@@ -49,15 +49,32 @@ module Commands::Install::DedupePass
       range = Semver.parse?(declared)
       next unless range
 
+      # Only a package that itself came from a registry can be re-pointed
+      # at another one (git/file/workspace dependencies keep their source).
+      current_package = lockfile.packages["#{name}@#{current}"]?
+      current_dist = current_package.try(&.dist)
+      next unless current_dist.is_a?(Data::Package::Dist::Registry)
+      # Versions must come from the same registry as the current one: named
+      # registries can serve the same package name.
+      origin = registry_origin(current_dist.tarball, name)
+      next unless origin
+
       target = nil.as(Data::Package?)
       # An explicit override for the dependency decides the version.
       if override = override_version(lockfile, name)
         target = override if range.satisfies?(override.version)
       end
       unless target
+        omit = state.install_config.omit
         in_use[name]?.try &.each do |candidate|
           next unless candidate.kind.registry?
-          next unless candidate.dist.is_a?(Data::Package::Dist::Registry)
+          dist = candidate.dist
+          next unless dist.is_a?(Data::Package::Dist::Registry)
+          # With --omit, a version that only omitted dependencies pin is not
+          # in use: collapsing onto it would reference a package the prune
+          # is about to drop.
+          next if !omit.empty? && !state.reachable_packages.includes?(candidate.key)
+          next unless registry_origin(dist.tarball, name) == origin
           next unless range.satisfies?(candidate.version)
           target = candidate if target.nil? || Semver::Version.parse(candidate.version) > Semver::Version.parse(target.version)
         end
@@ -118,6 +135,16 @@ module Commands::Install::DedupePass
       Log.debug { "removed orphaned #{key}" }
     end
   end
+  # The registry a tarball URL belongs to: everything before the package's
+  # own path segment ("https://host/path/<name>/-/<name>-<version>.tgz").
+  # Returns nil when the shape is unknown, which disables collapsing for
+  # that edge (safer than assuming two registries are the same).
+  private def self.registry_origin(tarball : String, name : String) : String?
+    index = tarball.rindex("/#{name}/")
+    return nil unless index
+    tarball[0, index]
+  end
+
   # The version an override pins *name* to, when one is configured.
   private def self.override_version(lockfile : Data::Lockfile, name : String) : Data::Package?
     overrides = lockfile.overrides
