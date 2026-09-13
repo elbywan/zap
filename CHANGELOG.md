@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.10.0
+
+- **Deterministic resolution.** `zap i` could write different lockfiles
+  for identical inputs: the prefer-dedupe scanned the live lockfile for
+  "a version already in use", but the concurrent resolution fills that
+  map in fiber-completion order, so which candidates existed at a
+  decision depended on the scheduler. The candidates now come from a
+  pre-run snapshot, and a collapse pass restores the adoptions the
+  snapshot cannot answer — versions discovered during the same run —
+  deterministically. Two sequential installs of conflict-heavy graphs
+  now produce byte-identical lockfiles.
+- **Faster cold installs.** The packument scanner answers the resolver's
+  three questions (the versions, their dist-tags and publish times) with
+  a block-bitmask pass the compiler autovectorizes instead of
+  tokenizing the whole document, and the tarball stream is buffered
+  before inflating rather than inflated chunk by chunk.
+- **Faster warm installs.** The link phase now dispatches one pipeline
+  task per package — each with its own tree crawl and per-file links —
+  instead of walking the tree breadth-first and paying every package's
+  link time inline. The phase instrumentation measured `link.wall` at
+  700ms, 63.7% of the whole `only-cache` install.
+- **Per-phase timings.** `--timings` prints an aggregate table when the
+  install completes: the packument fetch, manifest parse, per-version
+  package cache, tarball network and unpack, link walk and backend, and
+  the hooks, each with wall time, summed CPU and count.
+- **Dropped the x86_64 macOS target.** Homebrew's `llvm@22` has no
+  Intel macOS bottle, so the toolchain step source-built LLVM and then
+  failed on a formula patch. Intel macs can build from source or stay
+  on v0.9.1.
+
 ## v0.9.1
 
 - **Fix a performance regression in the link phase.** The install
