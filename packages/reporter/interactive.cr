@@ -17,7 +17,7 @@ class Reporter::Interactive < Reporter
   # event is due once the interval has elapsed since the phase started.
   PROGRESS_INTERVAL = 5.seconds
 
-  @last_progress = Time.monotonic
+  @last_progress = Time.instant
 
   # The cadence, overridable by subclasses (used by tests).
   def self.progress_interval : Time::Span
@@ -25,8 +25,8 @@ class Reporter::Interactive < Reporter
   end
 
   protected def progress_due? : Bool
-    return false unless Time.monotonic - @last_progress > self.class.progress_interval
-    @last_progress = Time.monotonic
+    return false unless Time.instant - @last_progress > self.class.progress_interval
+    @last_progress = Time.instant
     true
   end
 

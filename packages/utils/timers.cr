@@ -23,13 +23,13 @@ module Utils
     def initialize(interval : Time::Span, &block : ->)
       @interval = interval
       @block = block
-      @last = Time.monotonic
+      @last = Time.instant
       @lock = Concurrency::Mutex.new
     end
 
     def call
       @lock.synchronize do
-        now = Time.monotonic
+        now = Time.instant
         interval = now - @last
         if interval > @interval
           @last = now

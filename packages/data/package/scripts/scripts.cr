@@ -195,7 +195,7 @@ class Data::Package
     private def self.execute_script(script_data : ScriptData | ScriptDataNested, config : Core::Config, reporter : Reporter, single_script : Bool, color : Colorize::Color256 | Symbol)
       package, path, script_name, script_command = script_data.package, script_data.path, script_data.script_name, script_data.script_command
       inherit_stdin = single_script
-      time = uninitialized Time::Span
+      time = uninitialized Time::Instant
       printer = begin
         if config.deferred_output
           Printer::Deferred.new(package, script_name, color, reporter, single_script)
@@ -207,9 +207,9 @@ class Data::Package
         return if config.silent
         if hook_name == :before
           printer.on_start(command)
-          time = Time.monotonic
+          time = Time.instant
         else
-          total_time = Time.monotonic - time
+          total_time = Time.instant - time
           printer.on_finish(total_time)
         end
       end
@@ -228,7 +228,7 @@ class Data::Package
           )
         end
       rescue ex : Exception
-        total_time = Time.monotonic - time
+        total_time = Time.instant - time
         printer.on_error(ex, total_time)
         raise "Error while running script #{package.name.colorize(color).bold} #{script_name.colorize.cyan} #{"(at: #{script_data.path})".colorize.dim}\n#{ex.message}"
       end
