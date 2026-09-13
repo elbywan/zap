@@ -37,6 +37,20 @@ jobs:
           cp $(brew --prefix)/opt/bdw-gc/lib/libgc.a ./libs
           # libpcre
           cp $(brew --prefix)/opt/pcre2/lib/libpcre2-8.a ./libs
+      - name: Debug openssl symbols (temporary)
+        run: |
+          echo "--- EVP_MD_size in our copied archive:"
+          nm -g libs/libcrypto.a 2>/dev/null | grep -c "EVP_MD_size" || echo "0 (not found)"
+          echo "--- EVP_MD_size in the image's openssl@1.1 dylib:"
+          nm -g /opt/homebrew/Cellar/openssl@1.1/1.1.1w/lib/libcrypto.1.1.dylib 2>/dev/null | grep -c "EVP_MD_size" || echo "0 (not found)"
+          nm -g /usr/local/Cellar/openssl@1.1/1.1.1w/lib/libcrypto.1.1.dylib 2>/dev/null | grep -c "EVP_MD_size" || echo "0 (not found)"
+          echo "--- probe vs our archive:"
+          cd /tmp && printf 'extern int EVP_MD_size(); int main(){return EVP_MD_size();}\n' > p.c
+          clang -L"$GITHUB_WORKSPACE/libs" -Wl,-force_load,"$GITHUB_WORKSPACE/libs/libcrypto.a" p.c -o p1 2>&1 | tail -2; echo "archive probe exit=$?"
+          echo "--- probe vs the 1.1 dylib:"
+          clang -L/opt/homebrew/Cellar/openssl@1.1/1.1.1w/lib -L/usr/local/Cellar/openssl@1.1/1.1.1w/lib -lcrypto p.c -o p2 2>&1 | tail -2; echo "dylib probe exit=$?"
+          echo "--- our archive's openssl version marker:"
+          strings libs/libcrypto.a 2>/dev/null | grep -m2 -E "OpenSSL 3\.[0-9]" || true
       - name: Build the binary
         # Statically link most non-system libraries
         run: |
@@ -97,6 +111,20 @@ jobs:
           cp $(brew --prefix)/opt/bdw-gc/lib/libgc.a ./libs
           # libpcre
           cp $(brew --prefix)/opt/pcre2/lib/libpcre2-8.a ./libs
+      - name: Debug openssl symbols (temporary)
+        run: |
+          echo "--- EVP_MD_size in our copied archive:"
+          nm -g libs/libcrypto.a 2>/dev/null | grep -c "EVP_MD_size" || echo "0 (not found)"
+          echo "--- EVP_MD_size in the image's openssl@1.1 dylib:"
+          nm -g /opt/homebrew/Cellar/openssl@1.1/1.1.1w/lib/libcrypto.1.1.dylib 2>/dev/null | grep -c "EVP_MD_size" || echo "0 (not found)"
+          nm -g /usr/local/Cellar/openssl@1.1/1.1.1w/lib/libcrypto.1.1.dylib 2>/dev/null | grep -c "EVP_MD_size" || echo "0 (not found)"
+          echo "--- probe vs our archive:"
+          cd /tmp && printf 'extern int EVP_MD_size(); int main(){return EVP_MD_size();}\n' > p.c
+          clang -L"$GITHUB_WORKSPACE/libs" -Wl,-force_load,"$GITHUB_WORKSPACE/libs/libcrypto.a" p.c -o p1 2>&1 | tail -2; echo "archive probe exit=$?"
+          echo "--- probe vs the 1.1 dylib:"
+          clang -L/opt/homebrew/Cellar/openssl@1.1/1.1.1w/lib -L/usr/local/Cellar/openssl@1.1/1.1.1w/lib -lcrypto p.c -o p2 2>&1 | tail -2; echo "dylib probe exit=$?"
+          echo "--- our archive's openssl version marker:"
+          strings libs/libcrypto.a 2>/dev/null | grep -m2 -E "OpenSSL 3\.[0-9]" || true
       - name: Build the binary
         run: |
           # `crystal build` directly: `shards build` does not forward
@@ -155,6 +183,20 @@ jobs:
         uses: actions/checkout@v7
       - name: Install Crystal
         uses: crystal-lang/install-crystal@v1
+      - name: Debug openssl symbols (temporary)
+        run: |
+          echo "--- EVP_MD_size in our copied archive:"
+          nm -g libs/libcrypto.a 2>/dev/null | grep -c "EVP_MD_size" || echo "0 (not found)"
+          echo "--- EVP_MD_size in the image's openssl@1.1 dylib:"
+          nm -g /opt/homebrew/Cellar/openssl@1.1/1.1.1w/lib/libcrypto.1.1.dylib 2>/dev/null | grep -c "EVP_MD_size" || echo "0 (not found)"
+          nm -g /usr/local/Cellar/openssl@1.1/1.1.1w/lib/libcrypto.1.1.dylib 2>/dev/null | grep -c "EVP_MD_size" || echo "0 (not found)"
+          echo "--- probe vs our archive:"
+          cd /tmp && printf 'extern int EVP_MD_size(); int main(){return EVP_MD_size();}\n' > p.c
+          clang -L"$GITHUB_WORKSPACE/libs" -Wl,-force_load,"$GITHUB_WORKSPACE/libs/libcrypto.a" p.c -o p1 2>&1 | tail -2; echo "archive probe exit=$?"
+          echo "--- probe vs the 1.1 dylib:"
+          clang -L/opt/homebrew/Cellar/openssl@1.1/1.1.1w/lib -L/usr/local/Cellar/openssl@1.1/1.1.1w/lib -lcrypto p.c -o p2 2>&1 | tail -2; echo "dylib probe exit=$?"
+          echo "--- our archive's openssl version marker:"
+          strings libs/libcrypto.a 2>/dev/null | grep -m2 -E "OpenSSL 3\.[0-9]" || true
       - name: Build the binary
         shell: bash
         run: |
