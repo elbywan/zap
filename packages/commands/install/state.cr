@@ -44,5 +44,10 @@ module Commands::Install
     # the current run, and since those land in completion order the
     # dedupe's outcome (and the whole resolved graph) would vary between
     # runs over identical inputs.
-    in_use_packages : Hash(String, Array(Data::Package)) = Hash(String, Array(Data::Package)).new
+    in_use_packages : Hash(String, Array(Data::Package)) = Hash(String, Array(Data::Package)).new,
+    # The declared range of every dependency edge that was resolved this
+    # run, keyed by "<parent key>\u0000<dependency name>": the collapse
+    # pass re-checks each edge against the finished graph and needs the
+    # range, which the lockfile only keeps as a pin.
+    declared_ranges : Hash(String, String) = Hash(String, String).new
 end

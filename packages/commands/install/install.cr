@@ -15,6 +15,7 @@ require "./timings"
 require "./state"
 require "./patches"
 require "./resolver"
+require "./dedupe_pass"
 require "./interactive"
 require "./linker"
 require "./linker/classic"
@@ -530,6 +531,11 @@ module Commands::Install
         Resolver.resolve_dependencies_of(package, state: state) || acc
       end
       state.pipeline.await
+      # Collapse version duplicates deterministically, now that the graph
+      # is complete (the resolution no longer reuses versions resolved
+      # earlier in the same run: that made the outcome depend on fiber
+      # completion order).
+      DedupePass.collapse(state)
       # Rewrite direct dependency specifiers when --latest bumped them
       update_changed = state.context.scope_packages(:install).reduce(update_changed) do |acc, package|
         Resolver.rewrite_latest_specifiers(package, state) || acc

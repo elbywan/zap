@@ -316,6 +316,12 @@ module Commands::Install::Resolver
     &on_resolve : Data::Package -> _
   )
     Log.debug { "(#{name}@#{version}) Resolving package…" + (type ? " [type: #{type}]" : "") + (package ? " [parent: #{package.key}]" : "") }
+    # Remember the edge's declared range: the collapse pass needs it after
+    # the resolution (the lockfile only keeps the pin). Aliases are keyed
+    # by the real package, so only plain specifiers are recorded.
+    if package && !single_resolution
+      state.declared_ranges["#{package.key}\u0000#{name}"] = version
+    end
     state.reporter.on_resolving_package
     # Add direct dependencies to the lockfile
     if package && is_direct_dependency && type
