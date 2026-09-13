@@ -79,9 +79,11 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
     return nil unless range
     omit = state.install_config.omit
     best = nil
-    # The name index keeps the scan to this package's entries instead of
-    # the whole lockfile (O(entries) per dependency, not O(packages)).
-    state.lockfile.packages_named(name).each do |pkg|
+    # The snapshot keeps the scan to this package's entries (O(entries)
+    # per dependency, not O(packages)) and to the versions that were
+    # already in use before the run: the resolutions landing in completion
+    # order must not influence the outcome.
+    state.in_use_packages[name]?.try &.each do |pkg|
       # With --omit, only the versions reachable from the installed roots
       # are candidates: a version locked solely through an omitted
       # dev/optional dependency is not in use.
