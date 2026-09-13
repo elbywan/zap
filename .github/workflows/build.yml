@@ -13,7 +13,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
       - name: Install Crystal
-        run: brew update && brew install crystal || true
+        # Not `brew install crystal`: the formula depends on llvm@22, which
+        # has no Intel macOS bottle (Homebrew no longer builds them), so
+        # Homebrew source-builds LLVM — 15+ minutes, ending in formula patch
+        # checksum failures. The action installs the official release tarball.
+        uses: crystal-lang/install-crystal@v1
+      - name: Install static library dependencies
+        # The crystal formula used to pull these in; all are bottled on
+        # every macOS runner image.
+        run: brew install openssl@3 libyaml bdw-gc pcre2 libevent
       - name: Copy static libraries
         run: |
           mkdir -p ./libs
@@ -32,7 +40,25 @@ jobs:
       - name: Build the binary
         # Statically link most non-system libraries
         run: |
-          env CRYSTAL_LIBRARY_PATH=`pwd`/libs crystal projects.cr build:cli --no-debug --release
+          # `crystal build` directly: `shards build` does not forward
+          # --link-flags.
+          #
+          # pkg-config is neutralized: the runner image points
+          # PKG_CONFIG_PATH at an openssl@1.1 keg, and pkg-config then hands
+          # the linker -L flags for its dylibs, which shadow the static
+          # archives copied into ./libs.
+          #
+          # The openssl archives are force-loaded: Crystal emits -lcrypto in
+          # its default flags ahead of the objects, so an ordinary archive
+          # pass pulls nothing and the later duplicate is ignored as such,
+          # leaving the openssl symbols undefined. force_load is
+          # order-independent.
+          cd packages/cli
+          shards install
+          env CRYSTAL_LIBRARY_PATH="$GITHUB_WORKSPACE/libs" PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR=/nonexistent \
+            crystal build zap.cr --no-debug --release -o bin/zap \
+            --link-flags "-Wl,-force_load,$GITHUB_WORKSPACE/libs/libssl.a -Wl,-force_load,$GITHUB_WORKSPACE/libs/libcrypto.a"
+          cd "$GITHUB_WORKSPACE"
           mkdir bin
           mv ./packages/cli/bin/zap ./bin/zap
       - name: Upload a Build Artifact
@@ -47,7 +73,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
       - name: Install Crystal
-        run: brew update && brew install crystal || true
+        # Not `brew install crystal`: the formula depends on llvm@22, which
+        # has no Intel macOS bottle (Homebrew no longer builds them), so
+        # Homebrew source-builds LLVM — 15+ minutes, ending in formula patch
+        # checksum failures. The action installs the official release tarball.
+        uses: crystal-lang/install-crystal@v1
+      - name: Install static library dependencies
+        # The crystal formula used to pull these in; all are bottled on
+        # every macOS runner image.
+        run: brew install openssl@3 libyaml bdw-gc pcre2 libevent
       - name: Copy static libraries
         run: |
           mkdir -p ./libs
@@ -65,7 +99,25 @@ jobs:
           cp $(brew --prefix)/opt/pcre2/lib/libpcre2-8.a ./libs
       - name: Build the binary
         run: |
-          env CRYSTAL_LIBRARY_PATH=`pwd`/libs crystal projects.cr build:cli --no-debug --release
+          # `crystal build` directly: `shards build` does not forward
+          # --link-flags.
+          #
+          # pkg-config is neutralized: the runner image points
+          # PKG_CONFIG_PATH at an openssl@1.1 keg, and pkg-config then hands
+          # the linker -L flags for its dylibs, which shadow the static
+          # archives copied into ./libs.
+          #
+          # The openssl archives are force-loaded: Crystal emits -lcrypto in
+          # its default flags ahead of the objects, so an ordinary archive
+          # pass pulls nothing and the later duplicate is ignored as such,
+          # leaving the openssl symbols undefined. force_load is
+          # order-independent.
+          cd packages/cli
+          shards install
+          env CRYSTAL_LIBRARY_PATH="$GITHUB_WORKSPACE/libs" PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR=/nonexistent \
+            crystal build zap.cr --no-debug --release -o bin/zap \
+            --link-flags "-Wl,-force_load,$GITHUB_WORKSPACE/libs/libssl.a -Wl,-force_load,$GITHUB_WORKSPACE/libs/libcrypto.a"
+          cd "$GITHUB_WORKSPACE"
           mkdir bin
           mv ./packages/cli/bin/zap ./bin/zap
       - name: Upload a Build Artifact
