@@ -37,6 +37,18 @@ jobs:
           cp $(brew --prefix)/opt/bdw-gc/lib/libgc.a ./libs
           # libpcre
           cp $(brew --prefix)/opt/pcre2/lib/libpcre2-8.a ./libs
+      - name: Debug toolchain (temporary)
+        run: |
+          which -a crystal; crystal --version
+          crystal env | head -12
+          echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
+          ls -la "$PKG_CONFIG_PATH" 2>&1 | head -4
+          pkg-config --exists libssl; echo "libssl exists exit=$?"
+          echo "libssl flags: [$(pkg-config --libs --silence-errors libssl)]"
+          pkg-config --exists libcrypto; echo "libcrypto exists exit=$?"
+          echo "libcrypto flags: [$(pkg-config --libs --silence-errors libcrypto)]"
+          ls -la ./libs
+          file ./libs/libssl.a ./libs/libcrypto.a | cut -c1-130
       - name: Build the binary
         # Statically link most non-system libraries
         run: |
@@ -79,6 +91,18 @@ jobs:
           cp $(brew --prefix)/opt/bdw-gc/lib/libgc.a ./libs
           # libpcre
           cp $(brew --prefix)/opt/pcre2/lib/libpcre2-8.a ./libs
+      - name: Debug toolchain (temporary)
+        run: |
+          which -a crystal; crystal --version
+          crystal env | head -12
+          echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
+          ls -la "$PKG_CONFIG_PATH" 2>&1 | head -4
+          pkg-config --exists libssl; echo "libssl exists exit=$?"
+          echo "libssl flags: [$(pkg-config --libs --silence-errors libssl)]"
+          pkg-config --exists libcrypto; echo "libcrypto exists exit=$?"
+          echo "libcrypto flags: [$(pkg-config --libs --silence-errors libcrypto)]"
+          ls -la ./libs
+          file ./libs/libssl.a ./libs/libcrypto.a | cut -c1-130
       - name: Build the binary
         run: |
           env CRYSTAL_LIBRARY_PATH=`pwd`/libs crystal projects.cr build:cli --no-debug --release
