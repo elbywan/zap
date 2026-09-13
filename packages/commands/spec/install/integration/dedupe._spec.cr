@@ -37,6 +37,30 @@ describe "prefer-dedupe", tags: "integration" do
     end
   end
 
+  it "keeps a version whose only remaining reference is an optional dependency" do
+    It.with_registry do |registry|
+      registry.add("opt", "1.0.0", It.pkg("opt", "1.0.0"), {"index.js" => "1.0.0"})
+      registry.add("opt", "2.0.0", It.pkg("opt", "2.0.0"), {"index.js" => "2.0.0"})
+      # `a`'s optional edge pins 2.0.0; `b`'s "*" edge collapses onto the
+      # root's 1.0.0, abandoning 2.0.0. It must survive: the optional
+      # dependency still points at it, and the lockfile serializer follows
+      # every reference through the packages map.
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0", optional_dependencies: {"opt" => "2.0.0"}), {"index.js" => "a"})
+      registry.add("b", "1.0.0", It.pkg("b", "1.0.0", dependencies: {"opt" => "*"}), {"index.js" => "b"})
+
+      project = dedupe_install(registry, %({"name":"app","version":"1.0.0","dependencies":{"a":"1.0.0","b":"1.0.0","opt":"1.0.0"}}))
+      begin
+        lockfile = Data::Lockfile.new(project)
+        lockfile.packages["opt@1.0.0"]?.should_not be_nil
+        lockfile.packages["opt@2.0.0"]?.should_not be_nil
+        a = lockfile.packages["a@1.0.0"]?
+        a.try(&.optional_dependencies).try(&.["opt"]?).should eq("2.0.0")
+      ensure
+        FileUtils.rm_rf(project)
+      end
+    end
+  end
+
   it "does not downgrade when no used version satisfies the range" do
     It.with_registry do |registry|
       registry.add("dep", "1.0.0", It.pkg("dep", "1.0.0"), {"index.js" => "1.0.0"})

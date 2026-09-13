@@ -106,14 +106,15 @@ module Commands::Install::DedupePass
   # Remove the versions the collapse abandoned. The lockfile prune keeps
   # entries that have no roots recorded (its "not in scope" safety net),
   # which would leave exactly these behind. A version is only removed when
-  # nothing references it at all: no dependents, no package pin, no root
-  # pin, and no override.
+  # nothing references it at all: no dependents, no dependency entry of any
+  # kind (regular, dev or optional — the serializer resolves every one of
+  # them through the packages map), no root pin, and no override.
   private def self.drop_orphans(state : Commands::Install::State, abandoned : Set(String)) : Nil
     return if abandoned.empty?
     lockfile = state.lockfile
     referenced = Set(String).new
     lockfile.packages.each_value do |package|
-      package.dependencies.try &.each do |name, value|
+      package.each_dependency do |name, value, _type|
         case value
         when String
           referenced << "#{name}@#{value}"
