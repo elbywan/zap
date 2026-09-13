@@ -13,7 +13,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
       - name: Install Crystal
-        run: brew update && brew install crystal || true
+        # Not `brew install crystal`: the formula pulls the latest llvm,
+        # which source-builds on images without a bottle for it (macos-15-intel
+        # spent 15+ minutes building LLVM and failed on a formula patch
+        # checksum). The action installs the official release tarball.
+        uses: crystal-lang/install-crystal@v1
+      - name: Install static library dependencies
+        # The crystal formula used to bring these in; they are bottled on
+        # every macOS runner image.
+        run: brew install openssl@3 libyaml bdw-gc pcre2 libevent
       - name: Copy static libraries
         run: |
           mkdir -p ./libs
@@ -47,7 +55,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
       - name: Install Crystal
-        run: brew update && brew install crystal || true
+        # Not `brew install crystal`: the formula pulls the latest llvm,
+        # which source-builds on images without a bottle for it (macos-15-intel
+        # spent 15+ minutes building LLVM and failed on a formula patch
+        # checksum). The action installs the official release tarball.
+        uses: crystal-lang/install-crystal@v1
+      - name: Install static library dependencies
+        # The crystal formula used to bring these in; they are bottled on
+        # every macOS runner image.
+        run: brew install openssl@3 libyaml bdw-gc pcre2 libevent
       - name: Copy static libraries
         run: |
           mkdir -p ./libs
