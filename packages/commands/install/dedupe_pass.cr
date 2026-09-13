@@ -12,8 +12,8 @@ require "./state"
 # order:
 #
 #   for every edge (sorted by parent, then name), if the highest version
-#   in use that satisfies the edge's declared range is not the version the
-#   edge currently points at, re-point it (pin + reference).
+#   in use — other than the one the edge itself just resolved — satisfies
+#   the edge's declared range, re-point it (pin + reference).
 #
 # An override that covers the dependency wins over the range: it is what
 # the user asked to be installed. The lockfile prune that runs right after
@@ -36,7 +36,7 @@ module Commands::Install::DedupePass
       (in_use[package.name] ||= [] of Data::Package) << package
     end
 
-    state.declared_ranges.keys.sort!.each do |edge|
+    state.declared_ranges.each_sorted do |edge, declared|
       parent_key, name = edge.split(EDGE_SEPARATOR, 2)
       next unless name
       parent = lockfile.packages[parent_key]?
@@ -45,7 +45,6 @@ module Commands::Install::DedupePass
       next unless dependencies
       current = dependencies[name]?
       next unless current.is_a?(String)
-      declared = state.declared_ranges[edge]
       range = Semver.parse?(declared)
       next unless range
 
@@ -135,6 +134,7 @@ module Commands::Install::DedupePass
       Log.debug { "removed orphaned #{key}" }
     end
   end
+
   # The registry a tarball URL belongs to: everything before the package's
   # own path segment ("https://host/path/<name>/-/<name>-<version>.tgz").
   # Returns nil when the shape is unknown, which disables collapsing for
@@ -145,7 +145,10 @@ module Commands::Install::DedupePass
     tarball[0, index]
   end
 
-  # The version an override pins *name* to, when one is configured.
+  # The version an override pins *name* to, when one is configured. The
+  # override list is rewritten with the resolved specifier during the
+  # resolution, so the string is the lockfile key (an exotic override,
+  # e.g. a git URL, simply has no entry and is skipped).
   private def self.override_version(lockfile : Data::Lockfile, name : String) : Data::Package?
     overrides = lockfile.overrides
     return nil unless overrides
@@ -154,9 +157,8 @@ module Commands::Install::DedupePass
     list.each do |override|
       specifier = override.specifier
       next unless specifier.is_a?(String)
-      if version = Semver.parse?(specifier)
-        pinned = lockfile.packages["#{name}@#{version}"]?
-        return pinned if pinned
+      if pinned = lockfile.packages["#{name}@#{specifier}"]?
+        return pinned
       end
     end
     nil

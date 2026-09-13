@@ -6,6 +6,7 @@ require "concurrency/pipeline"
 require "core/config"
 require "shared/constants"
 require "./config"
+require "./edge_ranges"
 require "./registry_clients"
 require "reporter/interactive"
 
@@ -49,5 +50,5 @@ module Commands::Install
     # run, keyed by "<parent key>\u0000<dependency name>": the collapse
     # pass re-checks each edge against the finished graph and needs the
     # range, which the lockfile only keeps as a pin.
-    declared_ranges : Concurrency::SafeHash(String, String) = Concurrency::SafeHash(String, String).new
+    declared_ranges : EdgeRanges = EdgeRanges.new
 end
