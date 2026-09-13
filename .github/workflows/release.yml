@@ -43,13 +43,20 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           node npm/set-version.js "$VERSION"
       - name: Prepare the binaries
+        # The copies under release-assets/ are attached to the GitHub release
+        # for packagers (the Homebrew tap, and others later): the npm packages
+        # are not a convenient source for them.
         run: |
           ls -al ./bin
+          mkdir -p ./release-assets
           chmod u+x ./bin/zap_arm64-apple-darwin/zap
+          cp ./bin/zap_arm64-apple-darwin/zap ./release-assets/zap-aarch64-apple-darwin
           mv ./bin/zap_arm64-apple-darwin/zap ./npm/darwin-arm64/bin/zap
           chmod u+x ./bin/zap_x86_64-linux-musl/zap
+          cp ./bin/zap_x86_64-linux-musl/zap ./release-assets/zap-x86_64-unknown-linux-musl
           mv ./bin/zap_x86_64-linux-musl/zap ./npm/linux-x64/bin/zap
           chmod u+x ./bin/zap_x86_64-pc-win32.exe/zap.exe
+          cp ./bin/zap_x86_64-pc-win32.exe/zap.exe ./release-assets/zap-x86_64-pc-windows-msvc.exe
           mv ./bin/zap_x86_64-pc-win32.exe/zap.exe ./npm/win32-x64/bin/zap
       - name: Publish to npm
         # Trusted publishing (OIDC): the npm CLI mints a short-lived token
@@ -61,7 +68,9 @@ jobs:
           npm publish ./npm/zap --tag ${{ github.event.inputs.dist_tag }} --access public
       - name: Create the GitHub release
         # The tag already exists (pushed with the version bump); attach the
-        # changelog entry for this version as the release notes.
+        # changelog entry for this version as the release notes, along with
+        # the binaries. Both commands are idempotent so that a re-run
+        # completes a partial release instead of failing on it.
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -78,4 +87,7 @@ jobs:
               notes = f"No changelog entry for v{version}."
           open("/tmp/release-notes.md", "w").write(notes + "\n")
           EOF
-          gh release create "v${{ steps.version.outputs.version }}" --notes-file /tmp/release-notes.md
+          VERSION="${{ steps.version.outputs.version }}"
+          gh release view "v$VERSION" >/dev/null 2>&1 ||
+            gh release create "v$VERSION" --notes-file /tmp/release-notes.md
+          gh release upload "v$VERSION" ./release-assets/* --clobber
