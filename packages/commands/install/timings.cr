@@ -1,6 +1,6 @@
 # Aggregate per-phase timings, behind the --timings flag.
 #
-# Every phase is measured at its real call site with Time.monotonic and
+# Every phase is measured at its real call site with Time.instant and
 # accumulated into atomics (relaxed ordering: counters only), so the
 # numbers are exact sums across all worker threads — no sampling, no
 # wall-clock guessing. Summed rows are aggregate work times and can
@@ -117,11 +117,11 @@ module Commands::Install::Timings
   # too (the time was spent regardless).
   def self.measure(label : String, &)
     return yield unless @@enabled
-    t0 = Time.monotonic
+    t0 = Time.instant
     begin
       yield
     ensure
-      record(label, (Time.monotonic - t0).total_nanoseconds.to_i64)
+      record(label, (Time.instant - t0).total_nanoseconds.to_i64)
     end
   end
 
@@ -195,11 +195,11 @@ module Commands::Install::Timings
     end
 
     def read(slice : Bytes) : Int32
-      t0 = Time.monotonic
+      t0 = Time.instant
       begin
         @io.read(slice)
       ensure
-        Timings.record(@label, (Time.monotonic - t0).total_nanoseconds.to_i64)
+        Timings.record(@label, (Time.instant - t0).total_nanoseconds.to_i64)
       end
     end
 

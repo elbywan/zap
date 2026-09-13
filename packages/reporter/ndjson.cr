@@ -16,7 +16,7 @@ class Reporter::Ndjson < Reporter::Interactive
 
   def report_resolver_updates(& : -> T) : T forall T
     @stopped = false
-    @last_progress = Time.monotonic
+    @last_progress = Time.instant
     @action = -> do
       progress("resolving", @resolved_packages.get, @resolving_packages.get)
     end
@@ -27,7 +27,7 @@ class Reporter::Ndjson < Reporter::Interactive
 
   def report_linker_updates(& : -> T) : T forall T
     @stopped = false
-    @last_progress = Time.monotonic
+    @last_progress = Time.instant
     @action = -> do
       progress("installing", @installed_packages.get, @installing_packages.get)
     end
@@ -38,7 +38,7 @@ class Reporter::Ndjson < Reporter::Interactive
 
   def report_builder_updates(& : -> T) : T forall T
     @stopped = false
-    @last_progress = Time.monotonic
+    @last_progress = Time.instant
     @action = -> do
       progress("building", @built_packages.get, @building_packages.get)
     end

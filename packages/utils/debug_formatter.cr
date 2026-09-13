@@ -4,7 +4,7 @@ require "shared/constants"
 require "./misc"
 
 struct Utils::DebugFormatter < ::Log::StaticFormatter
-  record SourceData, color : Colorize::Color256 | Symbol, timestamp : Time::Span? = nil
+  record SourceData, color : Colorize::Color256 | Symbol, timestamp : Time::Instant? = nil
   @@sources = Hash(String, SourceData).new
 
   def run
@@ -13,13 +13,13 @@ struct Utils::DebugFormatter < ::Log::StaticFormatter
     if source
       source_data = @@sources[source]?
       source_color = source_data.try &.color || Shared::Constants::COLORS[@@sources.size % Shared::Constants::COLORS.size]
-      source_time = source_data.try { |data| data.timestamp ? (Time.monotonic - data.timestamp.not_nil!) : nil } || 0.milliseconds
+      source_time = source_data.try { |data| data.timestamp ? (Time.instant - data.timestamp.not_nil!) : nil } || 0.milliseconds
       unless source_data
         source_color = Shared::Constants::COLORS[@@sources.size % Shared::Constants::COLORS.size]
-        source_data = SourceData.new(Shared::Constants::COLORS[@@sources.size % Shared::Constants::COLORS.size], Time.monotonic)
+        source_data = SourceData.new(Shared::Constants::COLORS[@@sources.size % Shared::Constants::COLORS.size], Time.instant)
         @@sources[source] = source_data
       else
-        @@sources[source] = source_data.copy_with(timestamp: Time.monotonic)
+        @@sources[source] = source_data.copy_with(timestamp: Time.instant)
       end
       @io << source.ljust(15).colorize(source_color).bold
     end

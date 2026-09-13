@@ -24,7 +24,7 @@ class Reporter::Plain < Reporter::Interactive
 
   def report_resolver_updates(& : -> T) : T forall T
     @stopped = false
-    @last_progress = Time.monotonic
+    @last_progress = Time.instant
     @action = -> do
       downloading = @downloading_packages.get
       extra = downloading > 0 ? " • downloading #{@downloaded_packages.get}/#{downloading}" : nil
@@ -37,7 +37,7 @@ class Reporter::Plain < Reporter::Interactive
 
   def report_linker_updates(& : -> T) : T forall T
     @stopped = false
-    @last_progress = Time.monotonic
+    @last_progress = Time.instant
     @action = -> do
       progress_line("Installing", @installed_packages.get, @installing_packages.get)
     end
@@ -48,7 +48,7 @@ class Reporter::Plain < Reporter::Interactive
 
   def report_builder_updates(& : -> T) : T forall T
     @stopped = false
-    @last_progress = Time.monotonic
+    @last_progress = Time.instant
     @action = -> do
       progress_line("Building", @built_packages.get, @building_packages.get)
     end

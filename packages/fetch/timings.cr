@@ -11,11 +11,11 @@ module Fetch::Timings
   def self.measure(name : Symbol, &)
     callback = @@hook
     return yield unless callback
-    t0 = Time.monotonic
+    t0 = Time.instant
     begin
       yield
     ensure
-      callback.call(name, (Time.monotonic - t0).total_nanoseconds.to_i64)
+      callback.call(name, (Time.instant - t0).total_nanoseconds.to_i64)
     end
   end
 end
