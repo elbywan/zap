@@ -3,10 +3,14 @@ require "extensions/crystar/format"
 require "extensions/crystar/header"
 require "extensions/crystar/writer"
 require "./file"
+require "./buffered_stream"
 
 module Utils::TarGzip
   def self.unpack(io : IO, &) : Nil
-    Compress::Gzip::Reader.open(io) do |gzip|
+    # The inflate bindings read the compressed input one byte at a time;
+    # buffer the stream so those become reads against memory.
+    source = BufferedStream.new(io)
+    Compress::Gzip::Reader.open(source) do |gzip|
       Crystar::Reader.open(gzip) do |tar|
         tar.each_entry do |entry|
           # Strip the leading directory (usually "package/") and neutralize any

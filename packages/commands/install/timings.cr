@@ -17,6 +17,11 @@ module Commands::Install::Timings
     PackageParse
     PackageCache
     TarballStore
+    # The tarball stream is a fused download+unpack: TarballUnpack covers
+    # the whole unpack call, TarballNet the raw socket reads inside it, so
+    # the difference is the inflate/tar/write CPU.
+    TarballUnpack
+    TarballNet
 
     def label : String
       case self
@@ -27,6 +32,8 @@ module Commands::Install::Timings
       in PackageParse       then "package.parse"
       in PackageCache       then "package.cache"
       in TarballStore       then "tarball.store"
+      in TarballUnpack      then "tarball.unpack"
+      in TarballNet         then "tarball.net"
       end
     end
   end
@@ -124,6 +131,8 @@ module Commands::Install::Timings
     {"package.parse", 2},
     {"package.cache", 2},
     {"tarball.store", 2},
+    {"tarball.unpack", 4},
+    {"tarball.net", 6},
     {"link.wall", 0},
     {"hooks.wall", 0},
     {"total.wall", 0},
@@ -160,5 +169,35 @@ module Commands::Install::Timings
 
   def self.report_file(path : String) : Nil
     File.open(path, "w") { |file| report(file) }
+  end
+
+  # Times the raw reads of the stream it wraps — the socket-level reads of
+  # a tarball download — so the network wait inside an unpack can be told
+  # apart from the inflate/tar/write CPU. Install it *below* IO::Digest:
+  # the digest's own work then stays in the unpack residual.
+  class TimingIO < IO
+    def initialize(@io : IO, @label : String)
+    end
+
+    def read(slice : Bytes) : Int32
+      t0 = Time.monotonic
+      begin
+        @io.read(slice)
+      ensure
+        Timings.record(@label, (Time.monotonic - t0).total_nanoseconds.to_i64)
+      end
+    end
+
+    def write(slice : Bytes) : Nil
+      @io.write(slice)
+    end
+
+    def close : Nil
+      @io.close
+    end
+
+    def closed? : Bool
+      @io.closed?
+    end
   end
 end
