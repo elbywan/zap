@@ -60,7 +60,12 @@ jobs:
       - name: Build the binary
         # Statically link most non-system libraries
         run: |
-          env CRYSTAL_LIBRARY_PATH=`pwd`/libs PKG_CONFIG_LIBDIR=/nonexistent crystal projects.cr build:cli --no-debug --release
+          # PKG_CONFIG_PATH is set job-wide by the runner image and points
+          # at an openssl@1.1 keg: pkg-config then emits -L flags for its
+          # dylibs, which shadow the static archives copied into ./libs and
+          # leave openssl symbols unresolved. Neutralize pkg-config so the
+          # link falls back to plain -l flags resolved from ./libs first.
+          env CRYSTAL_LIBRARY_PATH=`pwd`/libs PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR=/nonexistent crystal projects.cr build:cli --no-debug --release
           mkdir bin
           mv ./packages/cli/bin/zap ./bin/zap
       - name: Upload a Build Artifact
@@ -121,7 +126,12 @@ jobs:
           clang -L"$GITHUB_WORKSPACE/libs" -L/opt/homebrew/Cellar/openssl@1.1/1.1.1w/lib -L/usr/local/Cellar/openssl@1.1/1.1.1w/lib -lssl -lcrypto -Wl,-t probe.c -o probe2 2>&1 | grep -iE "libssl|libcrypto|error|Undefined" | head -8
       - name: Build the binary
         run: |
-          env CRYSTAL_LIBRARY_PATH=`pwd`/libs PKG_CONFIG_LIBDIR=/nonexistent crystal projects.cr build:cli --no-debug --release
+          # PKG_CONFIG_PATH is set job-wide by the runner image and points
+          # at an openssl@1.1 keg: pkg-config then emits -L flags for its
+          # dylibs, which shadow the static archives copied into ./libs and
+          # leave openssl symbols unresolved. Neutralize pkg-config so the
+          # link falls back to plain -l flags resolved from ./libs first.
+          env CRYSTAL_LIBRARY_PATH=`pwd`/libs PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR=/nonexistent crystal projects.cr build:cli --no-debug --release
           mkdir bin
           mv ./packages/cli/bin/zap ./bin/zap
       - name: Upload a Build Artifact
