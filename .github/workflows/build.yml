@@ -70,8 +70,8 @@ jobs:
           # its default flags), the archive pass pulls nothing, and the
           # later duplicate -lcrypto is ignored as such. Paths are
           # resolved after the objects, so the members are pulled.
-          shards install
           cd packages/cli
+          shards install
           env CRYSTAL_LIBRARY_PATH="$GITHUB_WORKSPACE/libs" PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR=/nonexistent \
             crystal build zap.cr --no-debug --release -o bin/zap \
             --link-flags "$GITHUB_WORKSPACE/libs/libssl.a $GITHUB_WORKSPACE/libs/libcrypto.a"
@@ -146,8 +146,8 @@ jobs:
           # its default flags), the archive pass pulls nothing, and the
           # later duplicate -lcrypto is ignored as such. Paths are
           # resolved after the objects, so the members are pulled.
-          shards install
           cd packages/cli
+          shards install
           env CRYSTAL_LIBRARY_PATH="$GITHUB_WORKSPACE/libs" PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR=/nonexistent \
             crystal build zap.cr --no-debug --release -o bin/zap \
             --link-flags "$GITHUB_WORKSPACE/libs/libssl.a $GITHUB_WORKSPACE/libs/libcrypto.a"
