@@ -65,7 +65,14 @@ jobs:
           # dylibs, which shadow the static archives copied into ./libs and
           # leave openssl symbols unresolved. Neutralize pkg-config so the
           # link falls back to plain -l flags resolved from ./libs first.
-          env CRYSTAL_LIBRARY_PATH=`pwd`/libs PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR=/nonexistent crystal projects.cr build:cli --no-debug --release
+          # The openssl archives are passed by path: a bare -lcrypto
+          # reaches the linker before the objects do (Crystal emits it in
+          # its default flags), the archive pass pulls nothing, and the
+          # later duplicate -lcrypto is ignored as such. Paths are
+          # resolved after the objects, so the members are pulled.
+          env CRYSTAL_LIBRARY_PATH=`pwd`/libs PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR=/nonexistent \
+            crystal projects.cr build:cli --no-debug --release \
+            --link-flags "`pwd`/libs/libssl.a `pwd`/libs/libcrypto.a"
           mkdir bin
           mv ./packages/cli/bin/zap ./bin/zap
       - name: Upload a Build Artifact
@@ -131,7 +138,14 @@ jobs:
           # dylibs, which shadow the static archives copied into ./libs and
           # leave openssl symbols unresolved. Neutralize pkg-config so the
           # link falls back to plain -l flags resolved from ./libs first.
-          env CRYSTAL_LIBRARY_PATH=`pwd`/libs PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR=/nonexistent crystal projects.cr build:cli --no-debug --release
+          # The openssl archives are passed by path: a bare -lcrypto
+          # reaches the linker before the objects do (Crystal emits it in
+          # its default flags), the archive pass pulls nothing, and the
+          # later duplicate -lcrypto is ignored as such. Paths are
+          # resolved after the objects, so the members are pulled.
+          env CRYSTAL_LIBRARY_PATH=`pwd`/libs PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR=/nonexistent \
+            crystal projects.cr build:cli --no-debug --release \
+            --link-flags "`pwd`/libs/libssl.a `pwd`/libs/libcrypto.a"
           mkdir bin
           mv ./packages/cli/bin/zap ./bin/zap
       - name: Upload a Build Artifact
