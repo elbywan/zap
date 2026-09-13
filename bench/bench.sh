@@ -35,19 +35,25 @@ COMMANDS=(
   "env YARN_ENABLE_SCRIPTS=false YARN_ENABLE_IMMUTABLE_INSTALLS=false YARN_NODE_LINKER=node-modules $YARN"
   "$PNPM i --ignore-scripts"
   "$BUN i --ignore-scripts"
-  # --check-resolutions=false: the flag defaults to on under CI, which
-  # disables the up-to-date fast path; the benchmark measures the local
-  # (default) behavior.
-  'zap i --ignore-scripts --frozen-lockfile=false --check-resolutions=false'
 )
 
-hyperfine --warmup 1 --runs 3 --export-json cold.json --prepare "$PREPARE_COLD" "${COMMANDS[@]}"
+# --check-resolutions=false: the flag defaults to on under CI, which
+# disables the up-to-date fast path; the benchmark measures the local
+# (default) behavior.
+#
+# The zap command also captures the per-phase timing table into a file
+# (hyperfine swallows the program output). The file holds the last run of
+# the scenario; it is uploaded with the benchmark artifacts.
+ZAP="zap i --ignore-scripts --frozen-lockfile=false --check-resolutions=false"
+zap_cmd() { echo "env ZAP_INSTALL_TIMINGS=1 ZAP_INSTALL_TIMINGS_FILE=$1.timings $ZAP"; }
 
-hyperfine --warmup 1 --runs 3 --export-json only-cache.json --prepare "$PREPARE_ONLY_CACHE" "${COMMANDS[@]}"
+hyperfine --warmup 1 --runs 3 --export-json cold.json --prepare "$PREPARE_COLD" "${COMMANDS[@]}" "$(zap_cmd cold)"
 
-hyperfine --warmup 1 --runs 3 --export-json without-lockfile.json --prepare "$PREPARE_WITHOUT_LOCKFILE" "${COMMANDS[@]}"
+hyperfine --warmup 1 --runs 3 --export-json only-cache.json --prepare "$PREPARE_ONLY_CACHE" "${COMMANDS[@]}" "$(zap_cmd only-cache)"
 
-hyperfine --warmup 1 --runs 3 --export-json without-node-modules.json --prepare "$PREPARE_WITHOUT_NODE_MODULES" "${COMMANDS[@]}"
+hyperfine --warmup 1 --runs 3 --export-json without-lockfile.json --prepare "$PREPARE_WITHOUT_LOCKFILE" "${COMMANDS[@]}" "$(zap_cmd without-lockfile)"
+
+hyperfine --warmup 1 --runs 3 --export-json without-node-modules.json --prepare "$PREPARE_WITHOUT_NODE_MODULES" "${COMMANDS[@]}" "$(zap_cmd without-node-modules)"
 
 rm -Rf node_modules .yarn package-lock.json pnpm-lock.yaml yarn.lock bun.lock bun.lockb zap.lock
 

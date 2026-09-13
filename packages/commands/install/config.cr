@@ -24,6 +24,14 @@ struct Commands::Install::Config < Core::CommandConfig
   # versions (the recently-published quarantine)
   @[Env]
   getter allow_recent : Bool = false
+  # --timings: print an aggregate per-phase timing table when the install
+  # completes (diagnostic; the sums come from real call-site clocks)
+  @[Env]
+  getter timings : Bool = false
+  # Additionally write the timing table to this file (used where stdout is
+  # not available, e.g. the benchmark harness). [env: ZAP_INSTALL_TIMINGS_FILE]
+  @[Env]
+  getter timings_file : String? = nil
   # Force a specific output reporter (plain, interactive, null or ndjson) instead
   # of auto-detecting it from the terminal. [env: ZAP_INSTALL_REPORTER]
   @[Env]

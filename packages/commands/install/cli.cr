@@ -51,6 +51,12 @@ class Commands::Install::CLI < Commands::CLI
     Helpers.flag("--allow-recent", "Skip the minimum release age check for newly resolved packages. #{"[env: ZAP_INSTALL_ALLOW_RECENT]".colorize.dim}") do
       command_config.ref = install_config.copy_with(allow_recent: true)
     end
+    Helpers.flag("--timings", "Print an aggregate per-phase timing table when the install completes. #{"[env: ZAP_INSTALL_TIMINGS]".colorize.dim}") do
+      command_config.ref = install_config.copy_with(timings: true)
+    end
+    Helpers.flag("--timings-file <path>", "Also write the timing table to this file. #{"[env: ZAP_INSTALL_TIMINGS_FILE]".colorize.dim}") do |path|
+      command_config.ref = install_config.copy_with(timings: true, timings_file: path)
+    end
     Helpers.flag("--no-logs", "If true, will not print logs like deprecation warnings. #{"[env: ZAP_INSTALL_PRINT_LOGS=false]".colorize.dim}") do
       command_config.ref = install_config.copy_with(print_logs: false)
     end

@@ -11,6 +11,7 @@ require "store"
 require "data/package/scripts"
 require "utils/shasum"
 require "./config"
+require "./timings"
 require "./state"
 require "./patches"
 require "./resolver"
@@ -51,6 +52,12 @@ module Commands::Install
                    raise "Unknown reporter: #{install_config.reporter} (expected plain, interactive, null or ndjson)"
                  end
     install_config = install_config.copy_with(raise_on_failure: raise_on_failure)
+    Timings.enabled = install_config.timings
+    Timings.reset
+    # The fetch orchestration reports its phases through this hook while
+    # the timings are enabled; unset again otherwise so an in-process
+    # re-run (specs) never pays for it.
+    Fetch::Timings.hook = Timings.enabled ? ->(name : Symbol, ns : Int64) { Timings.record(name, ns) } : nil
     config = config.check_if_store_is_linkeable
     store ||= ::Store.new(config.store_path)
     unmet_peers_hash = nil
@@ -148,7 +155,7 @@ module Commands::Install
       Resolver.reachable_packages(state, state.reachable_packages) if state.install_config.omit.size > 0
 
       # Resolve all dependencies
-      update_changed = resolve_dependencies(state)
+      update_changed = Timings.measure(Timings::Wall::Resolve) { resolve_dependencies(state) }
 
       # Verify the lockfile resolutions satisfy the declared ranges (yarn's
       # --check-resolutions / YN0078): a mismatch means the lockfile was
@@ -193,7 +200,7 @@ module Commands::Install
       end
 
       # Install dependencies to the appropriate node_modules folder
-      linker = link_packages(state, pruned_direct_dependencies)
+      linker = Timings.measure(Timings::Wall::Link) { link_packages(state, pruned_direct_dependencies) }
 
       # Verify every configured patch matched an installed package (pnpm's
       # unused-patch check: a stale or mistyped key is an error, or a warning
@@ -211,10 +218,10 @@ module Commands::Install
       end
 
       # Run package.json hooks for the installed packages
-      run_install_hooks(state, linker)
+      Timings.measure(Timings::Wall::Hooks) { run_install_hooks(state, linker) }
 
       # Run package.json hooks for the workspace packages
-      run_own_install_hooks(state)
+      Timings.measure(Timings::Wall::Hooks) { run_own_install_hooks(state) }
 
       # Persist the installed state (keys + applied patch hashes) after the
       # linking, so the freshly installed packages are recorded.
@@ -223,10 +230,20 @@ module Commands::Install
       # path on the next install.
       ::File.write(fingerprint_path(state), project_fingerprint(state))
     end
+    # The total wall comes from the same clock the install reports (the
+    # phase-table reference point); record is a no-op while disabled.
+    Timings.record(Timings::Wall::Total.label, realtime.total_nanoseconds.to_i64)
 
     # Print the report
     if s = state
       s.reporter.report_done(realtime, memory, s.install_config, unmet_peers: unmet_peers_hash)
+    end
+
+    # Print the --timings table (on stderr: it is diagnostic output, and
+    # stdout may be an ndjson stream)
+    if Timings.enabled
+      Timings.report(STDERR)
+      install_config.timings_file.try { |path| Timings.report_file(path) }
     end
   rescue e
     # Persist the state accumulated so far: packages linked before the

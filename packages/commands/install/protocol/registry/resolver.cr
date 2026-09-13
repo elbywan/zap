@@ -5,6 +5,7 @@ require "../base"
 require "../resolver"
 require "../../manifest"
 require "../../registry_clients"
+require "../../timings"
 
 struct Commands::Install::Protocol::Registry < Commands::Install::Protocol::Base
 end
@@ -141,22 +142,26 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
       # we also need to relativize the tarball url to the pool base url
       # otherwise some registries (verdaccio for instance) will return a 404
       relative_url = URI.parse(pool_key).relativize(tarball_url).to_s
-      case pool
-      when Fetch::HTTP2(Manifest)
-        begin
-          pool.client do |client|
-            client.get("/" + relative_url, Shared::Constants::HEADERS) do |response|
-              raise "Invalid status code from #{tarball_url} (#{response[":status"]})" unless response[":status"] == "200"
-              Log.debug { "Streaming and unpacking tarball from #{tarball_url}… (size: #{response["content-length"] || "?"} bytes)" }
-              unpack_and_verify(response.io, metadata, tarball_url, algorithm_instance, unsupported_algorithm, shasum, hash, integrity, state)
+      # The download and the unpack are streamed together (the tar reader
+      # consumes the response IO), so they are timed as one phase.
+      Timings.measure(Timings::Phase::TarballStore) do
+        case pool
+        when Fetch::HTTP2(Manifest)
+          begin
+            pool.client do |client|
+              client.get("/" + relative_url, Shared::Constants::HEADERS) do |response|
+                raise "Invalid status code from #{tarball_url} (#{response[":status"]})" unless response[":status"] == "200"
+                Log.debug { "Streaming and unpacking tarball from #{tarball_url}… (size: #{response["content-length"] || "?"} bytes)" }
+                unpack_and_verify(response.io, metadata, tarball_url, algorithm_instance, unsupported_algorithm, shasum, hash, integrity, state)
+              end
             end
+          rescue e : Fetch::HTTP2Transport::Unavailable
+            raise e if pool.fallback.nil?
+            download_tarball(pool.fallback.not_nil!, relative_url, tarball_url, metadata, algorithm_instance, unsupported_algorithm, shasum, hash, integrity, state)
           end
-        rescue e : Fetch::HTTP2Transport::Unavailable
-          raise e if pool.fallback.nil?
-          download_tarball(pool.fallback.not_nil!, relative_url, tarball_url, metadata, algorithm_instance, unsupported_algorithm, shasum, hash, integrity, state)
+        else
+          download_tarball(pool, relative_url, tarball_url, metadata, algorithm_instance, unsupported_algorithm, shasum, hash, integrity, state)
         end
-      else
-        download_tarball(pool, relative_url, tarball_url, metadata, algorithm_instance, unsupported_algorithm, shasum, hash, integrity, state)
       end
     end
   end
@@ -269,14 +274,14 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
       # package). The manifest's own staleness still gates the resolve, so
       # this cannot outlive the packument data it was built from.
       cache_key = "#{@base_url.to_s}/#{@package_name}@#{selected_version}"
-      pkg = @skip_cache ? nil : @clients.package_cache.get(cache_key)
+      pkg = @skip_cache ? nil : Timings.measure(Timings::Phase::PackageCache) { @clients.package_cache.get(cache_key) }
       unless pkg
         raw_metadata = manifest.get_raw_metadata?(version_for_selection)
         unless raw_metadata
           raise "No version matching range or dist-tag #{specifier} for package #{@name} found in the module registry"
         end
-        pkg = Data::Package.from_json(raw_metadata)
-        @clients.package_cache.set(cache_key, pkg, 30.days) unless @skip_cache
+        pkg = Timings.measure(Timings::Phase::PackageParse) { Data::Package.from_json(raw_metadata) }
+        Timings.measure(Timings::Phase::PackageCache) { @clients.package_cache.set(cache_key, pkg, 30.days) } unless @skip_cache
       end
       # Record the named registry on the resolved dist so the lockfile key
       # becomes registry-qualified (pnpm parity) and the package cannot be

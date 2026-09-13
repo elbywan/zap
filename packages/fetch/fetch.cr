@@ -1,5 +1,6 @@
 require "concurrency/dedupe_lock"
 require "./cache"
+require "./timings"
 
 # The fetch, parametrized by the transport (OCaml-functor style): the
 # cache/dedupe/staleness orchestration is generated once per transport.
@@ -39,16 +40,16 @@ class Fetch(T, Transport)
     headers = fetch_headers(args, kwargs)
 
     # Extract the body from the cache if possible
-    if body = @cache.get(full_url)
+    if body = Fetch::Timings.measure(:cache_r) { @cache.get(full_url) }
       return body
     end
 
     # Dedupe requests by having an inflight channel for each URL
     dedupe(url) do
-      manifest_or_body, cache_expiry, cache_etag = fetch_body(url, full_url, headers)
+      manifest_or_body, cache_expiry, cache_etag = Fetch::Timings.measure(:fetch) { fetch_body(url, full_url, headers) }
       if manifest_or_body.is_a?(String)
-        manifest = transform_body.call(manifest_or_body)
-        @cache.set(full_url, manifest, cache_expiry, cache_etag)
+        manifest = Fetch::Timings.measure(:parse) { transform_body.call(manifest_or_body) }
+        Fetch::Timings.measure(:cache_w) { @cache.set(full_url, manifest, cache_expiry, cache_etag) }
         manifest
       else
         manifest_or_body
