@@ -49,5 +49,5 @@ module Commands::Install
     # run, keyed by "<parent key>\u0000<dependency name>": the collapse
     # pass re-checks each edge against the finished graph and needs the
     # range, which the lockfile only keeps as a pin.
-    declared_ranges : Hash(String, String) = Hash(String, String).new
+    declared_ranges : Concurrency::SafeHash(String, String) = Concurrency::SafeHash(String, String).new
 end

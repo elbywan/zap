@@ -508,10 +508,8 @@ module Commands::Install
     # prefer-dedupe candidates come from the pre-run lockfile only: the
     # in-run resolutions land in fiber-completion order, so including them
     # would make the resolved graph nondeterministic on identical inputs.
-    unless state.in_use_packages.size > 0
-      state.lockfile.packages.each_value do |pkg|
-        (state.in_use_packages[pkg.name] ||= [] of Data::Package) << pkg
-      end
+    state.lockfile.packages.each_value do |pkg|
+      (state.in_use_packages[pkg.name] ||= [] of Data::Package) << pkg
     end
     state.pipeline.set_concurrency(state.config.network_concurrency * 5)
     state.reporter.report_resolver_updates do

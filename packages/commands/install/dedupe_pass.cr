@@ -94,7 +94,13 @@ module Commands::Install::DedupePass
     referenced = Set(String).new
     lockfile.packages.each_value do |package|
       package.dependencies.try &.each do |name, value|
-        referenced << "#{name}@#{value}" if value.is_a?(String)
+        case value
+        when String
+          referenced << "#{name}@#{value}"
+        when Data::Package::Alias
+          # An alias pins its target under a different name.
+          referenced << "#{value.name}@#{value.version}"
+        end
       end
     end
     lockfile.roots.each_value do |root|

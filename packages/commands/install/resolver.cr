@@ -316,12 +316,6 @@ module Commands::Install::Resolver
     &on_resolve : Data::Package -> _
   )
     Log.debug { "(#{name}@#{version}) Resolving package…" + (type ? " [type: #{type}]" : "") + (package ? " [parent: #{package.key}]" : "") }
-    # Remember the edge's declared range: the collapse pass needs it after
-    # the resolution (the lockfile only keeps the pin). Aliases are keyed
-    # by the real package, so only plain specifiers are recorded.
-    if package && !single_resolution
-      state.declared_ranges["#{package.key}\u0000#{name}"] = version
-    end
     state.reporter.on_resolving_package
     # Add direct dependencies to the lockfile
     if package && is_direct_dependency && type
@@ -370,6 +364,12 @@ module Commands::Install::Resolver
       end
 
       Log.debug { "(#{maybe_metadata.key}) Metatadata found in the lockfile cache #{(package ? "[parent: #{package.key}]" : "")}" if maybe_metadata }
+      # Remember the edge's declared range for the collapse pass, but only
+      # when it resolved fresh: an edge satisfied by a lockfile pin must
+      # never be rewritten (a plain install would silently upgrade it).
+      if package && !single_resolution && maybe_metadata.nil?
+        state.declared_ranges["#{package.key}\u0000#{name}"] = version
+      end
       # If the package is not in the lockfile or if it is a direct dependency, resolve it
       metadata = maybe_metadata || resolver.resolve
       metadata_key = metadata.key
