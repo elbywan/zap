@@ -73,6 +73,7 @@ jobs:
             bench/react-app/only-cache.json
             bench/react-app/without-lockfile.json
             bench/react-app/without-node-modules.json
+            bench/react-app/*.timings
             bench/versions.txt
             bench/*.png
           if-no-files-found: error
