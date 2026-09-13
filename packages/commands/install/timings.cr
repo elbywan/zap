@@ -23,6 +23,9 @@ module Commands::Install::Timings
     # to the pipeline; the file I/O itself runs on the worker pool).
     LinkItems
     LinkBackend
+    # The phase's single await: the dispatched link tasks draining on the
+    # pool (the parallel I/O), after the sequential walk.
+    LinkAwait
     # The tarball stream is a fused download+unpack: TarballUnpack covers
     # the whole unpack call, TarballNet the raw socket reads inside it, so
     # the difference is the inflate/tar/write CPU.
@@ -39,6 +42,7 @@ module Commands::Install::Timings
       in PackageCache       then "package.cache"
       in LinkItems          then "link.items"
       in LinkBackend        then "link.backend"
+      in LinkAwait          then "link.await"
       in TarballStore       then "tarball.store"
       in TarballUnpack      then "tarball.unpack"
       in TarballNet         then "tarball.net"
@@ -144,6 +148,7 @@ module Commands::Install::Timings
     {"link.wall", 0},
     {"link.items", 2},
     {"link.backend", 4},
+    {"link.await", 2},
     {"hooks.wall", 0},
     {"total.wall", 0},
   ]

@@ -65,6 +65,82 @@ module Backend
     end
   end
 
+  # Links one package's tree sequentially: the same walk as `recursively`,
+  # without the per-file dispatch. Dispatched as a single pipeline task so
+  # that packages link concurrently on the pool.
+  protected def self.link_tree(src_path : String, dest_path : String, &block : (String | Path, String | Path) -> Nil) : Nil
+    if Dir.exists?(src_path)
+      begin
+        Dir.mkdir(dest_path)
+      rescue ::File::Error
+        # ignore errors - assume that the dir exists already
+      end
+      src_prefix = "#{src_path}#{Path::SEPARATORS[0]}"
+      dest_prefix = "#{dest_path}#{Path::SEPARATORS[0]}"
+      Dir.each_child_entry(src_path) do |entry|
+        src = src_prefix + entry.name
+        dest = dest_prefix + entry.name
+        if entry.dir?
+          self.link_tree(src, dest, &block)
+        elsif entry.dir?.nil? && Dir.exists?(src)
+          self.link_tree(src, dest, &block)
+        else
+          block.call(src, dest)
+        end
+      end
+    else
+      block.call(src_path, dest_path)
+    end
+  end
+
+  # Dispatches the link of one package as a single pipeline task and
+  # returns immediately: packages run concurrently, and the caller awaits
+  # the pipeline once for the whole phase instead of per package. The
+  # writer's post-link callbacks must run after that await.
+  #
+  # Returns false when the package was already installed (in which case
+  # nothing is dispatched).
+  def self.dispatch_link(*, dependency : Data::Package, target : Path | String, backend : Backends, store : Store, pipeline : Concurrency::Pipeline, installed_state : Hash(String, InstalledEntry), patch_hash : String?, &on_installing) : Bool
+    src_path, dest_path, already_installed = self.prepare(dependency, target, store: store, installed_state: installed_state, patch_hash: patch_hash)
+    return false if already_installed
+
+    yield
+
+    pipeline.process do
+      case backend
+      in .clone_file?
+        {% if flag?(:darwin) %}
+          Backend::CloneFile.link(src_path, dest_path)
+        {% else %}
+          raise "The clonefile backend is not supported on this platform"
+        {% end %}
+      in .copy_file?
+        {% if flag?(:darwin) %}
+          self.link_tree(src_path.to_s, dest_path.to_s) { |src, dest| LibC.copyfile(src.to_s, dest.to_s, nil, LibC::COPYFILE_CLONE_FORCE | LibC::COPYFILE_ALL) }
+        {% else %}
+          raise "The copyfile backend is not supported on this platform"
+        {% end %}
+      in .hardlink?
+        self.link_tree(src_path.to_s, dest_path.to_s) do |src, dest|
+          begin
+            File.link(src, dest)
+          rescue ::File::Error
+            # Cross-device (EXDEV) or an entry the filesystem refuses to
+            # hardlink: copy that file. The old package-level fallback
+            # re-ran the whole package; per file is equivalent (one
+            # filesystem decides for all of them) and needs no retry.
+            File.copy(src, dest)
+          end
+        end
+      in .copy?
+        self.link_tree(src_path.to_s, dest_path.to_s) { |src, dest| File.copy(src, dest) }
+      in .symlink?
+        self.link_tree(src_path.to_s, dest_path.to_s) { |src, dest| File.symlink(src, dest) }
+      end
+    end
+    true
+  end
+
   # -----------------------------------------------------------------------------------------------
   # It seems like the libc fts methods are actually not much faster than the crystal stdlib itself.
   # Still it pains me to delete the code so I'm leaving this here just for the record.

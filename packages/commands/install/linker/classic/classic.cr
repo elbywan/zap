@@ -59,6 +59,47 @@ class Commands::Install::Linker::Classic < Commands::Install::Linker::Base
     end
   end
 
+  # Paths whose link was dispatched onto the pool this run, with the
+  # package key linked there: the BFS revisits the same package/location,
+  # and the installed state is only recorded after the phase's await, so
+  # in-flight targets are tracked here (a repeat visit, a stale-copy
+  # removal, or a different version targeting the same path must not
+  # silently reuse them).
+  @dispatched_targets = Hash(String, String).new
+  # The post-link callbacks, deferred until the link tasks have completed:
+  # they read the linked trees (patches, bin links, hook scripts).
+  @deferred_on_link = [] of {Data::Package, Path, LocationNode, Array(Data::Package)}
+
+  # The key dispatched at *path* (nil when nothing was): a repeat visit of
+  # the same key can be skipped, a different key must take the path over.
+  def dispatched_key(path : Path) : String?
+    @dispatched_targets[path.to_s]?
+  end
+
+  def dispatched?(path : Path) : Bool
+    @dispatched_targets.has_key?(path.to_s)
+  end
+
+  def on_dispatched(dependency : Data::Package, install_folder : Path, *, state : Commands::Install::State, location : LocationNode, ancestors : Array(Data::Package)) : Nil
+    @dispatched_targets[install_folder.to_s] = dependency.key
+    @deferred_on_link << {dependency, install_folder, location, ancestors}
+  end
+
+  # A removal invalidates a pending dispatch at the same path (the copy
+  # being removed was linked earlier in this run): the deferred callback
+  # is dropped (the removal supersedes it) and the path can be linked
+  # again by a later visit.
+  def undispatch(path : String) : Nil
+    return unless @dispatched_targets.delete(path)
+    @deferred_on_link.reject! { |(_, install_folder, _, _)| install_folder.to_s == path }
+  end
+
+  # The pool must be drained before the filesystem is touched in a path a
+  # task may still be writing to.
+  private def drain_links : Nil
+    state.pipeline.await
+  end
+
   def install : Nil
     node_modules = Path.new(state.config.node_modules)
 
@@ -173,6 +214,15 @@ class Commands::Install::Linker::Classic < Commands::Install::Linker::Base
         end
       end
     end
+
+    # The link tasks ran concurrently on the worker pool: wait for them all
+    # before the post-link callbacks (which read the linked trees) and the
+    # deferred stale-copy removals.
+    Timings.measure(Timings::Phase::LinkAwait) { state.pipeline.await }
+    @deferred_on_link.each do |(dependency, install_folder, location, ancestors)|
+      on_link(dependency, install_folder, state: state, location: location, ancestors: ancestors)
+    end
+    @deferred_on_link.clear
   end
 
   private def install_dependency(dependency : Data::Package, *, location : LocationNode, ancestors : Array(Data::Package), aliased_name : String?) : Writer::InstallResult
