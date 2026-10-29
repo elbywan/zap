@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.10.3
+
+- **Fix a cold-install race when linking nested dependencies.** A nested
+  dependency could create its parent package directory while the parent
+  clonefile link was still in flight, making the clone fail with `EEXIST`
+  on macOS. The clonefile backend now detects that case and merges the
+  package files into the existing directory instead.
+
 ## v0.10.2
 
 - **Fix HTTP/2 resolutions on Crystal 1.22.** Crystal 1.22 validates HTTP
