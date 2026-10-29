@@ -9,17 +9,31 @@ on:
 jobs:
   macos_arm64:
     runs-on: macos-15
+    env:
+      OPENSSL_VERSION: 4.1.0
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
       - name: Install Crystal
         run: brew update && brew install crystal || true
+      - name: Build static OpenSSL
+        run: |
+          curl -fsSL -o openssl.tar.gz \
+            "https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz"
+          tar xzf openssl.tar.gz
+          cd "openssl-${OPENSSL_VERSION}"
+          # Use the OS-maintained bundle instead of the Homebrew prefix so the
+          # statically linked binary works on Macs that have no Homebrew, or
+          # have since upgraded to a different OpenSSL major version.
+          ./Configure darwin64-arm64-cc no-shared no-tests --openssldir=/etc/ssl
+          make -s -j"$(sysctl -n hw.ncpu)" build_libs
+          cd ..
       - name: Copy static libraries
         run: |
           mkdir -p ./libs
           # openssl
-          cp $(brew --prefix)/opt/openssl@3/lib/libssl.a ./libs
-          cp $(brew --prefix)/opt/openssl@3/lib/libcrypto.a ./libs
+          cp "openssl-${OPENSSL_VERSION}/libssl.a" ./libs
+          cp "openssl-${OPENSSL_VERSION}/libcrypto.a" ./libs
           # libevent (optional: the default event loop is kqueue on macOS)
           cp $(brew --prefix)/opt/libevent/lib/libevent_pthreads.a ./libs || true
           cp $(brew --prefix)/opt/libevent/lib/libevent.a ./libs || true
@@ -34,6 +48,13 @@ jobs:
           env CRYSTAL_LIBRARY_PATH=`pwd`/libs crystal projects.cr build:cli --no-debug --release
           mkdir bin
           mv ./packages/cli/bin/zap ./bin/zap
+      - name: Verify the embedded CA path
+        run: |
+          if strings ./bin/zap | grep -q '/opt/homebrew/etc/openssl'; then
+            echo "The binary still embeds a Homebrew OpenSSL path" >&2
+            exit 1
+          fi
+          strings ./bin/zap | grep -q '/etc/ssl/cert.pem'
       - name: Upload a Build Artifact
         uses: actions/upload-artifact@v7
         with:
