@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.10.4
+
+- **Re-release with the sequential linker.** The v0.10.3 npm packages were
+  published from artifacts built before the linker revert. This release is
+  built from the reverted tree; use v0.10.4.
+
 ## v0.10.3
 
 - **Revert concurrent package linking.** The concurrent linker introduced
