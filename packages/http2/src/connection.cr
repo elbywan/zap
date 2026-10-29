@@ -157,7 +157,13 @@ module HTTP2
           if stream.response_headers.nil?
             headers = HTTP::Headers.new
             validate_pseudo_headers(@decoder.decode(read_headers_payload(frame))) do |name, value|
-              headers.add(name, value)
+              # Pseudo-headers are not HTTP/1.1 tokens, so they need the
+              # non-validating insertion; regular headers keep the checks.
+              if name.starts_with?(':')
+                headers.add_http2(name, value)
+              else
+                headers.add(name, value)
+              end
             end
             stream.receive_headers(headers)
           else
