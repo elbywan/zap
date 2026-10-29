@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.10.2
+
+- **Fix HTTP/2 resolutions on Crystal 1.22.** Crystal 1.22 validates HTTP
+  header names in `HTTP::Headers#add`, which rejects HTTP/2 pseudo-headers
+  such as `:status`. The HTTP/2 client now stores the validated
+  pseudo-headers without the HTTP/1.1 token check, fixing
+  `Invalid header name` on every registry response.
+- **Make the macOS release binary trust the host CA store.** The macOS
+  binary now links OpenSSL 4.1 built with `--openssldir=/etc/ssl`, so it
+  uses the OS-maintained certificate bundle instead of a Homebrew-specific
+  path baked in at build time. This fixes `SSL_connect: ... certificate
+  verify failed` on Macs without the build machine's OpenSSL installation.
+
 ## v0.10.1
 
 - **Fix a crash on installs whose graph reaches a version through a dev
