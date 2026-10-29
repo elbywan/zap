@@ -93,6 +93,13 @@ module Backend
     end
   end
 
+  # Copies a package tree into *dest_path*, merging into directories that
+  # already exist. Used as the clonefile fallback when a nested dependency
+  # created the destination while the parent link was in flight.
+  def self.copy_tree(src_path : String | Path, dest_path : String | Path) : Nil
+    self.link_tree(src_path.to_s, dest_path.to_s) { |src, dest| File.copy(src, dest) }
+  end
+
   # Dispatches the link of one package as a single pipeline task and
   # returns immediately: packages run concurrently, and the caller awaits
   # the pipeline once for the whole phase instead of per package. The
@@ -110,7 +117,13 @@ module Backend
       case backend
       in .clone_file?
         {% if flag?(:darwin) %}
-          Backend::CloneFile.link(src_path, dest_path)
+          begin
+            Backend::CloneFile.link(src_path, dest_path)
+          rescue Backend::CloneFile::DestinationExists
+            # A nested dependency created the destination directory while this
+            # link was in flight; merge the package files into it instead.
+            Backend.copy_tree(src_path, dest_path)
+          end
         {% else %}
           raise "The clonefile backend is not supported on this platform"
         {% end %}
@@ -280,7 +293,14 @@ module Backend
     case backend
     in .clone_file?
       {% if flag?(:darwin) %}
-        Backend::CloneFile.link(src_path, dest_path)
+        begin
+          Backend::CloneFile.link(src_path, dest_path)
+        rescue Backend::CloneFile::DestinationExists
+          # See dispatch_link above: merge into a directory a nested link
+          # created while this link was in flight.
+          Backend.copy_tree(src_path, dest_path)
+          true
+        end
       {% else %}
         raise "The clonefile backend is not supported on this platform"
       {% end %}

@@ -47,6 +47,39 @@ describe "git dependencies", tags: "integration" do
     end
   end
 
+  it "installs a git package whose nested dependencies race the parent link" do
+    It.with_registry do |registry|
+      # b@1 is nested under a, and its c@1 child is nested under b@1: the
+      # child's mkdir creates node_modules/a/node_modules/b/node_modules while
+      # the a and b clonefile links are still in flight.
+      registry.add("a", "1.0.0", It.pkg("a", "1.0.0", dependencies: {"b" => "1.0.0"}), {"index.js" => "a"})
+      registry.add("b", "1.0.0", It.pkg("b", "1.0.0", dependencies: {"c" => "1.0.0"}), {"index.js" => "b1"})
+      registry.add("b", "2.0.0", It.pkg("b", "2.0.0", dependencies: {"c" => "2.0.0"}), {"index.js" => "b2"})
+      registry.add("c", "1.0.0", It.pkg("c", "1.0.0"), {"index.js" => "c1"})
+      registry.add("c", "2.0.0", It.pkg("c", "2.0.0"), {"index.js" => "c2"})
+
+      repo = Path.new(Dir.tempdir, "zap-git-#{Random::Secure.hex(4)}")
+      begin
+        It.make_git_repo(
+          repo,
+          It.pkg("git-nested", "1.0.0",
+            dependencies: {"a" => "1.0.0", "b" => "2.0.0"},
+            scripts: {"prepare" => "true"}).to_json,
+          {"index.js" => "from-git"}
+        )
+
+        It.install_project(registry, %({"name":"app","version":"1.0.0","dependencies":{"git-nested":"git+file://#{repo}"}})) do |project|
+          File.read(project / "node_modules/git-nested/index.js").should eq("from-git")
+          File.read(project / "node_modules/a/index.js").should eq("a")
+          File.read(project / "node_modules/b/index.js").should eq("b2")
+          File.read(project / "node_modules/a/node_modules/b/index.js").should eq("b1")
+        end
+      ensure
+        FileUtils.rm_rf(repo)
+      end
+    end
+  end
+
   it "reinstalls a transitive git dependency from the lockfile pin" do
     It.with_registry do |registry|
       repo = Path.new(Dir.tempdir, "zap-git-#{Random::Secure.hex(4)}")
