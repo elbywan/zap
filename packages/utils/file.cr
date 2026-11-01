@@ -1,5 +1,7 @@
 require "dir"
 require "git/ignore"
+require "random/secure"
+require "./directories"
 
 module Utils::File
   def self.crawl(
@@ -47,7 +49,7 @@ module Utils::File
 
   # See: https://docs.npmjs.com/cli/v9/configuring-npm/package-json#files
   ALWAYS_INCLUDED = %w(/package.json /README.* /Readme.* /readme.* /LICENSE.* /License.* /license.* /LICENCE.* /Licence.* /licence.*)
-  ALWAYS_IGNORED  = %w(.git CVS .svn .hg .lock-wscript .wafpickle-N .*.swp .DS_Store ._* npm-debug.log .npmrc node_modules config.gypi *.orig package-lock.json)
+  ALWAYS_IGNORED  = %w(.git CVS .svn .hg .lock-wscript .wafpickle-N .*.swp .DS_Store ._* npm-debug.log .npmrc node_modules config.gypi *.orig package-lock.json .zap-install.lock)
 
   # Crawl a package and yield directories and files that are not ignored by git and included in the package.json files field.
   def self.crawl_package_files(directory : Path, &block : Path -> Bool | Nil)
@@ -110,6 +112,53 @@ module Utils::File
     path
   end
 
+  # The file a symlink ultimately points at. A dangling link is resolved
+  # lexically so atomic writes keep the link and create its target (the old
+  # File.write behavior) instead of replacing the link or failing.
+  private def self.write_target(path : Path | String) : Path
+    target = Path.new(path)
+    32.times do
+      return target unless ::File.symlink?(target)
+      link = Path.new(::File.readlink(target))
+      target = link.absolute? ? link : Path.new(target.dirname) / link
+    end
+    raise "Too many symbolic links: #{path}"
+  end
+
+  # Writes *path* through a unique temporary file and an atomic rename.
+  # A crash mid-write leaves the previous file intact; concurrent writers
+  # produce one complete file (last writer wins) instead of interleaving.
+  def self.atomic_write(path : Path | String, content : String | Bytes, *, follow_symlinks : Bool = true) : Nil
+    atomic_write(path, follow_symlinks: follow_symlinks) { |io| io << content }
+  end
+
+  def self.atomic_write(path : Path | String, *, follow_symlinks : Bool = true, & : IO ->) : Nil
+    target = follow_symlinks ? write_target(path) : Path.new(path)
+    dir = Path.new(target.dirname)
+    Utils::Directories.mkdir_p(dir)
+    mode = ::File.info?(target).try(&.permissions.to_i32) || 0o644
+    temp = dir / ".#{target.basename}.#{Process.pid}.#{Random::Secure.hex(6)}.tmp"
+    begin
+      ::File.open(temp, "w", perm: mode) do |file|
+        yield file
+        file.flush
+        file.fsync
+      end
+      ::File.rename(temp, target)
+      sync_directory(dir)
+    ensure
+      ::File.delete?(temp)
+    end
+  end
+
+  # Best effort: make the rename durable in the directory entry. Directory
+  # fsync is not supported everywhere (notably Windows), so an unsupported
+  # platform must not turn a successful write into a failed install.
+  private def self.sync_directory(dir : Path) : Nil
+    ::File.open(dir, "r") { |file| file.fsync }
+  rescue
+  end
+
   def self.with_flock(
     path : Path | String,
     *,
@@ -155,21 +204,11 @@ module Utils::File
   end
 
   def self.linkeable_ancestor?(path : Path) : String?
-    linkeable_parent = nil
     tempfile_name = self.tempname
     path.each_parent do |parent|
-      link_source = parent / tempfile_name
-      link_dest = path / tempfile_name
-      ::File.touch(link_source)
-      ::File.link(link_source, link_dest)
-      linkeable_parent = parent
-      break
-    rescue
-      # ignore
-    ensure
-      ::File.delete?(link_dest) if link_dest
+      return parent.to_s if self.can_hardlink?(parent, path, tempfile_name: tempfile_name)
     end
-    linkeable_parent.try &.to_s
+    nil
   end
 
   def self.can_hardlink?(source : Path | String, dest : Path | String, *, tempfile_name : String? = nil) : Bool

@@ -44,19 +44,20 @@ class Commands::Install::Linker::PnP < Commands::Install::Linker::Base
       )
     end
 
-    # Write manifest and runtime files
-    ::File.open(prefix / ".pnp.data.json", "w") do |fd|
+    # Write manifest and runtime files atomically: a crash must not leave a
+    # corrupt .pnp runtime that an up-to-date fingerprint would skip.
+    Utils::File.atomic_write(prefix / ".pnp.data.json", follow_symlinks: false) do |fd|
       @manifest.to_pretty_json(fd)
     end
-    ::File.write(prefix / ".pnp.cjs", Runtime::CJS)
-    ::File.write(prefix / ".pnp.loader.mjs", Runtime::MJS)
+    Utils::File.atomic_write(prefix / ".pnp.cjs", Runtime::CJS, follow_symlinks: false)
+    Utils::File.atomic_write(prefix / ".pnp.loader.mjs", Runtime::MJS, follow_symlinks: false)
   end
 
   private def install_package(
     package_or_root : Data::Package | Data::Lockfile::Root,
     *,
     ancestors : Ancestors,
-    workspace_or_main_package : (Workspaces::Workspace | Data::Package)? = nil
+    workspace_or_main_package : (Workspaces::Workspace | Data::Package)? = nil,
   ) : {reference: PackageReference, path: (Path | String)?}?
     resolved_peers = nil
     overrides = nil

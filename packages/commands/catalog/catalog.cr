@@ -1,5 +1,6 @@
 require "json"
 require "utils/misc"
+require "utils/file"
 require "data/package"
 
 # `zap catalog list`, `zap catalog add`, `zap catalog remove`: manage the
@@ -87,7 +88,7 @@ module Commands::Catalog
       end
 
     yield entries
-    File.write(path, JSON::Any.new(root).to_pretty_json)
+    Utils::File.atomic_write(path, JSON::Any.new(root).to_pretty_json, follow_symlinks: false)
   end
 
   # The directories (the project and its workspace members) whose manifests

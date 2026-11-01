@@ -111,6 +111,6 @@ module Commands::ApproveBuilds
       zap_h["ignored_built_dependencies"] = JSON::Any.new((existing + declined).uniq.map { |name| JSON::Any.new(name) })
     end
 
-    File.write(path, JSON::Any.new(root).to_pretty_json)
+    Utils::File.atomic_write(path, JSON::Any.new(root).to_pretty_json, follow_symlinks: false)
   end
 end

@@ -25,6 +25,10 @@ require "./linker/pnp"
 module Commands::Install
   Log = ::Log.for("zap.commands.install")
 
+  # Serializes installs for one project without putting a file inside
+  # node_modules (which can be removed and recreated during an install).
+  PROJECT_LOCK_FILE_NAME = ".zap-install.lock"
+
   def self.run(
     config : Core::Config,
     install_config : Install::Config,
@@ -34,6 +38,7 @@ module Commands::Install
     raise_on_failure : Bool = false,
   )
     state : State? = nil
+    project_lock : ::File? = nil
     reporter ||= case install_config.reporter
                  when "plain"
                    Reporter::Plain.new
@@ -69,6 +74,11 @@ module Commands::Install
       # Infer context like the nearest package.json file and workspaces
       inferred_context = config.infer_context
       workspaces, config = inferred_context.workspaces, inferred_context.config
+
+      # Serialize project mutations: two installs must not interleave
+      # lockfile/package.json writes or link into the same node_modules.
+      project_lock = ::File.open(Path.new(config.prefix) / PROJECT_LOCK_FILE_NAME, "a")
+      project_lock.flock_exclusive
 
       Log.debug { "Configuration: #{config.pretty_inspect}" }
 
@@ -229,7 +239,7 @@ module Commands::Install
       Backend::InstalledState.save(state.installed_state_path, state.installed_state)
       # Record the project fingerprint, the basis of the up-to-date fast
       # path on the next install.
-      ::File.write(fingerprint_path(state), project_fingerprint(state))
+      Utils::File.atomic_write(fingerprint_path(state), project_fingerprint(state), follow_symlinks: false)
     end
     # The total wall comes from the same clock the install reports (the
     # phase-table reference point); record is a no-op while disabled.
@@ -270,6 +280,8 @@ module Commands::Install
                    Shared::Constants::ErrorCodes::INSTALL_COMMAND_FAILED.to_i32
                  end
     exit error_code
+  ensure
+    project_lock.try(&.close)
   end
 
   # -PRIVATE--------------------------- #
@@ -666,7 +678,7 @@ module Commands::Install
         else
           package_json.delete("optionalDependencies")
         end
-        File.write(Path.new(location).join("package.json"), package_json.to_pretty_json)
+        Utils::File.atomic_write(Path.new(location).join("package.json"), package_json.to_pretty_json, follow_symlinks: false)
       end
     end
   end

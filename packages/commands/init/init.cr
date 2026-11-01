@@ -1,3 +1,5 @@
+require "utils/file"
+
 module Commands::Init
   macro prompt(description, field_name)
     unless init_config.yes
@@ -13,7 +15,7 @@ module Commands::Init
 
   def self.run(
     config : Core::Config,
-    init_config : Init::Config
+    init_config : Init::Config,
   )
     prefix_path = Path.new(config.prefix)
     package_path = prefix_path / "package.json"
@@ -94,7 +96,7 @@ module Commands::Init
 
     if !reply || reply.empty? || reply.starts_with?("y")
       puts "Writing package.json…"
-      File.write(package_path, package.to_pretty_json)
+      Utils::File.atomic_write(package_path, package.to_pretty_json, follow_symlinks: false)
       puts "Done!"
     else
       puts "Aborting."

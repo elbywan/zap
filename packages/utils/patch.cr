@@ -135,12 +135,16 @@ module Utils::Patch
   private def self.write_lines(target : Path, lines : Array(String), newline : Bool) : Nil
     content = lines.join('\n')
     content += '\n' if newline && !content.empty?
-    # Write to a temp file and rename: a direct write would truncate through
-    # the hardlink the classic strategy uses to share files with the store,
-    # dirtying the pristine copy.
-    tmp = Path.new("#{target}.zap-patch-tmp")
-    ::File.write(tmp, content)
-    ::File.rename(tmp, target)
+    # Write to a unique temp file and rename: a direct write would truncate
+    # through the hardlink the classic strategy uses to share files with the
+    # store, and a predictable temp name could be a package-supplied symlink.
+    tmp = Path.new("#{target}.zap-patch-#{Utils::File.tempname}.tmp")
+    begin
+      ::File.write(tmp, content)
+      ::File.rename(tmp, target)
+    ensure
+      ::File.delete?(tmp)
+    end
   end
 
   private def self.walk(dir : Path, acc : Array(String), prefix : String = "") : Nil
@@ -359,7 +363,7 @@ module Utils::Patch
         old_count: lines.count { |l| l[0]? != '+' },
         new_start: 1 + diff[0...hunk_start].count { |l| l[0]? != '-' },
         new_count: lines.count { |l| l[0]? != '-' },
-        lines:    lines,
+        lines:     lines,
       }
     end
     hunks

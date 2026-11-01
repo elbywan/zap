@@ -41,7 +41,7 @@ module Utils::TarGzip
         Utils::Directories.mkdir_p(destination / file_path)
       elsif (entry.flag === Crystar::REG)
         Utils::Directories.mkdir_p(destination / file_path.dirname)
-        ::File.write(destination / file_path, io, perm: entry.mode.to_i32)
+        ::File.write(destination / file_path, io, perm: entry.mode.to_i32 & 0o777)
       end
     end
   end
@@ -70,7 +70,7 @@ module Utils::TarGzip
       # An explicit *mode* overrides the on-disk permissions (used by the
       # pack command to normalize the entry modes); the mod_time defaults
       # to the epoch, keeping the archive deterministic.
-      mode: mode || info.permissions.to_i64,
+      mode: (mode || info.permissions.to_i64) & 0o777,
       size: info.size,
       flag: Crystar::REG.ord.to_u8,
     )

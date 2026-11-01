@@ -7,6 +7,7 @@ require "semver"
 require "shared/constants"
 require "utils/macros"
 require "utils/converters"
+require "utils/file"
 require "concurrency/rwlock"
 require "concurrency/mutex"
 require "./package/overrides"
@@ -77,12 +78,7 @@ class Data::Lockfile
           instance.read_status = ReadStatus::FromDisk
           instance.format = Format::YAML
         rescue ex_yaml
-          Log.warn { "Failed to parse lockfile at #{lockfile_path}" }
-          Log.debug { "MessagePack parse error: #{ex_msgpack.message}" }
-          Log.debug { "YAML parse error: #{ex_yaml.message}" }
-          instance = self.allocate
-          instance.read_status = ReadStatus::Error
-          instance.format = default_format
+          raise "Failed to parse lockfile at #{lockfile_path}: #{ex_yaml.message}\nThe lockfile may be corrupt. Delete it and run `zap i` again to regenerate it."
         end
       end
     else
@@ -200,7 +196,7 @@ class Data::Lockfile
 
   def write(format : Format? = nil)
     format ||= @format
-    File.open(@lockfile_path.to_s, "w") do |file|
+    Utils::File.atomic_write(@lockfile_path.not_nil!, follow_symlinks: false) do |file|
       self.serialize(file, format)
     end
   end

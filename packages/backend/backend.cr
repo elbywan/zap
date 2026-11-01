@@ -3,6 +3,7 @@ require "json"
 require "log"
 require "concurrency/pipeline"
 require "extensions/dir"
+require "utils/file"
 
 module Backend
   Log = ::Log.for("zap.backend")
@@ -132,8 +133,7 @@ module Backend
     end
 
     def self.save(path : Path, entries : Hash(String, InstalledEntry)) : Nil
-      Utils::Directories.mkdir_p(path.dirname)
-      File.write(path, entries.to_json)
+      Utils::File.atomic_write(path, follow_symlinks: false) { |io| entries.to_json(io) }
     end
 
     # Reads the legacy .zap.metadata markers under *root* (the key written

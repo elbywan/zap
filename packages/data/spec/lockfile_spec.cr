@@ -24,4 +24,17 @@ describe Data::Lockfile do
       FileUtils.rm_rf(dir)
     end
   end
+
+  it "rejects a corrupt lockfile instead of silently starting fresh" do
+    dir = Path.new(Dir.tempdir, "zap-lockfile-#{Random::Secure.hex(4)}")
+    begin
+      Dir.mkdir_p(dir)
+      File.write(dir / "zap.lock", "roots: [")
+      expect_raises(Exception, /Failed to parse lockfile/) do
+        Data::Lockfile.new(dir)
+      end
+    ensure
+      FileUtils.rm_rf(dir)
+    end
+  end
 end
