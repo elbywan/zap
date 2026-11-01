@@ -261,7 +261,15 @@ module Commands::Install
     else
       puts e.message
     end
-    exit Shared::Constants::ErrorCodes::INSTALL_COMMAND_FAILED.to_i32
+    error_code = case e
+                 when PackageError
+                   e.exit_code
+                 when Concurrency::Pipeline::PipelineException
+                   e.exceptions.find(&.is_a?(PackageError)).try(&.as(PackageError).exit_code) || Shared::Constants::ErrorCodes::INSTALL_COMMAND_FAILED.to_i32
+                 else
+                   Shared::Constants::ErrorCodes::INSTALL_COMMAND_FAILED.to_i32
+                 end
+    exit error_code
   end
 
   # -PRIVATE--------------------------- #
