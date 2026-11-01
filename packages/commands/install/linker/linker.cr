@@ -124,14 +124,16 @@ module Commands::Install::Linker
       if bin = package.bin
         if bin.is_a?(Hash)
           bin.each do |name, path|
-            bin_name = name.split("/").last
-            bin_path = Utils::File.join(state.config.bin_path, bin_name)
+            bin_name = Utils::File.bin_name(name)
+            next unless bin_name
+            bin_path = Utils::File.safe_join(state.config.bin_path, bin_name)
             File.delete?(bin_path)
           end
         else
-          bin_name = package.name.split("/").last
-          bin_path = Utils::File.join(state.config.bin_path, bin_name)
-          File.delete?(bin_path)
+          if bin_name = Utils::File.bin_name(package.name)
+            bin_path = Utils::File.safe_join(state.config.bin_path, bin_name)
+            File.delete?(bin_path)
+          end
         end
       end
     end

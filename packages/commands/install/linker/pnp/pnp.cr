@@ -312,20 +312,23 @@ class Commands::Install::Linker::PnP < Commands::Install::Linker::Base
     if bin = package.bin
       target_bin_path = target / "node_modules" / ".bin"
       Utils::Directories.mkdir_p(target_bin_path)
+      Utils::File.realpath_within!(target_bin_path, state.config.prefix) unless package.kind.link? || package.kind.workspace?
       if bin.is_a?(Hash)
         bin.each do |name, path|
-          bin_name = name.split("/").last
-          bin_path = Utils::File.join(target_bin_path, bin_name)
+          bin_name = Utils::File.bin_name(name)
+          next unless bin_name
+          bin_path = Utils::File.safe_join(target_bin_path, bin_name)
           File.delete?(bin_path)
-          File.symlink(Path.new(path).expand(package_path), bin_path)
+          File.symlink(Utils::File.safe_bin_path(package_path, path), bin_path)
           Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
         end
       else
-        bin_name = package.name.split("/").last
-        bin_path = Utils::File.join(target_bin_path, bin_name)
-        File.delete?(bin_path)
-        File.symlink(Path.new(bin).expand(package_path), bin_path)
-        Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
+        if bin_name = Utils::File.bin_name(package.name)
+          bin_path = Utils::File.safe_join(target_bin_path, bin_name)
+          File.delete?(bin_path)
+          File.symlink(Utils::File.safe_bin_path(package_path, bin), bin_path)
+          Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
+        end
       end
     end
   end

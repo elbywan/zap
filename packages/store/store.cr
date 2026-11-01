@@ -145,7 +145,16 @@ struct Store
   private def sanitize_path(path : String) : String
     # Neutralize path separators and traversal components without mangling
     # legitimate names (e.g. "a..b" is preserved, ".." components are dropped)
-    path.split(/[\/\\]/).reject { |c| c == "." || c == ".." }.join("+")
+    components = path.split(/[\/\\]/).reject { |c| c == "." || c == ".." }
+    {% if flag?(:windows) %}
+      components = components.map do |component|
+        component = component.gsub(':', '_').rstrip(". ")
+        component = "_#{component}" if Utils::File.windows_reserved?(component)
+        component = "_" if component.empty?
+        component
+      end
+    {% end %}
+    components.join("+").gsub(':', '_')
   end
 
   private def init_package(package : Data::Package)

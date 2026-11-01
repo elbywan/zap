@@ -13,6 +13,22 @@ describe Utils::File do
       Utils::File.safe_join("/tmp/node_modules", "pkg/../other").to_s.should eq("/tmp/node_modules/other")
     end
 
+    it "rejects a parent symlink that escapes the base" do
+      dir = Path.new(Dir.tempdir, "zap-safe-join-#{Random::Secure.hex(4)}")
+      base = dir / "node_modules"
+      outside = dir / "outside"
+      begin
+        Dir.mkdir_p(base)
+        Dir.mkdir_p(outside)
+        File.symlink(outside, base / "@scope")
+        expect_raises(Exception, /parent escapes/) do
+          Utils::File.safe_join(base, "@scope/pkg")
+        end
+      ensure
+        FileUtils.rm_rf(dir)
+      end
+    end
+
     it "rejects traversal and empty components" do
       expect_raises(Exception, /escapes/) do
         Utils::File.safe_join("/tmp/node_modules", "../escaped")
@@ -39,6 +55,34 @@ describe Utils::File do
         Dir.children(child).should be_empty
         Dir.children(source).should be_empty
         Dir.children(destination).should be_empty
+      ensure
+        FileUtils.rm_rf(dir)
+      end
+    end
+  end
+
+  describe ".bin_name" do
+    it "strips both slash styles and rejects traversal names" do
+      Utils::File.bin_name("bin/tool").should eq("tool")
+      Utils::File.bin_name("bin\\tool").should eq("tool")
+      Utils::File.bin_name("..").should be_nil
+      Utils::File.bin_name("bin/..").should be_nil
+      Utils::File.bin_name("..\\tool").should eq("tool")
+      Utils::File.bin_name("C:tool").should be_nil
+    end
+  end
+
+  describe ".safe_bin_path" do
+    it "keeps relative bin paths inside the package" do
+      Utils::File.safe_bin_path("/tmp/pkg", "bin/tool").to_s.should eq("/tmp/pkg/bin/tool")
+      expect_raises(Exception, /relative/) { Utils::File.safe_bin_path("/tmp/pkg", "/bin/tool") }
+      expect_raises(Exception, /escapes/) { Utils::File.safe_bin_path("/tmp/pkg", "../tool") }
+      dir = Path.new(Dir.tempdir, "zap-bin-#{Random::Secure.hex(4)}")
+      begin
+        Dir.mkdir_p(dir / "pkg")
+        File.write(dir / "outside", "x")
+        File.symlink(dir / "outside", dir / "pkg" / "tool")
+        expect_raises(Exception, /escapes/) { Utils::File.safe_bin_path(dir / "pkg", "tool") }
       ensure
         FileUtils.rm_rf(dir)
       end

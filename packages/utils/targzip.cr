@@ -21,11 +21,21 @@ module Utils::TarGzip
           # dot or empty components; the split/reject/join below allocates
           # several objects per entry (~116k entries per cold install).
           # Any suspicious component falls back to the full sanitization.
-          if name.starts_with?("package/") &&
-             !name.includes?("\\") && !name.includes?("..") && !name.includes?("/.") && !name.includes?("//")
+          fast_path = name.starts_with?("package/") &&
+                      !name.includes?("\\") && !name.includes?("..") && !name.includes?("/.") && !name.includes?("//") && !name.includes?(':')
+          fast_path = false if name.split('/').any? { |part| Utils::File.windows_reserved?(part) }
+          if fast_path
             file_path = Path.new(name.byte_slice(8))
           else
             components = name.split(/[\/\\]/)[1..-1].reject { |c| c == "." || c == ".." || c.empty? }
+            {% if flag?(:windows) %}
+              components = components.map do |c|
+                c = c.gsub(':', '_').rstrip(". ")
+                c = "_#{c}" if Utils::File.windows_reserved?(c)
+                c = "_" if c.empty?
+                c
+              end
+            {% end %}
             file_path = Path.new(components.join("/"))
           end
           yield entry, file_path, entry.io

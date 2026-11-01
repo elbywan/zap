@@ -258,20 +258,23 @@ class Commands::Install::Linker::Isolated < Commands::Install::Linker::Base
       return if bin.is_a?(String) && bin.empty?
       base_bin_path = target_node_modules / ".bin"
       Utils::Directories.mkdir_p(base_bin_path)
+      Utils::File.realpath_within!(base_bin_path, state.config.prefix) unless package.kind.link? || package.kind.workspace?
       if bin.is_a?(Hash)
         bin.each do |name, path|
-          bin_name = name.split("/").last
-          bin_path = Utils::File.join(base_bin_path, bin_name)
+          bin_name = Utils::File.bin_name(name)
+          next unless bin_name
+          bin_path = Utils::File.safe_join(base_bin_path, bin_name)
           File.delete?(bin_path)
-          File.symlink(Path.new(path).expand(package_path), bin_path)
+          File.symlink(Utils::File.safe_bin_path(package_path, path), bin_path)
           Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
         end
       else
-        bin_name = package.name.split("/").last
-        bin_path = Utils::File.join(base_bin_path, bin_name)
-        File.delete?(bin_path)
-        File.symlink(Path.new(bin).expand(package_path), bin_path)
-        Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
+        if bin_name = Utils::File.bin_name(package.name)
+          bin_path = Utils::File.safe_join(base_bin_path, bin_name)
+          File.delete?(bin_path)
+          File.symlink(Utils::File.safe_bin_path(package_path, bin), bin_path)
+          Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
+        end
       end
     end
   end
@@ -334,7 +337,6 @@ class Commands::Install::Linker::Isolated < Commands::Install::Linker::Base
       Log.debug { "(#{package.key}) Removing hoisted link at: #{hoisted_path}" } if deleted
     end
   end
-
 end
 
 require "./writer/*"

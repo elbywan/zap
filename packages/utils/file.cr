@@ -99,15 +99,85 @@ module Utils::File
     paths.map(&.to_s).join(::Path::SEPARATORS[0])
   end
 
+  WINDOWS_RESERVED_NAMES = %w(CON PRN AUX NUL COM1 COM2 COM3 COM4 COM5 COM6 COM7 COM8 COM9 LPT1 LPT2 LPT3 LPT4 LPT5 LPT6 LPT7 LPT8 LPT9)
+
+  # Windows device names are not valid file names, even with an extension.
+  def self.windows_reserved?(name : String) : Bool
+    {% if flag?(:windows) %}
+      base = name.upcase.split('.', 2)[0].rstrip(' ')
+      WINDOWS_RESERVED_NAMES.includes?(base)
+    {% else %}
+      false
+    {% end %}
+  end
+
   # Joins untrusted path components under *base* and raises if the normalized
   # result escapes it. Package names, versions and patch paths are untrusted.
   def self.safe_join(base : Path | String, *parts : Path | String) : Path
+    # Fast path for the overwhelmingly common unscoped package name: it is
+    # already a single safe component, so no normalization/relative walk.
+    if parts.size == 1
+      name = parts[0].to_s
+      unless name.empty? || name == "." || name == ".." ||
+             name.includes?('/') || name.includes?('\\') || name.includes?(':') ||
+             windows_reserved?(name)
+        root = base.is_a?(Path) ? base : Path.new(base)
+        return checked_target(root / name, root)
+      end
+    end
     raise "Cannot join an empty path component" if parts.any?(&.to_s.empty?)
+    if parts.any? { |part| windows_reserved?(part.to_s) }
+      raise "Path component is a Windows device name: #{parts.join(" / ")}"
+    end
+    {% if flag?(:windows) %}
+      raise "Path component contains a drive separator: #{parts.join(" / ")}" if parts.any? { |part| part.to_s.includes?(':') }
+    {% end %}
     root = Path.new(base).normalize
     path = parts.reduce(root) { |acc, part| acc / part }.normalize
     relative = path.relative_to?(root)
     if relative.nil? || relative.parts.first? == ".."
       raise "Path escapes #{root}: #{path}"
+    end
+
+    # Reject an already-existing parent that is a symlink outside the base.
+    # The final component is allowed to be a symlink (file:/workspace links).
+    parent = Path.new(path.dirname)
+    parent_real = begin
+      ::File.realpath(parent)
+    rescue
+      nil
+    end
+    root_real = Path.new(begin
+      ::File.realpath(root)
+    rescue
+      root.to_s
+    end)
+    if parent_real
+      parent_relative = Path.new(parent_real).relative_to?(root_real)
+      if parent_relative.nil? || parent_relative.parts.first? == ".."
+        raise "Path parent escapes #{root}: #{path}"
+      end
+    else
+      parent.each_parent do |ancestor|
+        raise "Path parent is a broken symlink: #{ancestor}" if ::File.symlink?(ancestor) && !::File.exists?(ancestor)
+      end
+    end
+    path
+  end
+
+  private def self.checked_target(path : Path, root : Path | String) : Path
+    # Symlink targets are intentional (file:/workspace links); a junction or
+    # other resolved directory must still stay inside the base.
+    return path if ::File.symlink?(path) || !::File.exists?(path)
+    root_real = Path.new(begin
+      ::File.realpath(root)
+    rescue
+      root.to_s
+    end)
+    target_real = Path.new(::File.realpath(path))
+    relative = target_real.relative_to?(root_real)
+    if relative.nil? || relative.parts.first? == ".."
+      raise "Path target escapes #{root}: #{path}"
     end
     path
   end
@@ -127,6 +197,32 @@ module Utils::File
 
   def self.regular_file?(path : Path | String) : Bool
     ::File.info?(path).try(&.type.file?) || false
+  end
+
+  # The safe file name for a package `bin` entry. Windows accepts both
+  # slash styles; splitting only on `/` would leave a backslash traversal
+  # in the basename.
+  def self.bin_name(name : String) : String?
+    basename = name.split(/[\/\\]/).last?
+    return if basename.nil? || basename.empty? || basename == "." || basename == ".."
+    # A bare drive-relative name (C:tool) is not a file name on Windows.
+    return if basename.includes?(':') || windows_reserved?(basename)
+    basename
+  end
+
+  def self.safe_bin_path(root : Path | String, path : String) : Path
+    candidate = Path.new(path)
+    raise "Bin path must be relative: #{path}" if candidate.absolute?
+    target = safe_join(root, path)
+    if ::File.symlink?(target) || ::File.exists?(target)
+      root_real = Path.new(::File.realpath(root))
+      target_real = Path.new(::File.realpath(target))
+      relative = target_real.relative_to?(root_real)
+      if relative.nil? || relative.parts.first? == ".."
+        raise "Bin target escapes the package: #{path}"
+      end
+    end
+    target
   end
 
   # Reads a project-owned configuration file only when it is a regular file;

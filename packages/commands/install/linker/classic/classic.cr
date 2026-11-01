@@ -216,23 +216,26 @@ class Commands::Install::Linker::Classic < Commands::Install::Linker::Base
           bin_folder_path = location.node_modules / ".bin"
         end
         Utils::Directories.mkdir_p(bin_folder_path)
+        Utils::File.realpath_within!(bin_folder_path, state.config.prefix) unless dependency.kind.link? || dependency.kind.workspace?
         if bin.is_a?(Hash)
           bin.each do |name, path|
-            bin_name = name.split("/").last
-            bin_path = Utils::File.join(bin_folder_path, bin_name)
+            bin_name = Utils::File.bin_name(name)
+            next unless bin_name
+            bin_path = Utils::File.safe_join(bin_folder_path, bin_name)
             if !File.exists?(bin_path) || is_direct_dependency
               File.delete?(bin_path)
-              File.symlink(Path.new(path).expand(install_folder), bin_path)
+              File.symlink(Utils::File.safe_bin_path(install_folder, path), bin_path)
               Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
             end
           end
         else
-          bin_name = dependency.name.split("/").last
-          bin_path = Utils::File.join(bin_folder_path, bin_name)
-          if !File.exists?(bin_path) || is_direct_dependency
-            File.delete?(bin_path)
-            File.symlink(Path.new(bin).expand(install_folder), bin_path)
-            Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
+          if bin_name = Utils::File.bin_name(dependency.name)
+            bin_path = Utils::File.safe_join(bin_folder_path, bin_name)
+            if !File.exists?(bin_path) || is_direct_dependency
+              File.delete?(bin_path)
+              File.symlink(Utils::File.safe_bin_path(install_folder, bin), bin_path)
+              Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
+            end
           end
         end
       end
