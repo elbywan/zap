@@ -58,7 +58,21 @@ module HTTP2
     end
 
     def skip(bytes_count : Int) : Nil
-      @pending = @pending[bytes_count..]
+      remaining = bytes_count
+      while remaining > 0
+        if @pending.empty?
+          chunk = receive_chunk
+          unless chunk
+            raise @error.not_nil! if @error
+            raise IO::EOFError.new
+          end
+          @pending = chunk
+          next if chunk.empty?
+        end
+        consumed = Math.min(remaining, @pending.size)
+        @pending = consumed < @pending.size ? @pending[consumed..] : Bytes.empty
+        remaining -= consumed
+      end
     end
 
     # Receives the next chunk, bounded by the read timeout (the socket

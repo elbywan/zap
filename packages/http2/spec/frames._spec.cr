@@ -196,6 +196,64 @@ describe "HTTP2 frames" do
     end
   end
 
+  it "strips HEADERS padding and priority fields" do
+    payload = Bytes[2_u8, 0_u8, 0_u8, 0_u8, 0_u8, 0_u8, 0x82_u8, 0xaa_u8, 0xbb_u8]
+    frame = HTTP2::Frame.new(
+      HTTP2::Frame::Type::HEADERS, 1,
+      HTTP2::Frame::Flags::END_HEADERS | HTTP2::Frame::Flags::PADDED | HTTP2::Frame::Flags::PRIORITY,
+      payload
+    )
+    frame.headers_payload.should eq(Bytes[0x82])
+  end
+
+  it "strips DATA padding before delivering the body" do
+    io = IO::Memory.new
+    connection = HTTP2::Connection.new(io, HTTP2::Connection::Type::Client)
+    stream = connection.streams.create
+    encoder = HTTP2::HPACK::Encoder.new
+    io.write(HTTP2::Frame.new(HTTP2::Frame::Type::HEADERS, stream.id, HTTP2::Frame::Flags::END_HEADERS,
+      encoder.encode([{":status", "200"}])).to_bytes)
+    io.write(HTTP2::Frame.new(HTTP2::Frame::Type::DATA, stream.id,
+      HTTP2::Frame::Flags::END_STREAM | HTTP2::Frame::Flags::PADDED,
+      Bytes[2_u8, 'h'.ord.to_u8, 'i'.ord.to_u8, 0_u8, 0_u8]).to_bytes)
+    io.rewind
+    connection.receive
+    connection.receive
+    stream.data.gets_to_end.should eq("hi")
+  end
+
+  it "rejects duplicate pseudo-headers" do
+    io = IO::Memory.new
+    connection = HTTP2::Connection.new(io, HTTP2::Connection::Type::Client)
+    stream = connection.streams.create
+    encoder = HTTP2::HPACK::Encoder.new
+    headers = encoder.encode([{":status", "200"}, {":status", "404"}])
+    io.write(HTTP2::Frame.new(HTTP2::Frame::Type::HEADERS, stream.id, HTTP2::Frame::Flags::END_HEADERS, headers).to_bytes)
+    io.rewind
+    expect_raises(HTTP2::Error, /duplicate :status/) do
+      connection.receive
+    end
+  end
+
+  it "times out when the peer advertises zero concurrent streams" do
+    connection = test_connection
+    connection.remote_settings.max_concurrent_streams = 0
+    expect_raises(IO::TimeoutError, /stream slot/) do
+      connection.acquire_stream_slot(1.millisecond)
+    end
+  end
+
+  it "checks the header-list limit on a single HEADERS frame" do
+    io = IO::Memory.new
+    connection = HTTP2::Connection.new(io, HTTP2::Connection::Type::Server)
+    connection.local_settings.max_header_list_size = 16
+    io.write(HTTP2::Frame.new(HTTP2::Frame::Type::HEADERS, 1, HTTP2::Frame::Flags::END_HEADERS, Bytes.new(17)).to_bytes)
+    io.rewind
+    expect_raises(HTTP2::Error, /header block exceeds/) do
+      connection.receive
+    end
+  end
+
   it "replenishes the stream window by the consumed amount" do
     io = IO::Memory.new
     connection = HTTP2::Connection.new(io, HTTP2::Connection::Type::Client)
