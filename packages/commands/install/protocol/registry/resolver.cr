@@ -138,12 +138,12 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
 
       # the tarball_url is absolute and can point to an entirely different domain
       # so we need to find the right client pool for it
-      pool_key, pool = @clients.find_or_init_pool(tarball_url)
+      _, pool = @clients.find_or_init_pool(tarball_url)
       Log.debug { "Downloading tarball from #{tarball_url}…" }
 
       # we also need to relativize the tarball url to the pool base url
       # otherwise some registries (verdaccio for instance) will return a 404
-      relative_url = URI.parse(pool_key).relativize(tarball_url).to_s
+      relative_url = URI.parse(pool.base_url.rstrip('/')).relativize(tarball_url).to_s
       # The download and the unpack are streamed together (the tar reader
       # consumes the response IO), so they are timed as one phase.
       Timings.measure(Timings::Phase::TarballStore) do
@@ -234,31 +234,33 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
   private def fetch_metadata(*, pinned_version : String? = nil) : Data::Package?
     Log.debug { "(#{@name}@#{specifier}) Fetching metadata… #{@skip_cache ? "(skipping cache)" : ""} #{pinned_version ? "[pinned_version #{pinned_version}]" : ""}" }
     state.store.with_lock("#{@base_url.to_s}/#{@package_name}", state.config) do
-      metadata_url = @base_url.relativize("/#{@package_name}").to_s
+      # The pool base includes the registry path; prepend it rather than
+      # relativizing an absolute path (which drops /npm from a base path).
+      metadata_url = "#{@base_url.path.to_s.rstrip('/')}/#{@package_name}"
       manifest = if @skip_cache
-        case http_pool = @client_pool
-        when Fetch::HTTP2(Manifest)
-          begin
-            http_pool.client do |http|
-              headers = Shared::Constants::HEADERS
-              body = ""
-              http.get(metadata_url, headers) { |response| body = response.io.gets_to_end }
-              Manifest.new(body)
-            end
-          rescue e : Fetch::HTTP2Transport::Unavailable
-            raise e if http_pool.fallback.nil?
-            http_pool.fallback.not_nil!.client do |http|
-              Manifest.new(http.get(metadata_url, Shared::Constants::HEADERS).body)
-            end
-          end
-        else
-          @client_pool.client do |http|
-            Manifest.new(http.get(metadata_url, Shared::Constants::HEADERS).body)
-          end
-        end
-      else
-        @client_pool.fetch_with_cache(metadata_url, Shared::Constants::HEADERS) { |body| Manifest.new(body) }
-      end
+                   case http_pool = @client_pool
+                   when Fetch::HTTP2(Manifest)
+                     begin
+                       http_pool.client do |http|
+                         headers = Shared::Constants::HEADERS
+                         body = ""
+                         http.get(metadata_url, headers) { |response| body = response.io.gets_to_end }
+                         Manifest.new(body)
+                       end
+                     rescue e : Fetch::HTTP2Transport::Unavailable
+                       raise e if http_pool.fallback.nil?
+                       http_pool.fallback.not_nil!.client do |http|
+                         Manifest.new(http.get(metadata_url, Shared::Constants::HEADERS).body)
+                       end
+                     end
+                   else
+                     @client_pool.client do |http|
+                       Manifest.new(http.get(metadata_url, Shared::Constants::HEADERS).body)
+                     end
+                   end
+                 else
+                   @client_pool.fetch_with_cache(metadata_url, Shared::Constants::HEADERS) { |body| Manifest.new(body) }
+                 end
       Log.debug { "(#{@name}@#{@specifier}) Checking the registry metadata for a match against the version/dist-tag" }
       # With --latest the declared range is ignored and the newest version is
       # picked; the resolved version is still pinned to the lockfile. Only
@@ -317,8 +319,10 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
     # A prerelease never blocks a stable release: a trusted beta cannot hold
     # back the stable version that lacks trust evidence (pnpm v10.24 parity).
     current_prerelease = prerelease?(pkg.version)
-    previous = state.lockfile.packages.values.select do |p|
-      p.name == pkg.name && p.version != pkg.version && (current_prerelease || !prerelease?(p.version))
+    previous = state.lockfile.packages_lock.read do
+      state.lockfile.packages.values.select do |p|
+        p.name == pkg.name && p.version != pkg.version && (current_prerelease || !prerelease?(p.version))
+      end
     end
     return if previous.empty?
     previous_tier = previous.map { |p| manifest.dist_evidence?(p.version) }.compact.map { |e| trust_tier(*e) }.max? || 0
@@ -373,7 +377,7 @@ struct Commands::Install::Protocol::Registry::Resolver < Commands::Install::Prot
   # Skipped for lockfile-pinned versions, the --allow-recent flag, exempted
   # package names, and registries that do not expose publish times.
   private def check_release_age(pkg : Data::Package, manifest : Manifest) : Nil
-    return if state.lockfile.packages[pkg.key]?
+    return if state.lockfile.packages_lock.read { state.lockfile.packages[pkg.key]? }
     return if state.install_config.allow_recent
 
     zap = state.context.main_package.zap_config

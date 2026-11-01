@@ -66,8 +66,6 @@ struct Semver::Range
     range_set
   rescue e
     raise Exception.new("Error parsing semver: #{str}", cause: e)
-  ensure
-    GC.free(scanner.as(Pointer(Void))) if scanner
   end
 
   # Checks if a version string satisfies the range.

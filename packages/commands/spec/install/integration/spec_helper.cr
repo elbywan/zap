@@ -93,6 +93,8 @@ module Zap::Integration
 
   # A minimal npm-compatible registry, served from memory.
   class Registry
+    @prefix : String? = nil
+
     getter port : Int32
     getter base_url : String
 
@@ -102,13 +104,15 @@ module Zap::Integration
     @times = {} of String => Hash(String, String)
     @closed = false
 
-    def initialize
+    def initialize(*, prefix : String? = nil)
+      prefix = prefix.try(&.strip('/'))
+      @prefix = prefix.nil? || prefix.empty? ? nil : prefix
       @server = HTTP::Server.new do |ctx|
         handle(ctx)
       end
       @server.bind_tcp("127.0.0.1", 0)
       @port = @server.addresses.first.as(Socket::IPAddress).port
-      @base_url = "http://127.0.0.1:#{@port}"
+      @base_url = "http://127.0.0.1:#{@port}#{@prefix ? "/#{@prefix}" : ""}"
       start
     end
 
@@ -205,6 +209,10 @@ module Zap::Integration
 
     private def handle(ctx : HTTP::Server::Context) : Nil
       path = URI.decode(ctx.request.path.not_nil!)
+      if prefix = @prefix
+        return unless path == "/#{prefix}" || path.starts_with?("/#{prefix}/")
+        path = path[(prefix.size + 1)..]
+      end
       parts = path.strip('/').split('/')
       if dash = parts.index("-")
         # /name.../-/file.tgz -> tarball (name may be scoped: @scope/pkg/-/pkg-1.0.0.tgz)
@@ -279,8 +287,8 @@ module Zap::Integration
   # NOTE: the registry must be created inside the running example; servers
   # created at load time (describe level) stop accepting connections once
   # the spec framework starts executing examples.
-  def self.with_registry(&)
-    registry = Registry.new
+  def self.with_registry(*, prefix : String? = nil, &)
+    registry = Registry.new(prefix: prefix)
     yield registry
   ensure
     registry.try(&.stop)

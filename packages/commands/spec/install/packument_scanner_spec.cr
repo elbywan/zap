@@ -25,6 +25,14 @@ module Commands::Install::Spec
       JSON.parse(manifest.get_raw_metadata?(Semver.parse("1.0.0")).not_nil!)["version"].as_s.should eq("1.0.0")
     end
 
+    it "does not select an exact version absent from the packument" do
+      body = %({"dist-tags":{"latest":"1.0.0"},"versions":{"1.0.0":{"name":"x","version":"1.0.0"}}})
+      manifest = Manifest.new(body)
+      manifest.select_version(Semver.parse("1.0.0")).should eq("1.0.0")
+      manifest.select_version(Semver.parse("9.9.9")).should be_nil
+      manifest.select_version("missing-tag").should be_nil
+    end
+
     it "does not desync on brackets and escaped quotes inside strings" do
       body = <<-JSON
         {"description":"a { [ } ] \\" quote","dist-tags":{"latest":"1.0.0"},

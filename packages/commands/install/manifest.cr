@@ -19,7 +19,7 @@ struct Commands::Install::Manifest
   # deserializes the whole packument (measured: ~360ms for 164MB of cached
   # packuments on every install).
   CACHE_MAGIC   = 0x5A4D414E_u32 # "ZMAN"
-  CACHE_VERSION = 1_u16
+  CACHE_VERSION =          1_u16
 
   getter dist_tags : Hash(String, String) = Hash(String, String).new
   getter versions : Array(String) = Array(String).new
@@ -34,6 +34,7 @@ struct Commands::Install::Manifest
   @cache_path : Path? = nil
   @cache_offsets : Hash(String, {Int32, Int32})? = nil
   @times_offsets : Hash(String, {Int32, Int32})? = nil
+  @version_index : Set(String) = Set(String).new
 
   # The source body and the byte range of every version's raw JSON inside
   # it, recorded by the vectorized scanner (the pull-parser fallback
@@ -109,6 +110,7 @@ struct Commands::Install::Manifest
   private def sort_versions! : Nil
     @versions.sort_by! { |v| Semver::Version.parse(v) }
     @versions.reverse!
+    @version_index = Set(String).new(@versions)
   end
 
   private def initialize(
@@ -122,16 +124,17 @@ struct Commands::Install::Manifest
   )
     @source_body = nil
     @version_spans = nil
+    @version_index = Set(String).new(@versions)
   end
 
   # The publish time of a version, from the packument's top-level `time`
   # field. Returns nil when the registry does not expose it.
   def publish_time?(version : String) : Time?
     raw = if offsets = @times_offsets
-      read_cached_time(version, offsets)
-    else
-      @times[version]?
-    end
+            read_cached_time(version, offsets)
+          else
+            @times[version]?
+          end
     return unless raw
     Time.parse_iso8601(raw)
   rescue
@@ -172,11 +175,13 @@ struct Commands::Install::Manifest
     case version
     in String
       # Find the version that matches the dist-tag
-      dist_tags[version]?
+      dist_tags[version]?.try { |v| v if @version_index.includes?(v) }
     in Semver::Range
       if version.exact_match?
-        # For exact comparisons - we compare the version string
-        version.to_s
+        # For exact comparisons - compare the version string, but do not
+        # claim a version the packument does not contain.
+        exact = version.to_s
+        exact if @version_index.includes?(exact)
       else
         # For range comparisons - take the highest version that matches the range
         @versions.find { |v| version.satisfies?(v) }

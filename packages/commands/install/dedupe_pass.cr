@@ -126,7 +126,8 @@ module Commands::Install::DedupePass
     end
     lockfile.roots.each_value do |root|
       root.pinned_dependencies.try &.each do |name, value|
-        referenced << "#{name}@#{value}"
+        # An alias pins its target under a different name.
+        referenced << (value.is_a?(Data::Package::Alias) ? "#{value.name}@#{value.version}" : "#{name}@#{value}")
       end
     end
     abandoned.each do |key|
