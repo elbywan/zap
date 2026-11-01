@@ -64,7 +64,7 @@ module Utils::Patch
         unless ::File.exists?(source_path)
           raise "Cannot apply patch: file not found: #{source}"
         end
-        original = ::File.read(source_path).chomp('\n').split('\n', remove_empty: false)
+        original = Utils::File.read_regular(source_path).chomp('\n').split('\n', remove_empty: false)
         write_lines(target, apply_hunks(file.hunks, original, file.path), file.newline)
         # A rename: the new name is written, the old one removed.
         ::File.delete?(source_path) if !file.source.empty? && file.source != file.path
@@ -85,10 +85,10 @@ module Utils::Patch
       original = original_dir / rel
       if ::File.exists?(original)
         original_text = ::File.read(original)
-        modified_text = ::File.read(modified_dir / rel)
+        modified_text = Utils::File.read_regular(modified_dir / rel)
         sections << section(rel, Status::Modified, original_text, modified_text) if original_text != modified_text
       else
-        sections << section(rel, Status::Created, "", ::File.read(modified_dir / rel))
+        sections << section(rel, Status::Created, "", Utils::File.read_regular(modified_dir / rel))
       end
     end
     originals = [] of String
@@ -96,7 +96,7 @@ module Utils::Patch
     originals.sort!.each do |rel|
       next if rel == exclude
       next if ::File.exists?(modified_dir / rel)
-      sections << section(rel, Status::Deleted, ::File.read(original_dir / rel), "")
+      sections << section(rel, Status::Deleted, Utils::File.read_regular(original_dir / rel), "")
     end
     sections.join
   end

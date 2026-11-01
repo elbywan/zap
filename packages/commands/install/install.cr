@@ -39,6 +39,7 @@ module Commands::Install
   )
     state : State? = nil
     project_lock : ::File? = nil
+    state_saved = false
     reporter ||= case install_config.reporter
                  when "plain"
                    Reporter::Plain.new
@@ -77,8 +78,13 @@ module Commands::Install
 
       # Serialize project mutations: two installs must not interleave
       # lockfile/package.json writes or link into the same node_modules.
-      project_lock = ::File.open(Path.new(config.prefix) / PROJECT_LOCK_FILE_NAME, "a")
-      project_lock.flock_exclusive
+      # A read-only project cannot create the root lock; fall back to the
+      # writable store so an up-to-date install still works.
+      project_lock = open_project_lock(config)
+
+      # Validate project filesystem links before strategy checks or any
+      # other operation can delete or traverse node_modules.
+      check_project_links(config, inferred_context)
 
       Log.debug { "Configuration: #{config.pretty_inspect}" }
 
@@ -156,7 +162,8 @@ module Commands::Install
       # disables the fast path (its ref walk needs a full resolution).
       if up_to_date?(state)
         state.reporter.info("Dependencies are up to date — nothing to install.")
-        run_own_install_hooks(state)
+        state_saved = true
+        with_project_lock_owner(config) { run_own_install_hooks(state) }
         next
       end
 
@@ -228,18 +235,21 @@ module Commands::Install
         end
       end
 
-      # Run package.json hooks for the installed packages
-      Timings.measure(Timings::Wall::Hooks) { run_install_hooks(state, linker) }
-
-      # Run package.json hooks for the workspace packages
-      Timings.measure(Timings::Wall::Hooks) { run_own_install_hooks(state) }
-
-      # Persist the installed state (keys + applied patch hashes) after the
-      # linking, so the freshly installed packages are recorded.
+      # Persist the installed state and fingerprint before running user
+      # hooks: the hooks may invoke zap in this same project. The project
+      # lock stays held (external installs stay serialized); the owner
+      # marker lets the nested child bypass it instead of deadlocking.
       Backend::InstalledState.save(state.installed_state_path, state.installed_state)
-      # Record the project fingerprint, the basis of the up-to-date fast
-      # path on the next install.
       Utils::File.atomic_write(fingerprint_path(state), project_fingerprint(state), follow_symlinks: false)
+      state_saved = true
+
+      with_project_lock_owner(config) do
+        # Run package.json hooks for the installed packages
+        Timings.measure(Timings::Wall::Hooks) { run_install_hooks(state, linker) }
+
+        # Run package.json hooks for the workspace packages
+        Timings.measure(Timings::Wall::Hooks) { run_own_install_hooks(state) }
+      end
     end
     # The total wall comes from the same clock the install reports (the
     # phase-table reference point); record is a no-op while disabled.
@@ -260,8 +270,10 @@ module Commands::Install
     # Persist the state accumulated so far: packages linked before the
     # failure are not re-linked on the next run (parity with the old
     # per-package markers).
-    state.try do |s|
-      Backend::InstalledState.save(s.installed_state_path, s.installed_state)
+    if project_lock && !state_saved
+      state.try do |s|
+        Backend::InstalledState.save(s.installed_state_path, s.installed_state)
+      end
     end
     raise e if raise_on_failure
     # Early failures (e.g. an invalid --reporter) happen before the reporter
@@ -282,6 +294,72 @@ module Commands::Install
     exit error_code
   ensure
     project_lock.try(&.close)
+  end
+
+  # Runs *block* while holding the project lock. Other commands (patch,
+  # approve-builds) use this for their pre-install writes so they do not
+  # race a concurrent install.
+  def self.with_project_lock(config : Core::Config, *, nested : Bool = false, &)
+    lock = open_project_lock(config)
+    begin
+      if nested
+        with_project_lock_owner(config) { yield }
+      else
+        yield
+      end
+    ensure
+      lock.try(&.close)
+    end
+  end
+
+  private def self.project_lock_identity(config : Core::Config) : String
+    ::File.realpath(config.prefix)
+  end
+
+  private def self.with_project_lock_owner(config : Core::Config, &)
+    key = "ZAP_PROJECT_LOCK_OWNER"
+    previous = ENV[key]?
+    ENV[key] = "#{project_lock_identity(config)}\t#{Process.pid}"
+    begin
+      yield
+    ensure
+      if previous
+        ENV[key] = previous
+      else
+        ENV.delete(key)
+      end
+    end
+  end
+
+  private def self.open_project_lock(config : Core::Config) : ::File?
+    if marker = ENV["ZAP_PROJECT_LOCK_OWNER"]?
+      if separator = marker.rindex('\t')
+        identity = marker[0, separator]
+        pid = marker[(separator + 1)..]
+        if identity == project_lock_identity(config) && (owner_pid = pid.to_i?)
+          # A lifecycle script invoked zap in this same project; the parent
+          # still owns the lock and is waiting for that script. An orphaned
+          # background process whose parent is gone must take its own lock.
+          return nil if Process.exists?(owner_pid)
+        end
+      end
+    end
+    path = Path.new(config.prefix) / PROJECT_LOCK_FILE_NAME
+    begin
+      if info = ::File.info?(path, follow_symlinks: false)
+        raise "#{path} must be a regular file" unless info.type.file?
+      end
+      file = ::File.open(path, "a")
+    rescue ex : ::File::AccessDeniedError
+      # The project root is read-only: keep the lock next to the store
+      # instead of making an otherwise no-op install fail.
+      digest = Digest::SHA256.hexdigest(::File.realpath(config.prefix))
+      fallback = Path.new(::File.expand_path("~/.zap/locks", home: true)) / "project-#{digest}.lock"
+      Utils::Directories.mkdir_p(fallback.dirname)
+      file = ::File.open(fallback, "a")
+    end
+    file.flock_exclusive
+    file
   end
 
   # -PRIVATE--------------------------- #
@@ -324,10 +402,10 @@ module Commands::Install
     end
     state.context.scope_packages_and_paths(:install).map { |(_, path)| path.to_s }.uniq!.sort!.each do |path|
       digest.update(path)
-      digest.update(::File.read(Path.new(path) / "package.json"))
+      digest.update(Utils::File.read_regular(Path.new(path) / "package.json"))
     end
     npmrc_path = Path.new(state.config.prefix) / ".npmrc"
-    digest.update(::File.read(npmrc_path)) if ::File.exists?(npmrc_path)
+    digest.update(Utils::File.read_regular(npmrc_path)) if ::File.exists?(npmrc_path)
     # The lockfile itself: a tampered or manually edited lockfile must
     # trigger a full install (which re-resolves and repairs the tree)
     # instead of silently keeping the old one. The file existence is
@@ -335,7 +413,7 @@ module Commands::Install
     # initial load, which is stale once the resolution wrote it.
     if ::File.exists?(state.lockfile.lockfile_path)
       digest.update("lockfile:")
-      digest.update(::File.read(state.lockfile.lockfile_path))
+      digest.update(Utils::File.read_regular(state.lockfile.lockfile_path))
     end
     # The configured patch files: a content change re-applies the patches
     # (the patched_dependencies keys themselves live in package.json).
@@ -344,14 +422,14 @@ module Commands::Install
         digest.update("patch:")
         digest.update(patch_file)
         patch_path = Path.new(patch_file).expand(Path.new(state.config.prefix))
-        digest.update(::File.read(patch_path)) if ::File.exists?(patch_path)
+        digest.update(Utils::File.read_regular(patch_path)) if ::File.exists?(patch_path)
       end
     end
     # The installed-state file: an edited or stale record (e.g. a manual
     # tampering) must trigger a full install, which prunes and repairs.
     if ::File.exists?(state.installed_state_path)
       digest.update("state:")
-      digest.update(::File.read(state.installed_state_path))
+      digest.update(Utils::File.read_regular(state.installed_state_path))
     end
     digest.final.hexstring
   end
@@ -374,8 +452,9 @@ module Commands::Install
     return false if install_config.check_resolutions
     return false unless state.lockfile.read_status.from_disk?
     return false unless ::File.exists?(state.installed_state_path)
+    return false unless Utils::File.regular_file?(state.installed_state_path)
     fingerprint_path = self.fingerprint_path(state)
-    return false unless ::File.exists?(fingerprint_path)
+    return false unless Utils::File.regular_file?(fingerprint_path)
     return false unless ::File.read(fingerprint_path) == project_fingerprint(state)
     # One stat per recorded install path: a missing entry means the tree
     # was partially deleted and must be rebuilt (relocation repair).
@@ -662,7 +741,7 @@ module Commands::Install
           state.context.scope_packages_and_paths(:command)
         end
       packages_to_write.each do |package, location|
-        package_json = JSON.parse(File.read(Path.new(location).join("package.json"))).as_h
+        package_json = JSON.parse(Utils::File.read_regular(Path.new(location).join("package.json"))).as_h
         if (deps = package.dependencies) && deps.size > 0
           package_json["dependencies"] = JSON::Any.new(deps.transform_values { |v| JSON::Any.new(v.is_a?(Data::Package::Alias) ? v.to_s : v.as(String)) })
         else

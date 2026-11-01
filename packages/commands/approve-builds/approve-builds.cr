@@ -52,21 +52,22 @@ module Commands::ApproveBuilds
   # build scripts run right away instead of waiting for a future install.
   def self.apply_approvals(context : Core::Config::InferredContext, approved : Array(String), declined : Array(String)) : Nil
     previously_allowed = context.main_package.zap_config.try(&.only_built_dependencies) || [] of String
-    write_approvals(context.config.prefix, approved, declined)
-
     newly_approved = approved.reject { |name| previously_allowed.includes?(name) }
-    return if newly_approved.empty?
+    Commands::Install.with_project_lock(context.config) do
+      write_approvals(context.config.prefix, approved, declined)
+      return if newly_approved.empty?
 
-    lockfile = Data::Lockfile.new(context.config.prefix)
-    keys = lockfile.packages.values.select { |pkg| newly_approved.includes?(pkg.name) }.map(&.key)
-    return if keys.empty?
+      lockfile = Data::Lockfile.new(context.config.prefix)
+      keys = lockfile.packages.values.select { |pkg| newly_approved.includes?(pkg.name) }.map(&.key)
+      return if keys.empty?
 
-    # Invalidate the installed-state entries so the reinstall re-links the
-    # packages, which registers their hooks; the allowlist now admits them.
-    state_path = Path.new(context.config.node_modules) / Shared::Constants::STATE_FILE_NAME
-    installed_state = Backend::InstalledState.load(state_path)
-    installed_state.reject! { |_path, entry| keys.includes?(entry.key) }
-    Backend::InstalledState.save(state_path, installed_state)
+      # Invalidate the installed-state entries so the reinstall re-links the
+      # packages, which registers their hooks; the allowlist now admits them.
+      state_path = Path.new(context.config.node_modules) / Shared::Constants::STATE_FILE_NAME
+      installed_state = Backend::InstalledState.load(state_path)
+      installed_state.reject! { |_path, entry| keys.includes?(entry.key) }
+      Backend::InstalledState.save(state_path, installed_state)
+    end
 
     Commands::Install.run(context.config, Commands::Install::Config.new.copy_with(frozen_lockfile: false), raise_on_failure: true)
   end
@@ -97,7 +98,7 @@ module Commands::ApproveBuilds
     return if approved.empty? && declined.empty?
 
     path = Path.new(prefix) / "package.json"
-    root = JSON.parse(File.read(path)).as_h
+    root = JSON.parse(Utils::File.read_regular(path)).as_h
     zap_h = root["zap"]?.try(&.as_h) || {} of String => JSON::Any
     root["zap"] = JSON::Any.new(zap_h)
 

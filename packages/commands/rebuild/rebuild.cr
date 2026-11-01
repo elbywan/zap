@@ -1,7 +1,9 @@
+require "../install/install"
+
 module Commands::Rebuild
   def self.run(
     config : Core::Config,
-    rebuild_config : Rebuild::Config
+    rebuild_config : Rebuild::Config,
   )
     rebuild_config = rebuild_config.from_args(ARGV)
     context = config.infer_context
@@ -62,12 +64,14 @@ module Commands::Rebuild
       end
     end
 
-    Data::Package::Scripts.parallel_run(
-      config: config,
-      scripts: scripts,
-      reporter: reporter,
-      print_header: false,
-    )
+    Commands::Install.with_project_lock(config, nested: true) do
+      Data::Package::Scripts.parallel_run(
+        config: config,
+        scripts: scripts,
+        reporter: reporter,
+        print_header: false,
+      )
+    end
   rescue ex : Exception
     reporter.try &.error(ex)
     exit 1

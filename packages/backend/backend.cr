@@ -121,6 +121,10 @@ module Backend
         # patched packages re-link anyway via the hash mismatch.
         return seed_from_legacy_markers(path.parent)
       end
+      unless Utils::File.regular_file?(path)
+        Log.warn { "Ignoring non-regular installed state at #{path}" }
+        return Hash(String, InstalledEntry).new
+      end
       hash = Hash(String, InstalledEntry).new
       JSON.parse(File.read(path)).as_h.each do |key, value|
         obj = value.as_h
@@ -158,8 +162,8 @@ module Backend
         # sources, which can be huge and cyclic.
         if File.directory?(path) && !File.symlink?(path)
           walk(path, &block)
-        elsif name == ".zap.metadata"
-          block.call(dir, File.read(path))
+        elsif name == ".zap.metadata" && Utils::File.regular_file?(path)
+          block.call(dir, Utils::File.read_regular(path))
         end
       end
     end

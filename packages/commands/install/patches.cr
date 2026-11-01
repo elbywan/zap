@@ -25,7 +25,7 @@ module Commands::Install::Patches
 
     raise "Cannot apply patch: file not found: #{patch_path} (for #{dependency.key})" unless File.exists?(patch_path)
     Log.debug { "Applying patch #{patch_path} to #{dependency.key}" }
-    content = Utils::Patch.normalize(File.read(patch_path))
+    content = Utils::Patch.normalize(Utils::File.read_regular(patch_path))
     Utils::Patch.apply(content, install_folder)
     Digest::MD5.hexdigest(content)
   end
@@ -37,7 +37,7 @@ module Commands::Install::Patches
     patch_path = self.patch_path(dependency, state)
     return unless patch_path
 
-    File.exists?(patch_path) ? Digest::MD5.hexdigest(Utils::Patch.normalize(File.read(patch_path))) : nil
+    File.exists?(patch_path) ? Digest::MD5.hexdigest(Utils::Patch.normalize(Utils::File.read_regular(patch_path))) : nil
   end
 
   # The patch file configured for *dependency*, expanded against the project

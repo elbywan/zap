@@ -75,7 +75,7 @@ module Commands::Catalog
   # Edits the catalog entries and writes the zap section back in place.
   private def self.update_entries(prefix : String, catalog_name : String, &) : Nil
     path = Path.new(prefix) / "package.json"
-    root = JSON.parse(File.read(path)).as_h
+    root = JSON.parse(Utils::File.read_regular(path)).as_h
     zap_h = root["zap"]?.try(&.as_h) || {} of String => JSON::Any
     root["zap"] = JSON::Any.new(zap_h)
 

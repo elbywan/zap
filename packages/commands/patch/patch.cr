@@ -67,7 +67,7 @@ module Commands::Patch
         if patch_file = Commands::Install::Patches.find_patch(patches, package)
           patch_path = Path.new(patch_file).expand(Path.new(config.prefix))
           raise "Cannot apply patch: file not found: #{patch_path}" unless File.exists?(patch_path)
-          Utils::Patch.apply(File.read(patch_path), dir)
+          Utils::Patch.apply(Utils::File.read_regular(patch_path), dir)
         end
       end
     end
@@ -83,7 +83,7 @@ module Commands::Patch
   private def self.commit(config : Core::Config, lockfile : Data::Lockfile, dir : Path, output_io : IO) : Nil
     marker_path = dir / MARKER_FILE
     raise "Not a zap patch directory: #{dir}" unless File.exists?(marker_path)
-    marker = Marker.from_json(File.read(marker_path))
+    marker = Marker.from_json(Utils::File.read_regular(marker_path))
     unless Dir.exists?(marker.store_path)
       raise "Patched package not found in the store: #{marker.store_path}"
     end
@@ -95,30 +95,31 @@ module Commands::Patch
       return
     end
 
-    patches_dir = Path.new(config.prefix) / "patches"
-    Dir.mkdir_p(patches_dir)
-    key = marker.apply_to_all ? marker.name : "#{marker.name}@#{marker.version}"
-    filename = "#{key}.patch"
-    patch_path = patches_dir / filename
-    # Never write through a symlink (pnpm parity: a patch file must stay
-    # inside the patches directory).
-    raise "Patch file must not be a symlink: #{patch_path}" if File.symlink?(patch_path)
-    Utils::File.atomic_write(patch_path, patch, follow_symlinks: false)
+    Commands::Install.with_project_lock(config) do
+      patches_dir = Path.new(config.prefix) / "patches"
+      Dir.mkdir_p(patches_dir)
+      key = marker.apply_to_all ? marker.name : "#{marker.name}@#{marker.version}"
+      filename = "#{key}.patch"
+      patch_path = patches_dir / filename
+      # Never write through a symlink (pnpm parity: a patch file must stay
+      # inside the patches directory).
+      raise "Patch file must not be a symlink: #{patch_path}" if File.symlink?(patch_path)
+      Utils::File.atomic_write(patch_path, patch, follow_symlinks: false)
 
-    register(config, key, "patches/#{filename}")
+      register(config, key, "patches/#{filename}")
 
-    # Refresh the lockfile's patched-dependencies shasum so the committed
-    # state is consistent right away (a frozen CI install must not fail on
-    # the patch we just registered).
-    main_package = Data::Package.init?(Path.new(config.prefix)).not_nil!
-    lockfile.update_patched_dependencies_shasum(main_package, Path.new(config.prefix))
-    lockfile.write(format: config.lockfile_format)
+      # Refresh the lockfile's patched-dependencies shasum so the committed
+      # state is consistent right away (a frozen CI install must not fail on
+      # the patch we just registered).
+      main_package = Data::Package.init?(Path.new(config.prefix)).not_nil!
+      lockfile.update_patched_dependencies_shasum(main_package, Path.new(config.prefix))
+      lockfile.write(format: config.lockfile_format)
+      output_io.puts "Patch saved to #{patch_path} and registered in package.json."
+    end
 
     # Re-install the patched package into node_modules right away (pnpm and
     # yarn parity: the edit is applied without a separate `zap i`).
     Commands::Install.run(config, Commands::Install::Config.new.copy_with(frozen_lockfile: false), raise_on_failure: true)
-
-    output_io.puts "Patch saved to #{patch_path} and registered in package.json."
   end
 
   # Registers the patch in the `zap.patched_dependencies` section of the
@@ -127,7 +128,7 @@ module Commands::Patch
   private def self.register(config : Core::Config, key : String, rel_path : String) : Nil
     path = Path.new(config.prefix) / "package.json"
     raise "No package.json found at #{config.prefix}" unless File.exists?(path)
-    root = JSON.parse(File.read(path))
+    root = JSON.parse(Utils::File.read_regular(path))
     raise "Invalid package.json at #{path}" unless root.as_h?
 
     zap = root["zap"]? || JSON::Any.new({} of String => JSON::Any)

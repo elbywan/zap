@@ -1,6 +1,7 @@
 require "ini"
 require "uri"
 require "utils/misc"
+require "utils/file"
 
 struct Data::Npmrc
   getter registry : String = "https://registry.npmjs.org"
@@ -22,7 +23,7 @@ struct Data::Npmrc
       ::File.expand_path("~/.npmrc", home: true),
       Path.new(project_path) / ".npmrc",
     ].reduce(nil) do |acc, path|
-      if File.exists?(path)
+      if Utils::File.regular_file?(path)
         ini_data = INI.parse(File.read(path))
         if acc.nil?
           ini_data[""]?

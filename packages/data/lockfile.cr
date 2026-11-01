@@ -67,6 +67,12 @@ class Data::Lockfile
     instance = uninitialized self
 
     # Try to read the lockfile in message pack format
+    if info = ::File.info?(lockfile_path)
+      unless info.type.file?
+        raise "Lockfile at #{lockfile_path} must be a regular file"
+      end
+    end
+
     if File.readable? lockfile_path
       begin
         instance = self.from_msgpack(File.read(lockfile_path))
@@ -82,6 +88,7 @@ class Data::Lockfile
         end
       end
     else
+      raise "Lockfile at #{lockfile_path} exists but is not readable" if ::File.exists?(lockfile_path)
       instance = self.allocate
       instance.format = default_format
     end
@@ -304,7 +311,7 @@ class Data::Lockfile
                  ctx << sorted.to_json
                  sorted.each do |_, rel|
                    patch_path = Path.new(rel).expand(prefix)
-                   ctx << File.read(patch_path).gsub("\r\n", "\n") if File.exists?(patch_path)
+                   ctx << Utils::File.read_regular(patch_path).gsub("\r\n", "\n") if File.exists?(patch_path)
                  end
                end.hexstring
              end

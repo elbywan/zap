@@ -125,6 +125,17 @@ module Utils::File
     raise "Too many symbolic links: #{path}"
   end
 
+  def self.regular_file?(path : Path | String) : Bool
+    ::File.info?(path).try(&.type.file?) || false
+  end
+
+  # Reads a project-owned configuration file only when it is a regular file;
+  # a FIFO/special file must not block an install.
+  def self.read_regular(path : Path | String) : String
+    raise "#{path} must be a regular file" unless regular_file?(path)
+    ::File.read(path)
+  end
+
   # Writes *path* through a unique temporary file and an atomic rename.
   # A crash mid-write leaves the previous file intact; concurrent writers
   # produce one complete file (last writer wins) instead of interleaving.
