@@ -225,6 +225,16 @@ module Utils::File
     target
   end
 
+  def self.realpath_within!(path : Path | String, root : Path | String) : Path
+    target = Path.new(::File.realpath(path))
+    base = Path.new(::File.realpath(root))
+    relative = target.relative_to?(base)
+    if relative.nil? || relative.parts.first? == ".."
+      raise "Path resolves outside #{base}: #{target}"
+    end
+    target
+  end
+
   # Reads a project-owned configuration file only when it is a regular file;
   # a FIFO/special file must not block an install.
   def self.read_regular(path : Path | String) : String

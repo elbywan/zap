@@ -51,7 +51,10 @@ struct Commands::Install::Protocol::File::Resolver < Commands::Install::Protocol
   end
 
   protected def self.extract_tarball_to_temp(tar_path, temp_path)
-    return if Dir.exists?(temp_path)
+    if Dir.exists?(temp_path)
+      Utils::File.realpath_within!(temp_path, Dir.tempdir)
+      return
+    end
     staging_path = Path.new("#{temp_path}.tmp-#{Utils::File.tempname}")
     begin
       ::File.open(tar_path) do |io|

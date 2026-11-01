@@ -69,7 +69,10 @@ struct Store
     key = "zap--tarball@#{tarball_url}"
     store_hash = Digest::SHA1.hexdigest(key)
     temp_path = Path.new(Dir.tempdir, store_hash)
-    return temp_path if Dir.exists?(temp_path)
+    if Dir.exists?(temp_path)
+      Utils::File.realpath_within!(temp_path, Dir.tempdir)
+      return temp_path
+    end
 
     # Extract into a unique staging directory and publish it with a rename:
     # a crash never leaves a partial cache directory, and concurrent
