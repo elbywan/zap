@@ -255,4 +255,18 @@ describe Utils::Patch do
       FileUtils.rm_rf(dir)
     end
   end
+
+  it "rejects paths that escape the package root" do
+    dir = Path.new(Dir.tempdir, "zap-patch-#{Random::Secure.hex(4)}")
+    escaped = dir.parent / "zap-patch-escaped-#{Random::Secure.hex(4)}.txt"
+    begin
+      Dir.mkdir_p(dir)
+      patch = "--- /dev/null\n+++ b/../#{escaped.basename}\n@@ -0,0 +1 @@\n+owned\n"
+      expect_raises(Exception, /escapes/) { Utils::Patch.apply(patch, dir) }
+      File.exists?(escaped).should be_false
+    ensure
+      FileUtils.rm_rf(dir)
+      File.delete?(escaped)
+    end
+  end
 end

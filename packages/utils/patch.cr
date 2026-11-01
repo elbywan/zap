@@ -1,5 +1,6 @@
 require "log"
 require "./directories"
+require "./file"
 
 # Unified-diff parsing, application and generation (git-style patches),
 # used by the `zap patch` feature. In-house: no external patch tool, so it
@@ -50,7 +51,7 @@ module Utils::Patch
     raise "Cannot apply patch: no changes found" if sections.empty?
     sections.each do |file|
       raise "Cannot apply patch: absolute path: #{file.path}" if file.path.starts_with?('/')
-      target = root / file.path
+      target = Utils::File.safe_join(root, file.path)
       case file.status
       when .deleted?
         ::File.delete?(target)
@@ -59,7 +60,7 @@ module Utils::Patch
         write_lines(target, apply_hunks(file.hunks, [] of String, file.path), file.newline)
       when .modified?
         source = file.source.empty? ? file.path : file.source
-        source_path = root / source
+        source_path = Utils::File.safe_join(root, source)
         unless ::File.exists?(source_path)
           raise "Cannot apply patch: file not found: #{source}"
         end

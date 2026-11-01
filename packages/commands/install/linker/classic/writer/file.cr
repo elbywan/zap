@@ -19,7 +19,7 @@ class Commands::Install::Linker::Classic
       base_path = state.context.workspaces.try(&.find { |w| w.package == parent }.try &.path) || state.config.prefix
       link_source = Path.new(relative_path).expand(base_path)
       install_folder = aliased_name || dependency.name
-      target_path = location.value.node_modules / install_folder
+      target_path = Utils::File.safe_join(location.value.node_modules, install_folder)
       install_location = self.class.init_location(dependency, target_path, location)
       exists = ::File.symlink?(target_path) && ::File.realpath(target_path) == ::File.realpath(link_source)
       if exists
@@ -36,7 +36,7 @@ class Commands::Install::Linker::Classic
 
     def install_tarball(dist : Data::Package::Dist::Tarball) : InstallResult
       install_folder = aliased_name || dependency.name
-      target_path = location.value.node_modules / install_folder
+      target_path = Utils::File.safe_join(location.value.node_modules, install_folder)
       exists = Backend.package_already_installed?(dependency.key, target_path, state.installed_state, Patches.expected_hash(dependency, state: state))
       install_location = self.class.init_location(dependency, target_path, location)
 

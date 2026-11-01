@@ -113,7 +113,7 @@ class Commands::Install::Linker::PnP < Commands::Install::Linker::Base
         else
           package.hashed_key
         end
-      install_path = @modules_store / package_subpath
+      install_path = Utils::File.safe_join(@modules_store, package_subpath)
       # The pnp resolver package location
       package_location =
         if is_virtual

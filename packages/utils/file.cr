@@ -97,6 +97,19 @@ module Utils::File
     paths.map(&.to_s).join(::Path::SEPARATORS[0])
   end
 
+  # Joins untrusted path components under *base* and raises if the normalized
+  # result escapes it. Package names, versions and patch paths are untrusted.
+  def self.safe_join(base : Path | String, *parts : Path | String) : Path
+    raise "Cannot join an empty path component" if parts.any?(&.to_s.empty?)
+    root = Path.new(base).normalize
+    path = parts.reduce(root) { |acc, part| acc / part }.normalize
+    relative = path.relative_to?(root)
+    if relative.nil? || relative.parts.first? == ".."
+      raise "Path escapes #{root}: #{path}"
+    end
+    path
+  end
+
   def self.with_flock(
     path : Path | String,
     *,
