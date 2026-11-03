@@ -97,10 +97,17 @@ module Commands::Patch
 
     Commands::Install.with_project_lock(config) do
       patches_dir = Path.new(config.prefix) / "patches"
+      raise "Patch directory must not be a symlink: #{patches_dir}" if File.symlink?(patches_dir)
+      if File.exists?(patches_dir)
+        root = Path.new(File.realpath(config.prefix))
+        real = Path.new(File.realpath(patches_dir))
+        relative = real.relative_to?(root)
+        raise "Patch directory escapes the project: #{patches_dir}" if relative.nil? || relative.parts.first? == ".."
+      end
       Dir.mkdir_p(patches_dir)
       key = marker.apply_to_all ? marker.name : "#{marker.name}@#{marker.version}"
       filename = "#{key}.patch"
-      patch_path = patches_dir / filename
+      patch_path = Utils::File.safe_join(patches_dir, filename)
       # Never write through a symlink (pnpm parity: a patch file must stay
       # inside the patches directory).
       raise "Patch file must not be a symlink: #{patch_path}" if File.symlink?(patch_path)
