@@ -144,8 +144,10 @@ module Backend
     # by pre-state installs), removes them, and returns the seeded entries.
     private def self.seed_from_legacy_markers(root : Path) : Hash(String, InstalledEntry)
       entries = Hash(String, InstalledEntry).new
+      return entries unless ::File.directory?(root)
+      root_real = Path.new(::File.realpath(root))
       begin
-        walk(root) do |dir, key|
+        walk(root, root_real) do |dir, key|
           entries[dir.to_s] = InstalledEntry.new(key, nil)
           File.delete?(dir / ".zap.metadata")
         end
@@ -155,13 +157,20 @@ module Backend
       entries
     end
 
-    private def self.walk(dir : Path, &block : (Path, String) -> Nil) : Nil
+    private def self.walk(dir : Path, root : Path, &block : (Path, String) -> Nil) : Nil
+      real = begin
+        Path.new(::File.realpath(dir))
+      rescue
+        return
+      end
+      relative = real.relative_to?(root)
+      return if relative.nil? || relative.parts.first? == ".."
       Dir.each_child(dir) do |name|
         path = dir / name
-        # Do not follow symlinks: file:/workspace: packages point at their
-        # sources, which can be huge and cyclic.
+        # Do not follow symlinks/junctions: file:/workspace: packages point
+        # at their sources, which can be huge, cyclic or outside the project.
         if File.directory?(path) && !File.symlink?(path)
-          walk(path, &block)
+          walk(path, root, &block)
         elsif name == ".zap.metadata" && Utils::File.regular_file?(path)
           block.call(dir, Utils::File.read_regular(path))
         end

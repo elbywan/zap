@@ -83,8 +83,23 @@ class Workspaces
       pattern += "/" if pattern.ends_with?("**")
       pattern
     }
+    root = Path.new(workspace_root).normalize
+    root_real = Path.new(begin
+      File.realpath(root)
+    rescue
+      root.to_s
+    end)
     Utils::Glob.glob(patterns, exclude: ["node_modules", ".git"]) do |path|
-      path = Path.new(path)
+      path = Path.new(path).normalize
+      path_real = Path.new(begin
+        File.realpath(path)
+      rescue
+        path.to_s
+      end)
+      relative = path_real.relative_to?(root_real)
+      if relative.nil? || relative.parts.first? == ".."
+        raise "Workspace path escapes the project root: #{path}"
+      end
       if package = Data::Package.init?(path)
         workspaces << Workspace.new(
           package: package,

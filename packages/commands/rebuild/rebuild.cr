@@ -8,6 +8,7 @@ module Commands::Rebuild
     rebuild_config = rebuild_config.from_args(ARGV)
     context = config.infer_context
     workspaces, config = context.workspaces, context.config
+    Commands::Install.check_project_links(config, context)
     scope = context.get_scope(:install)
     scope_names = scope.map { |pkg| pkg.is_a?(Workspaces::Workspace) ? pkg.package.name : pkg.name }
     reporter = STDOUT.tty? ? Reporter::Interactive.new : Reporter::Plain.new

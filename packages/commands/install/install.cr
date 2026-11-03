@@ -76,6 +76,10 @@ module Commands::Install
       inferred_context = config.infer_context
       workspaces, config = inferred_context.workspaces, inferred_context.config
 
+      # Validate project filesystem links before strategy checks or any
+      # other operation can delete or traverse node_modules.
+      check_project_links(config, inferred_context)
+
       # Serialize project mutations: two installs must not interleave
       # lockfile/package.json writes or link into the same node_modules.
       # A read-only project cannot create the root lock; fall back to the
@@ -309,6 +313,38 @@ module Commands::Install
       end
     ensure
       lock.try(&.close)
+    end
+  end
+
+  # A repository can pre-create node_modules/.bin/.pnp/.store as symlinks to
+  # an arbitrary directory. Refuse any write target that resolves outside the
+  # project (internal symlinks are allowed).
+  def self.check_project_links(config : Core::Config, context : Core::Config::InferredContext) : Nil
+    return if config.global
+    root = Path.new(::File.realpath(config.prefix))
+    paths = [] of Path
+    paths << Path.new(config.node_modules)
+    paths << Path.new(config.bin_path)
+    paths << Path.new(config.plug_and_play_modules)
+    paths << Path.new(config.node_modules) / ".store"
+    context.workspaces.try &.workspaces.each do |workspace|
+      workspace_node_modules = workspace.path / "node_modules"
+      paths << workspace_node_modules
+      paths << workspace_node_modules / ".bin"
+      paths << workspace_node_modules / ".store"
+    end
+    paths.each do |path|
+      if ::File.symlink?(path)
+        target = Path.new(::File.realpath(path))
+      elsif ::File.exists?(path)
+        target = Path.new(::File.realpath(path))
+      else
+        next
+      end
+      relative = target.relative_to?(root)
+      if relative.nil? || relative.parts.first? == ".."
+        raise "#{path} resolves outside the project"
+      end
     end
   end
 

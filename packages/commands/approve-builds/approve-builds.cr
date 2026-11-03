@@ -51,6 +51,7 @@ module Commands::ApproveBuilds
   # Writes the decisions and re-links the newly approved packages so their
   # build scripts run right away instead of waiting for a future install.
   def self.apply_approvals(context : Core::Config::InferredContext, approved : Array(String), declined : Array(String)) : Nil
+    Commands::Install.check_project_links(context.config, context)
     previously_allowed = context.main_package.zap_config.try(&.only_built_dependencies) || [] of String
     newly_approved = approved.reject { |name| previously_allowed.includes?(name) }
     Commands::Install.with_project_lock(context.config) do

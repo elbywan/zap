@@ -74,6 +74,18 @@ module Commands::Install::Linker
     end
 
     private def prune_workspace_orphans(modules_directory : Path, *, unlink_binaries : Bool = true)
+      info = ::File.info?(modules_directory, follow_symlinks: false)
+      return unless info.try(&.type.directory?)
+      root = Path.new(::File.realpath(state.config.prefix))
+      real = begin
+        Path.new(::File.realpath(modules_directory))
+      rescue
+        nil
+      end
+      if real
+        relative = real.relative_to?(root)
+        return if relative.nil? || relative.parts.first? == ".."
+      end
       if Dir.exists?(modules_directory)
         remaining = 0
         # For each hoisted or direct dependency
@@ -110,6 +122,15 @@ module Commands::Install::Linker
     end
 
     private def should_prune_orphan?(package_path : Path) : Bool
+      root = Path.new(::File.realpath(state.config.prefix))
+      real = begin
+        Path.new(::File.realpath(package_path))
+      rescue
+        nil
+      end
+      return false unless real
+      relative = real.relative_to?(root)
+      return false if relative.nil? || relative.parts.first? == ".."
       remove_child = false
       # The installed state records the key that was linked at this path
       if entry = state.installed_state[package_path.to_s]?
