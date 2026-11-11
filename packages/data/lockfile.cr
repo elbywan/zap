@@ -24,7 +24,6 @@ class Data::Lockfile
 
   enum ReadStatus
     FromDisk
-    Error
     NotFound
   end
 
@@ -73,7 +72,7 @@ class Data::Lockfile
       end
     end
 
-    if File.readable? lockfile_path
+    if File::Info.readable?(lockfile_path)
       begin
         instance = self.from_msgpack(File.read(lockfile_path))
         instance.read_status = ReadStatus::FromDisk
@@ -203,7 +202,7 @@ class Data::Lockfile
 
   def write(format : Format? = nil)
     format ||= @format
-    Utils::File.atomic_write(@lockfile_path.not_nil!, follow_symlinks: false) do |file|
+    Utils::File.atomic_write(@lockfile_path.not_nil!) do |file|
       self.serialize(file, format)
     end
   end

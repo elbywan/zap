@@ -74,19 +74,14 @@ module Commands::Install::Linker
       end
     end
 
-    private def prune_workspace_orphans(modules_directory : Path, *, unlink_binaries : Bool = true)
+    private def prune_workspace_orphans(modules_directory : Path, *, unlink_binaries : Bool = true, root : Path? = nil)
       info = ::File.info?(modules_directory, follow_symlinks: false)
       return unless info.try(&.type.directory?)
-      root = Path.new(::File.realpath(state.config.prefix))
-      real = begin
-        Path.new(::File.realpath(modules_directory))
-      rescue
-        nil
-      end
-      if real
-        relative = real.relative_to?(root)
-        return if relative.nil? || relative.parts.first? == ".."
-      end
+      root ||= Utils::File.realpath?(state.config.prefix) || return
+      real = Utils::File.realpath?(modules_directory)
+      return unless real
+      relative = real.relative_to?(root)
+      return if relative.nil? || relative.parts.first? == ".."
       if Dir.exists?(modules_directory)
         remaining = 0
         # For each hoisted or direct dependency
@@ -95,10 +90,10 @@ module Commands::Install::Linker
 
           if package_dir.starts_with?('@')
             # Scoped package - recurse on children
-            prune_workspace_orphans(package_path, unlink_binaries: unlink_binaries)
+            prune_workspace_orphans(package_path, unlink_binaries: unlink_binaries, root: root)
             remaining += 1 if Dir.exists?(package_path)
           else
-            if should_prune_orphan?(package_path)
+            if should_prune_orphan?(package_path, root)
               Log.debug { "Pruning orphan package: #{package_dir}" }
               if unlink_binaries
                 package = Data::Package.init?(package_path)
@@ -122,18 +117,13 @@ module Commands::Install::Linker
       end
     end
 
-    private def should_prune_orphan?(package_path : Path) : Bool
+    private def should_prune_orphan?(package_path : Path, root : Path) : Bool
       # A symlink entry can be removed without touching its target, and its
       # target may be gone (a deleted workspace): do not require realpath to
       # succeed for it. Junctions are resolved conservatively below.
       info = ::File.info?(package_path, follow_symlinks: false)
       unless info.try(&.type.symlink?)
-        root = Path.new(::File.realpath(state.config.prefix))
-        real = begin
-          Path.new(::File.realpath(package_path))
-        rescue
-          nil
-        end
+        real = Utils::File.realpath?(package_path)
         return false unless real
         relative = real.relative_to?(root)
         return false if relative.nil? || relative.parts.first? == ".."

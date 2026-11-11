@@ -114,14 +114,15 @@ module Backend
   # package path.
   module InstalledState
     def self.load(path : Path) : Hash(String, InstalledEntry)
-      unless File.exists?(path)
+      info = ::File.info?(path)
+      unless info
         # First run with the state file: seed it from the old per-package
         # .zap.metadata markers (key only, patches were not recorded), so
         # upgrading does not re-link and re-script the whole tree. The
         # patched packages re-link anyway via the hash mismatch.
         return seed_from_legacy_markers(path.parent)
       end
-      unless Utils::File.regular_file?(path)
+      unless info.type.file?
         Log.warn { "Ignoring non-regular installed state at #{path}" }
         return Hash(String, InstalledEntry).new
       end
@@ -137,7 +138,7 @@ module Backend
     end
 
     def self.save(path : Path, entries : Hash(String, InstalledEntry)) : Nil
-      Utils::File.atomic_write(path, follow_symlinks: false) { |io| entries.to_json(io) }
+      Utils::File.atomic_write(path) { |io| entries.to_json(io) }
     end
 
     # Reads the legacy .zap.metadata markers under *root* (the key written
@@ -145,7 +146,7 @@ module Backend
     private def self.seed_from_legacy_markers(root : Path) : Hash(String, InstalledEntry)
       entries = Hash(String, InstalledEntry).new
       return entries unless ::File.directory?(root)
-      root_real = Path.new(::File.realpath(root))
+      root_real = Utils::File.realpath?(root) || return entries
       begin
         walk(root, root_real) do |dir, key|
           entries[dir.to_s] = InstalledEntry.new(key, nil)
@@ -158,12 +159,7 @@ module Backend
     end
 
     private def self.walk(dir : Path, root : Path, &block : (Path, String) -> Nil) : Nil
-      real = begin
-        Path.new(::File.realpath(dir))
-      rescue
-        return
-      end
-      relative = real.relative_to?(root)
+      relative = (Utils::File.realpath?(dir) || return).relative_to?(root)
       return if relative.nil? || relative.parts.first? == ".."
       Dir.each_child(dir) do |name|
         path = dir / name

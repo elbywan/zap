@@ -46,11 +46,11 @@ class Commands::Install::Linker::PnP < Commands::Install::Linker::Base
 
     # Write manifest and runtime files atomically: a crash must not leave a
     # corrupt .pnp runtime that an up-to-date fingerprint would skip.
-    Utils::File.atomic_write(prefix / ".pnp.data.json", follow_symlinks: false) do |fd|
+    Utils::File.atomic_write(prefix / ".pnp.data.json") do |fd|
       @manifest.to_pretty_json(fd)
     end
-    Utils::File.atomic_write(prefix / ".pnp.cjs", Runtime::CJS, follow_symlinks: false)
-    Utils::File.atomic_write(prefix / ".pnp.loader.mjs", Runtime::MJS, follow_symlinks: false)
+    Utils::File.atomic_write(prefix / ".pnp.cjs", Runtime::CJS)
+    Utils::File.atomic_write(prefix / ".pnp.loader.mjs", Runtime::MJS)
   end
 
   private def install_package(

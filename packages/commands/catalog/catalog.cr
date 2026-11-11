@@ -88,7 +88,7 @@ module Commands::Catalog
       end
 
     yield entries
-    Utils::File.atomic_write(path, JSON::Any.new(root).to_pretty_json, follow_symlinks: false)
+    Utils::File.atomic_write(path, JSON::Any.new(root).to_pretty_json)
   end
 
   # The directories (the project and its workspace members) whose manifests

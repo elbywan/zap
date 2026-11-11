@@ -96,7 +96,7 @@ module Commands::Init
 
     if !reply || reply.empty? || reply.starts_with?("y")
       puts "Writing package.json…"
-      Utils::File.atomic_write(package_path, package.to_pretty_json, follow_symlinks: false)
+      Utils::File.atomic_write(package_path, package.to_pretty_json)
       puts "Done!"
     else
       puts "Aborting."

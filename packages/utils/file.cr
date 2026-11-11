@@ -111,6 +111,13 @@ module Utils::File
     {% end %}
   end
 
+  # Resolves *path*, returning nil when it does not exist or cannot be read.
+  def self.realpath?(path : Path | String) : Path?
+    Path.new(::File.realpath(path))
+  rescue
+    nil
+  end
+
   # Joins untrusted path components under *base* and raises if the normalized
   # result escapes it. Package names, versions and patch paths are untrusted.
   def self.safe_join(base : Path | String, *parts : Path | String) : Path
@@ -145,42 +152,35 @@ module Utils::File
     # ancestor (the root itself when the tree is not created yet).
     # The final component is allowed to be a symlink (file:/workspace links).
     parent = Path.new(path.dirname)
-    parent_real = begin
-      ::File.realpath(parent)
-    rescue
-      nil
-    end
-    root_real = Path.new(begin
-      ::File.realpath(root)
-    rescue
-      root.to_s
-    end)
-    if parent_real
+    root_real = resolve_base(root)
+    if parent_real = realpath?(parent)
       ensure_within!(parent_real, root_real, "Path parent", path)
     elsif ::File.exists?(root)
       ancestor = parent
       until ::File.exists?(ancestor) || ::File.symlink?(ancestor) || ancestor == root
         ancestor = Path.new(ancestor.dirname)
       end
-      if ancestor_real = begin
-           ::File.realpath(ancestor)
-         rescue
-           nil
-         end
+      if ancestor_real = realpath?(ancestor)
         ensure_within!(ancestor_real, root_real, "Path ancestor", path)
       elsif ::File.symlink?(ancestor)
         raise "Path ancestor is a broken symlink: #{ancestor}"
       end
-    else
-      parent.each_parent do |ancestor|
-        raise "Path parent is a broken symlink: #{ancestor}" if ::File.symlink?(ancestor) && !::File.exists?(ancestor)
-      end
     end
-    checked_target(path, root)
+    checked_target(path, root, root_real)
   end
 
-  private def self.ensure_within!(resolved : Path | String, root_real : Path, label : String, path : Path) : Nil
-    relative = Path.new(resolved).relative_to?(root_real)
+  private def self.resolve_base(base : Path | String) : Path
+    root = Path.new(base).normalize
+    if real = realpath?(root)
+      real
+    else
+      raise "Path root is a broken symlink: #{root}" if ::File.symlink?(root)
+      root
+    end
+  end
+
+  private def self.ensure_within!(resolved : Path, root_real : Path, label : String, path : Path) : Nil
+    relative = resolved.relative_to?(root_real)
     if relative.nil? || relative.parts.first? == ".."
       raise "#{label} escapes #{root_real}: #{path}"
     end
@@ -195,34 +195,19 @@ module Utils::File
     safe_join(base, candidate)
   end
 
-  private def self.checked_target(path : Path, root : Path | String) : Path
+  private def self.checked_target(path : Path, root : Path | String, root_real : Path? = nil) : Path
+    # Resolve the base only when there is something to validate: cold installs
+    # mostly target package directories that do not exist yet.
+    return path if ::File.symlink?(path) || !::File.exists?(path)
     # Symlink targets are intentional (file:/workspace links); a junction or
     # other resolved directory must still stay inside the base.
-    return path if ::File.symlink?(path) || !::File.exists?(path)
-    root_real = Path.new(begin
-      ::File.realpath(root)
-    rescue
-      root.to_s
-    end)
+    root_real ||= resolve_base(root)
     target_real = Path.new(::File.realpath(path))
     relative = target_real.relative_to?(root_real)
     if relative.nil? || relative.parts.first? == ".."
-      raise "Path target escapes #{root}: #{path}"
+      raise "Path target escapes #{root_real}: #{path}"
     end
     path
-  end
-
-  # The file a symlink ultimately points at. A dangling link is resolved
-  # lexically so atomic writes keep the link and create its target (the old
-  # File.write behavior) instead of replacing the link or failing.
-  private def self.write_target(path : Path | String) : Path
-    target = Path.new(path)
-    32.times do
-      return target unless ::File.symlink?(target)
-      link = Path.new(::File.readlink(target))
-      target = link.absolute? ? link : Path.new(target.dirname) / link
-    end
-    raise "Too many symbolic links: #{path}"
   end
 
   def self.regular_file?(path : Path | String) : Bool
@@ -275,12 +260,12 @@ module Utils::File
   # Writes *path* through a unique temporary file and an atomic rename.
   # A crash mid-write leaves the previous file intact; concurrent writers
   # produce one complete file (last writer wins) instead of interleaving.
-  def self.atomic_write(path : Path | String, content : String | Bytes, *, follow_symlinks : Bool = true) : Nil
-    atomic_write(path, follow_symlinks: follow_symlinks) { |io| io << content }
+  def self.atomic_write(path : Path | String, content : String) : Nil
+    atomic_write(path) { |io| io << content }
   end
 
-  def self.atomic_write(path : Path | String, *, follow_symlinks : Bool = true, & : IO ->) : Nil
-    target = follow_symlinks ? write_target(path) : Path.new(path)
+  def self.atomic_write(path : Path | String, & : IO ->) : Nil
+    target = Path.new(path)
     dir = Path.new(target.dirname)
     Utils::Directories.mkdir_p(dir)
     mode = ::File.info?(target).try(&.permissions.to_i32) || 0o644

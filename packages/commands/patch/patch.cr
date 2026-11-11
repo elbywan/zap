@@ -111,7 +111,7 @@ module Commands::Patch
       # Never write through a symlink (pnpm parity: a patch file must stay
       # inside the patches directory).
       raise "Patch file must not be a symlink: #{patch_path}" if File.symlink?(patch_path)
-      Utils::File.atomic_write(patch_path, patch, follow_symlinks: false)
+      Utils::File.atomic_write(patch_path, patch)
 
       register(config, key, "patches/#{filename}")
 
@@ -145,6 +145,6 @@ module Commands::Patch
     zap["patched_dependencies"] = patched
     patched.as_h[key] = JSON::Any.new(rel_path)
 
-    Utils::File.atomic_write(path, root.to_pretty_json, follow_symlinks: false)
+    Utils::File.atomic_write(path, root.to_pretty_json)
   end
 end

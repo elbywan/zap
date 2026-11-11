@@ -28,14 +28,10 @@ module Commands::Install
   # Serializes installs for one project, keyed by its canonical path. The
   # lock lives in the store (never in the project), and falls back to the
   # user's ~/.zap/locks directory when the store is read-only.
-  private def self.project_lock_path(config : Core::Config) : Path
+  private def self.project_lock_path(config : Core::Config, *, home = false) : Path
+    root = home ? Path.new(::File.expand_path("~/.zap/locks", home: true)) : Path.new(config.store_path) / "locks"
     digest = Digest::SHA256.hexdigest(project_lock_identity(config))
-    Path.new(config.store_path) / "locks" / "project-#{digest}.lock"
-  end
-
-  private def self.home_project_lock_path(config : Core::Config) : Path
-    digest = Digest::SHA256.hexdigest(project_lock_identity(config))
-    Path.new(::File.expand_path("~/.zap/locks", home: true)) / "project-#{digest}.lock"
+    root / "project-#{digest}.lock"
   end
 
   def self.run(
@@ -247,7 +243,7 @@ module Commands::Install
       # lock stays held (external installs stay serialized); the owner
       # marker lets the nested child bypass it instead of deadlocking.
       Backend::InstalledState.save(state.installed_state_path, state.installed_state)
-      Utils::File.atomic_write(fingerprint_path(state), project_fingerprint(state), follow_symlinks: false)
+      Utils::File.atomic_write(fingerprint_path(state), project_fingerprint(state))
       state_saved = true
 
       with_project_lock_owner(config) do
@@ -337,19 +333,9 @@ module Commands::Install
       paths << workspace_node_modules / ".store"
     end
     paths.each do |path|
-      if ::File.symlink?(path)
-        # A dangling link has no target to validate; the install will repair
-        # or replace it instead of failing on a cryptic realpath error.
-        target = begin
-          Path.new(::File.realpath(path))
-        rescue
-          next
-        end
-      elsif ::File.exists?(path)
-        target = Path.new(::File.realpath(path))
-      else
-        next
-      end
+      # A dangling link has no target to validate; the install will repair or
+      # replace it instead of failing on a cryptic realpath error.
+      target = Utils::File.realpath?(path) || next
       relative = target.relative_to?(root)
       if relative.nil? || relative.parts.first? == ".."
         raise "#{path} resolves outside the project"
@@ -395,7 +381,7 @@ module Commands::Install
       # A read-only store (or one that disappeared) must not block an
       # otherwise no-op install: keep the lock in the user's state dir.
       Log.debug { "Cannot create the project lock in the store (#{ex.message}), using the home lock directory" }
-      open_lock_file(home_project_lock_path(config))
+      open_lock_file(project_lock_path(config, home: true))
     end
     file.flock_exclusive
     file
@@ -522,7 +508,7 @@ module Commands::Install
       workers_info = " • #{"workers:".colorize.blue} #{install_config.workers}"
       puts <<-TERM
        #{"project:".colorize.blue} #{config.prefix} • #{"store:".colorize.blue} #{config.store_path}#{workers_info}
-       #{"lockfile:".colorize.blue} #{lockfile.read_status.from_disk? ? "ok".colorize.green : lockfile.read_status.error? ? "read error".colorize.red : "not found".colorize.red} #{"[#{lockfile.format}]".colorize.italic.dim} • #{"install strategy:".colorize.blue} #{install_config.strategy.to_s.downcase}
+       #{"lockfile:".colorize.blue} #{lockfile.read_status.from_disk? ? "ok".colorize.green : "not found".colorize.red} #{"[#{lockfile.format}]".colorize.italic.dim} • #{"install strategy:".colorize.blue} #{install_config.strategy.to_s.downcase}
     TERM
 
       if workspaces
@@ -804,7 +790,7 @@ module Commands::Install
         else
           package_json.delete("optionalDependencies")
         end
-        Utils::File.atomic_write(Path.new(location).join("package.json"), package_json.to_pretty_json, follow_symlinks: false)
+        Utils::File.atomic_write(Path.new(location).join("package.json"), package_json.to_pretty_json)
       end
     end
   end

@@ -53,6 +53,20 @@ describe Utils::File do
         FileUtils.rm_rf(dir)
       end
     end
+
+    it "rejects a base that is a broken symlink" do
+      dir = Path.new(Dir.tempdir, "zap-safe-join-base-#{Random::Secure.hex(4)}")
+      base = dir / "node_modules"
+      begin
+        Dir.mkdir_p(dir)
+        File.symlink(dir / "missing", base)
+        expect_raises(Exception, /root is a broken symlink/) do
+          Utils::File.safe_join(base, "nested/pkg")
+        end
+      ensure
+        FileUtils.rm_rf(dir)
+      end
+    end
   end
 
   describe ".safe_relative" do
@@ -132,22 +146,7 @@ describe Utils::File do
       end
     end
 
-    it "keeps a symlink and writes its dangling target" do
-      dir = Path.new(Dir.tempdir, "zap-atomic-#{Random::Secure.hex(4)}")
-      begin
-        Dir.mkdir_p(dir)
-        target = dir / "target"
-        link = dir / "link"
-        File.symlink(target, link)
-        Utils::File.atomic_write(link, "data")
-        File.symlink?(link).should be_true
-        File.read(target).should eq("data")
-      ensure
-        FileUtils.rm_rf(dir)
-      end
-    end
-
-    it "replaces a symlink instead of writing through it when disabled" do
+    it "replaces a symlink instead of writing through it" do
       dir = Path.new(Dir.tempdir, "zap-atomic-#{Random::Secure.hex(4)}")
       begin
         Dir.mkdir_p(dir)
@@ -155,7 +154,7 @@ describe Utils::File do
         link = dir / "link"
         File.write(target, "old")
         File.symlink(target, link)
-        Utils::File.atomic_write(link, "data", follow_symlinks: false)
+        Utils::File.atomic_write(link, "data")
         File.symlink?(link).should be_false
         File.read(target).should eq("old")
         File.read(link).should eq("data")

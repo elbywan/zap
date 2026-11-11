@@ -43,7 +43,7 @@ struct Store
   def store_file(filename : String, contents : IO | String)
     target_path = file_path(filename)
     Utils::Directories.mkdir_p(::File.dirname(target_path))
-    Utils::File.atomic_write(target_path, follow_symlinks: false) do |file|
+    Utils::File.atomic_write(target_path) do |file|
       case contents
       when IO
         IO.copy(contents, file)

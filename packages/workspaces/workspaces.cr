@@ -3,6 +3,7 @@ require "shared/constants"
 require "data/package"
 require "semver"
 require "utils/glob"
+require "utils/file"
 require "./workspace"
 require "./relationships"
 
@@ -84,18 +85,10 @@ class Workspaces
       pattern
     }
     root = Path.new(workspace_root).normalize
-    root_real = Path.new(begin
-      File.realpath(root)
-    rescue
-      root.to_s
-    end)
+    root_real = Utils::File.realpath?(root) || root
     Utils::Glob.glob(patterns, exclude: ["node_modules", ".git"]) do |path|
       path = Path.new(path).normalize
-      path_real = Path.new(begin
-        File.realpath(path)
-      rescue
-        path.to_s
-      end)
+      path_real = Utils::File.realpath?(path) || path
       relative = path_real.relative_to?(root_real)
       if relative.nil? || relative.parts.first? == ".."
         raise "Workspace path escapes the project root: #{path}"
