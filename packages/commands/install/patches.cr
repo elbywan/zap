@@ -2,6 +2,7 @@ require "log"
 require "digest/md5"
 require "semver"
 require "utils/misc"
+require "utils/file"
 require "utils/patch"
 
 # Applies the patches declared in the `zap.patched_dependencies` section of
@@ -49,7 +50,7 @@ module Commands::Install::Patches
     patch_file = find_patch(patches, dependency)
     return unless patch_file
 
-    Path.new(patch_file).expand(Path.new(state.config.prefix))
+    Utils::File.safe_relative(state.config.prefix, patch_file)
   end
 
   # pnpm's match priority: exact version key, then range keys, then the

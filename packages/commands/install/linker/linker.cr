@@ -1,5 +1,6 @@
 require "log"
 require "data/package"
+require "utils/file"
 require "../state"
 require "concurrency/data_structures/safe_hash"
 
@@ -49,7 +50,7 @@ module Commands::Install::Linker
       dependencies.each do |(name, version_or_alias, root_name)|
         workspace = state.context.workspaces.try &.find { |w| w.package.name == root_name }
         node_modules = workspace.try(&.path./ "node_modules") || Path.new(state.config.node_modules)
-        package_path = node_modules / name
+        package_path = Utils::File.safe_join(node_modules, name)
         if File.directory?(package_path)
           package = Data::Package.init?(package_path)
           version = version_or_alias.is_a?(String) ? version_or_alias : version_or_alias.version
@@ -122,15 +123,21 @@ module Commands::Install::Linker
     end
 
     private def should_prune_orphan?(package_path : Path) : Bool
-      root = Path.new(::File.realpath(state.config.prefix))
-      real = begin
-        Path.new(::File.realpath(package_path))
-      rescue
-        nil
+      # A symlink entry can be removed without touching its target, and its
+      # target may be gone (a deleted workspace): do not require realpath to
+      # succeed for it. Junctions are resolved conservatively below.
+      info = ::File.info?(package_path, follow_symlinks: false)
+      unless info.try(&.type.symlink?)
+        root = Path.new(::File.realpath(state.config.prefix))
+        real = begin
+          Path.new(::File.realpath(package_path))
+        rescue
+          nil
+        end
+        return false unless real
+        relative = real.relative_to?(root)
+        return false if relative.nil? || relative.parts.first? == ".."
       end
-      return false unless real
-      relative = real.relative_to?(root)
-      return false if relative.nil? || relative.parts.first? == ".."
       remove_child = false
       # The installed state records the key that was linked at this path
       if entry = state.installed_state[package_path.to_s]?

@@ -65,7 +65,7 @@ module Commands::Patch
     if update
       if patches = main_package.zap_config.try(&.patched_dependencies)
         if patch_file = Commands::Install::Patches.find_patch(patches, package)
-          patch_path = Path.new(patch_file).expand(Path.new(config.prefix))
+          patch_path = Utils::File.safe_relative(config.prefix, patch_file)
           raise "Cannot apply patch: file not found: #{patch_path}" unless File.exists?(patch_path)
           Utils::Patch.apply(Utils::File.read_regular(patch_path), dir)
         end

@@ -139,7 +139,10 @@ module Utils::File
       raise "Path escapes #{root}: #{path}"
     end
 
-    # Reject an already-existing parent that is a symlink outside the base.
+    # Reject an existing parent/ancestor that resolves outside the base.
+    # Checking only the immediate parent misses a symlink higher up when the
+    # remaining directories do not exist yet, so validate the deepest existing
+    # ancestor (the root itself when the tree is not created yet).
     # The final component is allowed to be a symlink (file:/workspace links).
     parent = Path.new(path.dirname)
     parent_real = begin
@@ -153,16 +156,43 @@ module Utils::File
       root.to_s
     end)
     if parent_real
-      parent_relative = Path.new(parent_real).relative_to?(root_real)
-      if parent_relative.nil? || parent_relative.parts.first? == ".."
-        raise "Path parent escapes #{root}: #{path}"
+      ensure_within!(parent_real, root_real, "Path parent", path)
+    elsif ::File.exists?(root)
+      ancestor = parent
+      until ::File.exists?(ancestor) || ::File.symlink?(ancestor) || ancestor == root
+        ancestor = Path.new(ancestor.dirname)
+      end
+      if ancestor_real = begin
+           ::File.realpath(ancestor)
+         rescue
+           nil
+         end
+        ensure_within!(ancestor_real, root_real, "Path ancestor", path)
+      elsif ::File.symlink?(ancestor)
+        raise "Path ancestor is a broken symlink: #{ancestor}"
       end
     else
       parent.each_parent do |ancestor|
         raise "Path parent is a broken symlink: #{ancestor}" if ::File.symlink?(ancestor) && !::File.exists?(ancestor)
       end
     end
-    path
+    checked_target(path, root)
+  end
+
+  private def self.ensure_within!(resolved : Path | String, root_real : Path, label : String, path : Path) : Nil
+    relative = Path.new(resolved).relative_to?(root_real)
+    if relative.nil? || relative.parts.first? == ".."
+      raise "#{label} escapes #{root_real}: #{path}"
+    end
+  end
+
+  # Joins a project-relative path (e.g. a configured patch file) under *base*.
+  # Absolute paths are rejected: re-rooting them under the project would be
+  # surprising, and allowing them would defeat the containment check.
+  def self.safe_relative(base : Path | String, path : Path | String) : Path
+    candidate = Path.new(path)
+    raise "Path must be relative: #{path}" if candidate.absolute?
+    safe_join(base, candidate)
   end
 
   private def self.checked_target(path : Path, root : Path | String) : Path
@@ -307,15 +337,7 @@ module Utils::File
         io << prefix
         io << '-'
       end
-
-      io << Time.local.to_s("%Y%m%d")
-      io << '-'
-
-      io << Process.pid
-      io << '-'
-
-      io << Random.rand(0x100000000).to_s(36)
-
+      io << Random::Secure.hex(8)
       io << suffix
     end
   end

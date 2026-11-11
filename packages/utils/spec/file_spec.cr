@@ -37,6 +37,34 @@ describe Utils::File do
         Utils::File.safe_join("/tmp/node_modules", "")
       end
     end
+
+    it "rejects a symlink ancestor even when the remaining path is missing" do
+      dir = Path.new(Dir.tempdir, "zap-safe-join-deep-#{Random::Secure.hex(4)}")
+      base = dir / "node_modules"
+      outside = dir / "outside"
+      begin
+        Dir.mkdir_p(base)
+        Dir.mkdir_p(outside)
+        File.symlink(outside, base / "linked")
+        expect_raises(Exception, /ancestor escapes/) do
+          Utils::File.safe_join(base, "linked/missing/file")
+        end
+      ensure
+        FileUtils.rm_rf(dir)
+      end
+    end
+  end
+
+  describe ".safe_relative" do
+    it "joins relative paths and rejects absolute ones" do
+      Utils::File.safe_relative("/tmp/project", "patches/a.patch").to_s.should eq("/tmp/project/patches/a.patch")
+      expect_raises(Exception, /relative/) do
+        Utils::File.safe_relative("/tmp/project", "/etc/passwd")
+      end
+      expect_raises(Exception, /escapes/) do
+        Utils::File.safe_relative("/tmp/project", "../outside.patch")
+      end
+    end
   end
 
   describe ".linkeable_ancestor?" do

@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+- **Install path containment.** Package names, bin targets, patch paths,
+  workspace globs and tarball cache paths are now joined under their owning
+  directory and rejected when they escape it. Windows device names, drive
+  separators and junctions are neutralized as well.
+- **Atomic project writes and crash safety.** The lockfile, installed state,
+  fingerprints, `package.json` edits, patch metadata, PnP runtime files and
+  tarball caches are written through a temporary file and a rename (with a
+  parent-directory fsync where supported). Concurrent installs of the same
+  project are serialized by a lock in the store; the lock no longer creates
+  an untracked file in the project root, and read-only projects/stores fall
+  back to `~/.zap/locks`.
+- **Stricter inputs.** Non-regular files (FIFOs, devices) are rejected where
+  project metadata and patches are read, and setuid/setgid bits are stripped
+  from package archives.
+- **Corrupt lockfiles are reported instead of silently regenerated.** An
+  unreadable or unparsable `zap.lock` now fails the install with a clear
+  message; delete the file and re-run to regenerate it.
+- **Workspaces must stay inside the project root.** Workspace globs that
+  resolve outside the project (including through a symlink) are rejected.
+- **Project metadata is never written through a symlink.** A symlinked
+  `package.json`, `zap.lock`, `.pnp.cjs` or patch file is replaced by a
+  regular file instead of writing through the link.
+- **HTTP/2 hardening.** Padded/priority frame payloads, duplicate
+  pseudo-headers, header-list limits, stream-slot timeouts and removed cache
+  bodies are handled without retries, hangs or over-allocation.
+
 ## v0.10.4
 
 - **Re-release with the sequential linker.** The v0.10.3 npm packages were

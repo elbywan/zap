@@ -23,7 +23,9 @@ module Utils::TarGzip
           # Any suspicious component falls back to the full sanitization.
           fast_path = name.starts_with?("package/") &&
                       !name.includes?("\\") && !name.includes?("..") && !name.includes?("/.") && !name.includes?("//") && !name.includes?(':')
-          fast_path = false if name.split('/').any? { |part| Utils::File.windows_reserved?(part) }
+          {% if flag?(:windows) %}
+            fast_path = false if name.split('/').any? { |part| Utils::File.windows_reserved?(part) }
+          {% end %}
           if fast_path
             file_path = Path.new(name.byte_slice(8))
           else

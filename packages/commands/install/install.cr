@@ -25,9 +25,18 @@ require "./linker/pnp"
 module Commands::Install
   Log = ::Log.for("zap.commands.install")
 
-  # Serializes installs for one project without putting a file inside
-  # node_modules (which can be removed and recreated during an install).
-  PROJECT_LOCK_FILE_NAME = ".zap-install.lock"
+  # Serializes installs for one project, keyed by its canonical path. The
+  # lock lives in the store (never in the project), and falls back to the
+  # user's ~/.zap/locks directory when the store is read-only.
+  private def self.project_lock_path(config : Core::Config) : Path
+    digest = Digest::SHA256.hexdigest(project_lock_identity(config))
+    Path.new(config.store_path) / "locks" / "project-#{digest}.lock"
+  end
+
+  private def self.home_project_lock_path(config : Core::Config) : Path
+    digest = Digest::SHA256.hexdigest(project_lock_identity(config))
+    Path.new(::File.expand_path("~/.zap/locks", home: true)) / "project-#{digest}.lock"
+  end
 
   def self.run(
     config : Core::Config,
@@ -76,14 +85,8 @@ module Commands::Install
       inferred_context = config.infer_context
       workspaces, config = inferred_context.workspaces, inferred_context.config
 
-      # Validate project filesystem links before strategy checks or any
-      # other operation can delete or traverse node_modules.
-      check_project_links(config, inferred_context)
-
       # Serialize project mutations: two installs must not interleave
       # lockfile/package.json writes or link into the same node_modules.
-      # A read-only project cannot create the root lock; fall back to the
-      # writable store so an up-to-date install still works.
       project_lock = open_project_lock(config)
 
       # Validate project filesystem links before strategy checks or any
@@ -335,7 +338,13 @@ module Commands::Install
     end
     paths.each do |path|
       if ::File.symlink?(path)
-        target = Path.new(::File.realpath(path))
+        # A dangling link has no target to validate; the install will repair
+        # or replace it instead of failing on a cryptic realpath error.
+        target = begin
+          Path.new(::File.realpath(path))
+        rescue
+          next
+        end
       elsif ::File.exists?(path)
         target = Path.new(::File.realpath(path))
       else
@@ -380,22 +389,24 @@ module Commands::Install
         end
       end
     end
-    path = Path.new(config.prefix) / PROJECT_LOCK_FILE_NAME
-    begin
-      if info = ::File.info?(path, follow_symlinks: false)
-        raise "#{path} must be a regular file" unless info.type.file?
-      end
-      file = ::File.open(path, "a")
-    rescue ex : ::File::AccessDeniedError
-      # The project root is read-only: keep the lock next to the store
-      # instead of making an otherwise no-op install fail.
-      digest = Digest::SHA256.hexdigest(::File.realpath(config.prefix))
-      fallback = Path.new(::File.expand_path("~/.zap/locks", home: true)) / "project-#{digest}.lock"
-      Utils::Directories.mkdir_p(fallback.dirname)
-      file = ::File.open(fallback, "a")
+    file = begin
+      open_lock_file(project_lock_path(config))
+    rescue ex : ::File::Error
+      # A read-only store (or one that disappeared) must not block an
+      # otherwise no-op install: keep the lock in the user's state dir.
+      Log.debug { "Cannot create the project lock in the store (#{ex.message}), using the home lock directory" }
+      open_lock_file(home_project_lock_path(config))
     end
     file.flock_exclusive
     file
+  end
+
+  private def self.open_lock_file(path : Path) : ::File
+    Utils::Directories.mkdir_p(path.dirname)
+    if info = ::File.info?(path, follow_symlinks: false)
+      raise "#{path} must be a regular file" unless info.type.file?
+    end
+    ::File.open(path, "a")
   end
 
   # -PRIVATE--------------------------- #
@@ -457,7 +468,7 @@ module Commands::Install
       patches.values.sort.each do |patch_file|
         digest.update("patch:")
         digest.update(patch_file)
-        patch_path = Path.new(patch_file).expand(Path.new(state.config.prefix))
+        patch_path = Utils::File.safe_relative(state.config.prefix, patch_file)
         digest.update(Utils::File.read_regular(patch_path)) if ::File.exists?(patch_path)
       end
     end
