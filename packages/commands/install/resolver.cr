@@ -71,7 +71,6 @@ module Commands::Install::Resolver
         !name_pattern.starts_with?('!') && ancestors.any? { |a| ::File.match?(name_pattern, a.name) }
       end))
 
-
       if version_or_alias.is_a?(Data::Package::Alias)
         version = version_or_alias.to_s
       else
@@ -480,14 +479,9 @@ module Commands::Install::Resolver
     rescue e
       if type != Data::Package::DependencyType::OptionalDependency && !metadata.try(&.optional)
         # Error unless the dependency is optional
-        if state.install_config.raise_on_failure
-          raise e
-        else
-          state.reporter.stop
-          package_in_error = "#{name}@#{version}"
-          state.reporter.error(e, package_in_error.colorize.bold.to_s)
-          exit Shared::Constants::ErrorCodes::RESOLVER_ERROR.to_i32
-        end
+        raise e if state.install_config.raise_on_failure
+        state.reporter.stop
+        raise PackageError.new("#{name}@#{version}", e, Shared::Constants::ErrorCodes::RESOLVER_ERROR.to_i32)
       end
     ensure
       # Report the package as resolved

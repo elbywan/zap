@@ -43,7 +43,14 @@ struct Store
   def store_file(filename : String, contents : IO | String)
     target_path = file_path(filename)
     Utils::Directories.mkdir_p(::File.dirname(target_path))
-    File.write(target_path, contents)
+    Utils::File.atomic_write(target_path) do |file|
+      case contents
+      when IO
+        IO.copy(contents, file)
+      else
+        file << contents
+      end
+    end
   end
 
   def unpack_and_store_tarball(package : Data::Package, io : IO)
@@ -62,11 +69,28 @@ struct Store
     key = "zap--tarball@#{tarball_url}"
     store_hash = Digest::SHA1.hexdigest(key)
     temp_path = Path.new(Dir.tempdir, store_hash)
-
-    unless Dir.exists?(temp_path)
-      Utils::TarGzip.download_and_unpack(tarball_url, temp_path)
+    if Dir.exists?(temp_path)
+      Utils::File.realpath_within!(temp_path, Dir.tempdir)
+      return temp_path
     end
-    temp_path
+
+    # Extract into a unique staging directory and publish it with a rename:
+    # a crash never leaves a partial cache directory, and concurrent
+    # resolutions of the same tarball URL do not interleave writes.
+    staging_path = Path.new(Dir.tempdir, "#{store_hash}.tmp-#{Utils::File.tempname}")
+    begin
+      Utils::TarGzip.download_and_unpack(tarball_url, staging_path)
+      begin
+        ::File.rename(staging_path, temp_path)
+      rescue ex : ::File::Error
+        # Another process won the race and published a complete directory.
+        # (The exact error differs by platform: AlreadyExists, NotEmpty…)
+        raise ex unless Dir.exists?(temp_path)
+      end
+      temp_path
+    ensure
+      FileUtils.rm_rf(staging_path) if Dir.exists?(staging_path)
+    end
   end
 
   def with_lock(package : Data::Package, config : Core::Config, &block)
@@ -124,7 +148,16 @@ struct Store
   private def sanitize_path(path : String) : String
     # Neutralize path separators and traversal components without mangling
     # legitimate names (e.g. "a..b" is preserved, ".." components are dropped)
-    path.split(/[\/\\]/).reject { |c| c == "." || c == ".." }.join("+")
+    components = path.split(/[\/\\]/).reject { |c| c == "." || c == ".." }
+    {% if flag?(:windows) %}
+      components = components.map do |component|
+        component = component.gsub(':', '_').rstrip(". ")
+        component = "_#{component}" if Utils::File.windows_reserved?(component)
+        component = "_" if component.empty?
+        component
+      end
+    {% end %}
+    components.join("+").gsub(':', '_')
   end
 
   private def init_package(package : Data::Package)
@@ -141,7 +174,8 @@ struct Store
   private def store_package_file(package : Data::Package, relative_file_path : String | Path, file_io : IO, permissions : Int64 = DEFAULT_CREATE_PERMISSIONS)
     file_path = package_path(package) / relative_file_path
     Utils::Directories.mkdir_p(file_path.dirname)
-    File.open(file_path, "w", perm: permissions.to_i32) do |file|
+    # Never preserve setuid/setgid bits from a package archive.
+    File.open(file_path, "w", perm: permissions.to_i32 & 0o777) do |file|
       IO.copy file_io, file
     end
   end

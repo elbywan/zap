@@ -11,6 +11,17 @@ require "./registry_clients"
 require "reporter/interactive"
 
 module Commands::Install
+  # An install failure with the package context attached. Resolver and linker
+  # workers raise this instead of terminating the process from a fiber, so the
+  # main install rescue can save state and report the error once.
+  class PackageError < Exception
+    getter exit_code : Int32
+
+    def initialize(package : String, cause : Exception, @exit_code : Int32)
+      super("#{package}: #{cause.message}", cause)
+    end
+  end
+
   record State,
     config : Core::Config,
     install_config : Install::Config,

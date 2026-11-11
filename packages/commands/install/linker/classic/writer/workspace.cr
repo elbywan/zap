@@ -7,7 +7,7 @@ class Commands::Install::Linker::Classic
       workspace = state.context.workspaces.not_nil!.find! { |w| w.package.name == dist.workspace }
       link_source = workspace.path
       install_folder = aliased_name || dependency.name
-      target_path = location.value.node_modules / install_folder
+      target_path = Utils::File.safe_join(location.value.node_modules, install_folder)
       exists = ::File.symlink?(target_path) && ::File.realpath(target_path) == ::File.realpath(link_source)
       if exists
         {nil, false}

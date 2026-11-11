@@ -4,7 +4,7 @@ class Commands::Install::Linker::Classic
   struct Writer::Tarball < Writer
     def install : InstallResult
       install_folder = aliased_name || dependency.name
-      target_path = location.value.node_modules / install_folder
+      target_path = Utils::File.safe_join(location.value.node_modules, install_folder)
       exists = Backend.package_already_installed?(dependency.key, target_path, state.installed_state, Patches.expected_hash(dependency, state: state))
       install_location = self.class.init_location(dependency, target_path, location)
 

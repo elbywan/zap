@@ -7,6 +7,7 @@ require "concurrency/data_structures/safe_set"
 require "concurrency/mutex"
 require "utils/macros"
 require "utils/converters"
+require "utils/file"
 # require "core/config"
 
 require "./alias"
@@ -43,6 +44,8 @@ class Data::Package
 
   def self.init(path : Path, *, append_filename : Bool = true, name_if_nil : String? = nil) : self
     full_path = append_filename ? path / "package.json" : path
+    info = ::File.info?(full_path)
+    raise "Unable to read package.json at #{full_path}: not a regular file" unless info && info.type.file?
     File.open(full_path) do |io|
       self.from_json(io).tap { |instance|
         if instance.name?.nil? && name_if_nil
@@ -60,7 +63,7 @@ class Data::Package
 
   def self.init?(path : Path, *, append_filename : Bool = true) : self | Nil
     full_path = append_filename ? path / "package.json" : path
-    return nil unless File.exists?(full_path)
+    return nil unless Utils::File.regular_file?(full_path)
     File.open(full_path) do |io|
       return self.from_json(io)
     end

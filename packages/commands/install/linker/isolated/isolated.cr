@@ -102,8 +102,8 @@ class Commands::Install::Linker::Isolated < Commands::Install::Linker::Base
           end
         end
 
-        install_path = @modules_store / package_folder / "node_modules"
-        package_path = install_path / package.name
+        install_path = Utils::File.safe_join(@modules_store, package_folder, "node_modules")
+        package_path = Utils::File.safe_join(install_path, package.name)
 
         if package.package_extensions_updated
           Log.debug { "(#{package.key}) Package extensions updated, removing old folder '#{install_path}'…" }
@@ -195,12 +195,17 @@ class Commands::Install::Linker::Isolated < Commands::Install::Linker::Base
       next unless source
 
       # Link it to the parent package
-      target = install_path / name
+      target = Utils::File.safe_join(install_path, name)
       Log.debug { "(#{package.is_a?(Data::Package) ? package.key : package.name}) Linking #{dependency.key}: #{source} -> #{target}" }
       symlink(source, target)
 
       # Link binaries
-      link_binaries(dependency, package_path: target, target_node_modules: install_path)
+      link_binaries(
+        dependency,
+        package_path: target,
+        target_node_modules: install_path,
+        allow_outside: package.is_a?(Data::Package) && package.kind.link?
+      )
     end
 
     if package.is_a?(Data::Package)
@@ -253,25 +258,30 @@ class Commands::Install::Linker::Isolated < Commands::Install::Linker::Base
     prune_workspace_orphans(@hoisted_store, unlink_binaries: false)
   end
 
-  protected def link_binaries(package : Data::Package, *, package_path : Path, target_node_modules : Path)
+  protected def link_binaries(package : Data::Package, *, package_path : Path, target_node_modules : Path, allow_outside = false)
     if bin = package.bin
       return if bin.is_a?(String) && bin.empty?
       base_bin_path = target_node_modules / ".bin"
       Utils::Directories.mkdir_p(base_bin_path)
+      unless package.kind.link? || package.kind.workspace? || allow_outside
+        Utils::File.realpath_within!(base_bin_path, state.config.prefix)
+      end
       if bin.is_a?(Hash)
         bin.each do |name, path|
-          bin_name = name.split("/").last
-          bin_path = Utils::File.join(base_bin_path, bin_name)
+          bin_name = Utils::File.bin_name(name)
+          next unless bin_name
+          bin_path = Utils::File.safe_join(base_bin_path, bin_name)
           File.delete?(bin_path)
-          File.symlink(Path.new(path).expand(package_path), bin_path)
+          File.symlink(Utils::File.safe_bin_path(package_path, path), bin_path)
           Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
         end
       else
-        bin_name = package.name.split("/").last
-        bin_path = Utils::File.join(base_bin_path, bin_name)
-        File.delete?(bin_path)
-        File.symlink(Path.new(bin).expand(package_path), bin_path)
-        Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
+        if bin_name = Utils::File.bin_name(package.name)
+          bin_path = Utils::File.safe_join(base_bin_path, bin_name)
+          File.delete?(bin_path)
+          File.symlink(Utils::File.safe_bin_path(package_path, bin), bin_path)
+          Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
+        end
       end
     end
   end
@@ -304,36 +314,34 @@ class Commands::Install::Linker::Isolated < Commands::Install::Linker::Base
   end
 
   private def hoist_package(package : Data::Package, install_folder : Path)
+    public_path = Utils::File.safe_join(@node_modules, package.name)
+    hoisted_path = Utils::File.safe_join(@hoisted_store, package.name)
     if @public_hoist_patterns.any?(&.=~ package.name)
       # Hoist to the root node_modules folder
       unless state.main_package.has_dependency?(package.name)
-        Log.debug { "(#{package.key}) Publicly hoisting module: #{install_folder} <- #{@node_modules / package.name}" }
-        symlink(install_folder, @node_modules / package.name)
+        Log.debug { "(#{package.key}) Publicly hoisting module: #{install_folder} <- #{public_path}" }
+        symlink(install_folder, public_path)
       end
       # Remove regular hoisted link if it exists
-      deleted = Utils::File.delete_file_or_dir?(@hoisted_store / package.name)
-      Log.debug { "(#{package.key}) Removed hoisted link at: #{@hoisted_store / package.name}" if deleted }
-      # Log.debug { "(#{package.key}) No hoisted link found at: #{@hoisted_store / package.name}" unless deleted }
+      deleted = Utils::File.delete_file_or_dir?(hoisted_path)
+      Log.debug { "(#{package.key}) Removed hoisted link at: #{hoisted_path}" } if deleted
     elsif @hoist_patterns.any?(&.=~ package.name)
       # Hoist to the .store/node_modules folder
-      Log.debug { "(#{package.key}) Hoisting module: #{install_folder} <- #{@hoisted_store / package.name}" }
-      symlink(install_folder, @hoisted_store / package.name)
+      Log.debug { "(#{package.key}) Hoisting module: #{install_folder} <- #{hoisted_path}" }
+      symlink(install_folder, hoisted_path)
       # Remove public hoisted link if it exists
       unless state.main_package.has_dependency?(package.name)
-        deleted = Utils::File.delete_file_or_dir?(@node_modules / package.name)
-        Log.debug { "(#{package.key}) Removed publicly hoisted link at: #{@node_modules / package.name}" if deleted }
+        deleted = Utils::File.delete_file_or_dir?(public_path)
+        Log.debug { "(#{package.key}) Removed publicly hoisted link at: #{public_path}" } if deleted
       end
-      # Log.debug { "(#{package.key}) No publicly hoisted link found at: #{@node_modules / package.name}" unless deleted }
     else
       # Remove any existing hoisted link
       unless state.main_package.has_dependency?(package.name)
-        deleted = Utils::File.delete_file_or_dir?(@node_modules / package.name)
-        Log.debug { "(#{package.key}) Removing publicly hoisted link at: #{@node_modules / package.name}" if deleted }
+        deleted = Utils::File.delete_file_or_dir?(public_path)
+        Log.debug { "(#{package.key}) Removing publicly hoisted link at: #{public_path}" } if deleted
       end
-      # Log.debug { "(#{package.key}) No publicly hoisted link found at: #{@node_modules / package.name}" unless deleted }
-      deleted = Utils::File.delete_file_or_dir?(@hoisted_store / package.name)
-      Log.debug { "(#{package.key}) Removing hoisted link at: #{@hoisted_store / package.name}" if deleted }
-      # Log.debug { "(#{package.key}) No hoisted link found at: #{@hoisted_store / package.name}" unless deleted }
+      deleted = Utils::File.delete_file_or_dir?(hoisted_path)
+      Log.debug { "(#{package.key}) Removing hoisted link at: #{hoisted_path}" } if deleted
     end
   end
 end

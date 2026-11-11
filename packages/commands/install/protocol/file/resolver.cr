@@ -51,17 +51,29 @@ struct Commands::Install::Protocol::File::Resolver < Commands::Install::Protocol
   end
 
   protected def self.extract_tarball_to_temp(tar_path, temp_path)
-    unless Dir.exists?(temp_path)
+    if Dir.exists?(temp_path)
+      Utils::File.realpath_within!(temp_path, Dir.tempdir)
+      return
+    end
+    staging_path = Path.new("#{temp_path}.tmp-#{Utils::File.tempname}")
+    begin
       ::File.open(tar_path) do |io|
         Utils::TarGzip.unpack(io) do |entry, file_path, io|
           if (entry.flag === Crystar::DIR)
-            Utils::Directories.mkdir_p(temp_path / file_path)
+            Utils::Directories.mkdir_p(staging_path / file_path)
           elsif (entry.flag === Crystar::REG)
-            Utils::Directories.mkdir_p(temp_path / file_path.dirname)
-            ::File.write(temp_path / file_path, io)
+            Utils::Directories.mkdir_p((staging_path / file_path).dirname)
+            ::File.write(staging_path / file_path, io, perm: entry.mode.to_i32 & 0o777)
           end
         end
       end
+      begin
+        ::File.rename(staging_path, temp_path)
+      rescue ex : ::File::Error
+        raise ex unless Dir.exists?(temp_path)
+      end
+    ensure
+      FileUtils.rm_rf(staging_path) if Dir.exists?(staging_path)
     end
   end
 end

@@ -161,16 +161,12 @@ class Commands::Install::Linker::Classic < Commands::Install::Linker::Base
           )
         end
       rescue e
-        if state.install_config.raise_on_failure
-          raise e
-        else
-          state.reporter.stop
-          parent_path = dependency_item.location_node.node_modules
-          ancestors_str = dependency_item.ancestors ? dependency_item.ancestors.map { |a| "#{a.name}@#{a.version}" }.join("~>") : ""
-          package_in_error = dependency ? "#{dependency_item.alias.try &.+(":")}#{dependency.name}@#{dependency.version}" : ""
-          state.reporter.error(e, "#{package_in_error.colorize.bold} (#{ancestors_str}) at #{parent_path.colorize.dim}")
-          exit Shared::Constants::ErrorCodes::LINKER_ERROR.to_i32
-        end
+        raise e if state.install_config.raise_on_failure
+        state.reporter.stop
+        parent_path = dependency_item.location_node.node_modules
+        ancestors_str = dependency_item.ancestors ? dependency_item.ancestors.map { |a| "#{a.name}@#{a.version}" }.join("~>") : ""
+        package_in_error = dependency ? "#{dependency_item.alias.try &.+(":")}#{dependency.name}@#{dependency.version}" : ""
+        raise PackageError.new("#{package_in_error} (#{ancestors_str}) at #{parent_path}", e, Shared::Constants::ErrorCodes::LINKER_ERROR.to_i32)
       end
     end
   end
@@ -214,31 +210,39 @@ class Commands::Install::Linker::Classic < Commands::Install::Linker::Base
     # An empty bin string means no binaries (npm/yarn parity)
     if bin = dependency.bin
       if !(bin.is_a?(String) && bin.empty?)
-      bin_folder_path = state.config.bin_path
-      is_direct_dependency = ancestors.size <= 1
-      if !is_direct_dependency && state.install_config.strategy.classic_shallow?
-        bin_folder_path = location.node_modules / ".bin"
-      end
-      Utils::Directories.mkdir_p(bin_folder_path)
-      if bin.is_a?(Hash)
-        bin.each do |name, path|
-          bin_name = name.split("/").last
-          bin_path = Utils::File.join(bin_folder_path, bin_name)
-          if !File.exists?(bin_path) || is_direct_dependency
-            File.delete?(bin_path)
-            File.symlink(Path.new(path).expand(install_folder), bin_path)
-            Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
+        bin_folder_path = state.config.bin_path
+        is_direct_dependency = ancestors.size <= 1
+        if !is_direct_dependency && state.install_config.strategy.classic_shallow?
+          bin_folder_path = location.node_modules / ".bin"
+        end
+        Utils::Directories.mkdir_p(bin_folder_path)
+        # A file: link's own tree lives outside the project by design; its
+        # descendants may write bins there, but everything else stays inside.
+        inside_linked_tree = ancestors.any? { |ancestor| ancestor.kind.link? }
+        unless dependency.kind.link? || dependency.kind.workspace? || inside_linked_tree
+          Utils::File.realpath_within!(bin_folder_path, state.config.prefix)
+        end
+        if bin.is_a?(Hash)
+          bin.each do |name, path|
+            bin_name = Utils::File.bin_name(name)
+            next unless bin_name
+            bin_path = Utils::File.safe_join(bin_folder_path, bin_name)
+            if !File.exists?(bin_path) || is_direct_dependency
+              File.delete?(bin_path)
+              File.symlink(Utils::File.safe_bin_path(install_folder, path), bin_path)
+              Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
+            end
+          end
+        else
+          if bin_name = Utils::File.bin_name(dependency.name)
+            bin_path = Utils::File.safe_join(bin_folder_path, bin_name)
+            if !File.exists?(bin_path) || is_direct_dependency
+              File.delete?(bin_path)
+              File.symlink(Utils::File.safe_bin_path(install_folder, bin), bin_path)
+              Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
+            end
           end
         end
-      else
-        bin_name = dependency.name.split("/").last
-        bin_path = Utils::File.join(bin_folder_path, bin_name)
-        if !File.exists?(bin_path) || is_direct_dependency
-          File.delete?(bin_path)
-          File.symlink(Path.new(bin).expand(install_folder), bin_path)
-          Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
-        end
-      end
       end
     end
 

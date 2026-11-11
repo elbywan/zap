@@ -21,11 +21,23 @@ module Utils::TarGzip
           # dot or empty components; the split/reject/join below allocates
           # several objects per entry (~116k entries per cold install).
           # Any suspicious component falls back to the full sanitization.
-          if name.starts_with?("package/") &&
-             !name.includes?("\\") && !name.includes?("..") && !name.includes?("/.") && !name.includes?("//")
+          fast_path = name.starts_with?("package/") &&
+                      !name.includes?("\\") && !name.includes?("..") && !name.includes?("/.") && !name.includes?("//") && !name.includes?(':')
+          {% if flag?(:windows) %}
+            fast_path = false if name.split('/').any? { |part| Utils::File.windows_reserved?(part) }
+          {% end %}
+          if fast_path
             file_path = Path.new(name.byte_slice(8))
           else
             components = name.split(/[\/\\]/)[1..-1].reject { |c| c == "." || c == ".." || c.empty? }
+            {% if flag?(:windows) %}
+              components = components.map do |c|
+                c = c.gsub(':', '_').rstrip(". ")
+                c = "_#{c}" if Utils::File.windows_reserved?(c)
+                c = "_" if c.empty?
+                c
+              end
+            {% end %}
             file_path = Path.new(components.join("/"))
           end
           yield entry, file_path, entry.io
@@ -41,7 +53,7 @@ module Utils::TarGzip
         Utils::Directories.mkdir_p(destination / file_path)
       elsif (entry.flag === Crystar::REG)
         Utils::Directories.mkdir_p(destination / file_path.dirname)
-        ::File.write(destination / file_path, io, perm: entry.mode.to_i32)
+        ::File.write(destination / file_path, io, perm: entry.mode.to_i32 & 0o777)
       end
     end
   end
@@ -70,7 +82,7 @@ module Utils::TarGzip
       # An explicit *mode* overrides the on-disk permissions (used by the
       # pack command to normalize the entry modes); the mod_time defaults
       # to the epoch, keeping the archive deterministic.
-      mode: mode || info.permissions.to_i64,
+      mode: (mode || info.permissions.to_i64) & 0o777,
       size: info.size,
       flag: Crystar::REG.ord.to_u8,
     )

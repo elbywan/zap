@@ -50,6 +50,8 @@ class Fetch::HTTP2Transport
       client = pick_client
       begin
         break block.call(client)
+      rescue e : ::HTTP2::StreamSlotTimeout
+        raise e
       rescue e : IO::Error | ::HTTP2::Error
         replace_client(client)
         # Jittered backoff: after a reset the in-flight requests all fail
@@ -181,5 +183,4 @@ class Fetch::HTTP2Transport
   def close
     @clients.each(&.close)
   end
-
 end

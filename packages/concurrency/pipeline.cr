@@ -78,6 +78,8 @@ class Concurrency::Pipeline
   end
 
   class PipelineException < Exception
+    getter exceptions : SafeArray(Exception)
+
     def initialize(@exceptions : SafeArray(Exception))
       super(exceptions.map(&.message).join("\n  • "))
     end

@@ -1,5 +1,6 @@
 require "json"
 require "utils/misc"
+require "utils/file"
 require "data/package"
 
 # `zap catalog list`, `zap catalog add`, `zap catalog remove`: manage the
@@ -74,7 +75,7 @@ module Commands::Catalog
   # Edits the catalog entries and writes the zap section back in place.
   private def self.update_entries(prefix : String, catalog_name : String, &) : Nil
     path = Path.new(prefix) / "package.json"
-    root = JSON.parse(File.read(path)).as_h
+    root = JSON.parse(Utils::File.read_regular(path)).as_h
     zap_h = root["zap"]?.try(&.as_h) || {} of String => JSON::Any
     root["zap"] = JSON::Any.new(zap_h)
 
@@ -87,7 +88,7 @@ module Commands::Catalog
       end
 
     yield entries
-    File.write(path, JSON::Any.new(root).to_pretty_json)
+    Utils::File.atomic_write(path, JSON::Any.new(root).to_pretty_json)
   end
 
   # The directories (the project and its workspace members) whose manifests

@@ -3,6 +3,7 @@ require "json"
 require "log"
 require "concurrency/pipeline"
 require "extensions/dir"
+require "utils/file"
 
 module Backend
   Log = ::Log.for("zap.backend")
@@ -113,12 +114,17 @@ module Backend
   # package path.
   module InstalledState
     def self.load(path : Path) : Hash(String, InstalledEntry)
-      unless File.exists?(path)
+      info = ::File.info?(path)
+      unless info
         # First run with the state file: seed it from the old per-package
         # .zap.metadata markers (key only, patches were not recorded), so
         # upgrading does not re-link and re-script the whole tree. The
         # patched packages re-link anyway via the hash mismatch.
         return seed_from_legacy_markers(path.parent)
+      end
+      unless info.type.file?
+        Log.warn { "Ignoring non-regular installed state at #{path}" }
+        return Hash(String, InstalledEntry).new
       end
       hash = Hash(String, InstalledEntry).new
       JSON.parse(File.read(path)).as_h.each do |key, value|
@@ -132,16 +138,17 @@ module Backend
     end
 
     def self.save(path : Path, entries : Hash(String, InstalledEntry)) : Nil
-      Utils::Directories.mkdir_p(path.dirname)
-      File.write(path, entries.to_json)
+      Utils::File.atomic_write(path) { |io| entries.to_json(io) }
     end
 
     # Reads the legacy .zap.metadata markers under *root* (the key written
     # by pre-state installs), removes them, and returns the seeded entries.
     private def self.seed_from_legacy_markers(root : Path) : Hash(String, InstalledEntry)
       entries = Hash(String, InstalledEntry).new
+      return entries unless ::File.directory?(root)
+      root_real = Utils::File.realpath?(root) || return entries
       begin
-        walk(root) do |dir, key|
+        walk(root, root_real) do |dir, key|
           entries[dir.to_s] = InstalledEntry.new(key, nil)
           File.delete?(dir / ".zap.metadata")
         end
@@ -151,15 +158,17 @@ module Backend
       entries
     end
 
-    private def self.walk(dir : Path, &block : (Path, String) -> Nil) : Nil
+    private def self.walk(dir : Path, root : Path, &block : (Path, String) -> Nil) : Nil
+      relative = (Utils::File.realpath?(dir) || return).relative_to?(root)
+      return if relative.nil? || relative.parts.first? == ".."
       Dir.each_child(dir) do |name|
         path = dir / name
-        # Do not follow symlinks: file:/workspace: packages point at their
-        # sources, which can be huge and cyclic.
-        if File.directory?(path) && !File.symlink?(path)
-          walk(path, &block)
-        elsif name == ".zap.metadata"
-          block.call(dir, File.read(path))
+        # Do not follow symlinks/junctions: file:/workspace: packages point
+        # at their sources, which can be huge, cyclic or outside the project.
+        if File.directory?(path) && !File.symlink?(path) && !Utils::File.junction?(path)
+          walk(path, root, &block)
+        elsif name == ".zap.metadata" && Utils::File.regular_file?(path)
+          block.call(dir, Utils::File.read_regular(path))
         end
       end
     end

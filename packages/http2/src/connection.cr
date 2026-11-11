@@ -1,6 +1,11 @@
 # An HTTP/2 connection (RFC 9113): the client preface, the SETTINGS
 # exchange, the frame send/receive loop, and the flow control.
 module HTTP2
+  # A stream-slot wait timeout is a protocol/peer condition, not a transient
+  # network failure; the HTTP/2 transport must not retry it.
+  class StreamSlotTimeout < IO::TimeoutError
+  end
+
   class Connection
     enum Type
       Client
@@ -18,7 +23,8 @@ module HTTP2
     # The fallback cap for the concurrent streams when the peer does not
     # advertise SETTINGS_MAX_CONCURRENT_STREAMS: keep the multiplexing
     # bounded so proxies (npm's edge) do not reject the requests.
-    DEFAULT_STREAM_CAP = 100
+    DEFAULT_STREAM_CAP  = 100
+    STREAM_SLOT_TIMEOUT = 30.seconds
 
     def initialize(@io : IO, @type : Type)
       @local_settings = Settings.new
@@ -54,7 +60,8 @@ module HTTP2
     # Blocks until a stream slot is available: the peer's
     # SETTINGS_MAX_CONCURRENT_STREAMS bounds how many requests may be in
     # flight at once.
-    def acquire_stream_slot : Nil
+    def acquire_stream_slot(timeout = STREAM_SLOT_TIMEOUT) : Nil
+      deadline = Time.instant + timeout
       loop do
         raise IO::Error.new("the connection is closed") if closed?
         acquired = @stream_mutex.synchronize do
@@ -66,6 +73,9 @@ module HTTP2
           end
         end
         return if acquired
+        if Time.instant >= deadline
+          raise StreamSlotTimeout.new("timed out waiting for an HTTP/2 stream slot")
+        end
         sleep 1.millisecond
       end
     end
@@ -176,7 +186,7 @@ module HTTP2
           payload = frame.payload || Bytes.empty
           consume_inbound_window(stream, payload.size)
           begin
-            stream.receive_data(payload)
+            stream.receive_data(frame.data_payload)
           rescue Channel::ClosedError
             # The reader abandoned the stream: drop the late data.
           end
@@ -210,21 +220,27 @@ module HTTP2
       has_method = false
       has_scheme = false
       has_path = false
+      has_authority = false
       decoded.each do |name, value|
         if name.starts_with?(':')
           raise Error.new("pseudo-header #{name} after a regular header") if seen_regular
           case name
           when ":status"
+            raise Error.new("duplicate :status") if has_status
             raise Error.new("invalid :status value: #{value}") unless value.matches?(/\A\d{3}\z/)
             has_status = true
           when ":method"
+            raise Error.new("duplicate :method") if has_method
             has_method = true
           when ":scheme"
+            raise Error.new("duplicate :scheme") if has_scheme
             has_scheme = true
           when ":path"
+            raise Error.new("duplicate :path") if has_path
             has_path = true
           when ":authority"
-            # optional for the client's requests
+            raise Error.new("duplicate :authority") if has_authority
+            has_authority = true
           else
             raise Error.new("unknown pseudo-header #{name}")
           end
@@ -243,15 +259,18 @@ module HTTP2
     # The full HEADERS payload, following the CONTINUATION frames until
     # END_HEADERS (RFC 9113 section 6.2).
     private def read_headers_payload(frame : Frame) : Bytes
-      payload = frame.payload || Bytes.empty
+      payload = frame.headers_payload
       limit = local_settings.max_header_list_size
+      raise Error.new("header block exceeds SETTINGS_MAX_HEADER_LIST_SIZE") if limit && payload.size > limit
       until frame.end_headers?
         continuation = Frame.parse(@io, local_settings.max_frame_size) || raise Error.new("truncated CONTINUATION frame")
-        unless continuation.type == Frame::Type::CONTINUATION && continuation.stream_id == frame.stream_id
+        unless continuation.type == Frame::Type::CONTINUATION && continuation.stream_id == frame.stream_id &&
+               !continuation.padded? && !continuation.priority?
           raise Error.new("expected a CONTINUATION frame for stream #{frame.stream_id}")
         end
-        payload = payload + (continuation.payload || Bytes.empty)
-        raise Error.new("header block exceeds SETTINGS_MAX_HEADER_LIST_SIZE") if limit && payload.size > limit
+        next_payload = continuation.payload || Bytes.empty
+        raise Error.new("header block exceeds SETTINGS_MAX_HEADER_LIST_SIZE") if limit && payload.size > limit - next_payload.size
+        payload = payload + next_payload
         frame = continuation
       end
       payload

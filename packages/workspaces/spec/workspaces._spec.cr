@@ -1,3 +1,5 @@
+require "file_utils"
+require "random/secure"
 require "spec"
 require "../workspaces"
 
@@ -74,6 +76,24 @@ describe Workspaces, tags: "workspaces" do
         dependents: Set{WORKSPACE_B, WORKSPACE_A},
       ),
     })
+  end
+
+  it "rejects workspace paths outside the project root" do
+    dir = Path.new(Dir.tempdir, "zap-workspaces-#{Random::Secure.hex(4)}")
+    project = dir / "project"
+    outside = dir / "outside"
+    begin
+      Dir.mkdir_p(project)
+      Dir.mkdir_p(outside)
+      File.write(project / "package.json", %({"name":"app","version":"1.0.0","workspaces":["../outside"]}))
+      File.write(outside / "package.json", %({"name":"outside","version":"1.0.0"}))
+      package = Data::Package.init(project)
+      expect_raises(Exception, /escapes the project root/) do
+        Workspaces.new(package, project)
+      end
+    ensure
+      FileUtils.rm_rf(dir)
+    end
   end
 
   it "should raise when a workspace has cycles" do
@@ -170,5 +190,4 @@ describe Workspaces, tags: "workspaces" do
       workspaces.get!("a", "workspace:^2.0.0")
     end
   end
-
 end

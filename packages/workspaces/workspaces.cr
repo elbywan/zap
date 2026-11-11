@@ -3,6 +3,7 @@ require "shared/constants"
 require "data/package"
 require "semver"
 require "utils/glob"
+require "utils/file"
 require "./workspace"
 require "./relationships"
 
@@ -83,8 +84,17 @@ class Workspaces
       pattern += "/" if pattern.ends_with?("**")
       pattern
     }
+    root = Path.new(workspace_root).normalize
+    root_real = Utils::File.realpath?(root) || root
     Utils::Glob.glob(patterns, exclude: ["node_modules", ".git"]) do |path|
-      path = Path.new(path)
+      path = Path.new(path).normalize
+      raise "Workspace path is a directory junction: #{path}" if Utils::File.junction?(path)
+      path_real = Utils::File.realpath?(path) || path
+      raise "Workspace path resolves to a directory junction: #{path}" if Utils::File.junction?(path_real)
+      relative = path_real.relative_to?(root_real)
+      if relative.nil? || relative.parts.first? == ".."
+        raise "Workspace path escapes the project root: #{path}"
+      end
       if package = Data::Package.init?(path)
         workspaces << Workspace.new(
           package: package,

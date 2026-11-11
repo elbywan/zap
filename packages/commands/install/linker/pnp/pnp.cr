@@ -44,19 +44,20 @@ class Commands::Install::Linker::PnP < Commands::Install::Linker::Base
       )
     end
 
-    # Write manifest and runtime files
-    ::File.open(prefix / ".pnp.data.json", "w") do |fd|
+    # Write manifest and runtime files atomically: a crash must not leave a
+    # corrupt .pnp runtime that an up-to-date fingerprint would skip.
+    Utils::File.atomic_write(prefix / ".pnp.data.json") do |fd|
       @manifest.to_pretty_json(fd)
     end
-    ::File.write(prefix / ".pnp.cjs", Runtime::CJS)
-    ::File.write(prefix / ".pnp.loader.mjs", Runtime::MJS)
+    Utils::File.atomic_write(prefix / ".pnp.cjs", Runtime::CJS)
+    Utils::File.atomic_write(prefix / ".pnp.loader.mjs", Runtime::MJS)
   end
 
   private def install_package(
     package_or_root : Data::Package | Data::Lockfile::Root,
     *,
     ancestors : Ancestors,
-    workspace_or_main_package : (Workspaces::Workspace | Data::Package)? = nil
+    workspace_or_main_package : (Workspaces::Workspace | Data::Package)? = nil,
   ) : {reference: PackageReference, path: (Path | String)?}?
     resolved_peers = nil
     overrides = nil
@@ -113,7 +114,7 @@ class Commands::Install::Linker::PnP < Commands::Install::Linker::Base
         else
           package.hashed_key
         end
-      install_path = @modules_store / package_subpath
+      install_path = Utils::File.safe_join(@modules_store, package_subpath)
       # The pnp resolver package location
       package_location =
         if is_virtual
@@ -311,20 +312,23 @@ class Commands::Install::Linker::PnP < Commands::Install::Linker::Base
     if bin = package.bin
       target_bin_path = target / "node_modules" / ".bin"
       Utils::Directories.mkdir_p(target_bin_path)
+      Utils::File.realpath_within!(target_bin_path, state.config.prefix) unless package.kind.link? || package.kind.workspace?
       if bin.is_a?(Hash)
         bin.each do |name, path|
-          bin_name = name.split("/").last
-          bin_path = Utils::File.join(target_bin_path, bin_name)
+          bin_name = Utils::File.bin_name(name)
+          next unless bin_name
+          bin_path = Utils::File.safe_join(target_bin_path, bin_name)
           File.delete?(bin_path)
-          File.symlink(Path.new(path).expand(package_path), bin_path)
+          File.symlink(Utils::File.safe_bin_path(package_path, path), bin_path)
           Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
         end
       else
-        bin_name = package.name.split("/").last
-        bin_path = Utils::File.join(target_bin_path, bin_name)
-        File.delete?(bin_path)
-        File.symlink(Path.new(bin).expand(package_path), bin_path)
-        Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
+        if bin_name = Utils::File.bin_name(package.name)
+          bin_path = Utils::File.safe_join(target_bin_path, bin_name)
+          File.delete?(bin_path)
+          File.symlink(Utils::File.safe_bin_path(package_path, bin), bin_path)
+          Utils::Macros.swallow_error { File.chmod(bin_path, 0o755) }
+        end
       end
     end
   end

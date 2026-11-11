@@ -1,5 +1,6 @@
 require "log"
 require "data/package"
+require "utils/file"
 require "../state"
 require "concurrency/data_structures/safe_hash"
 
@@ -49,7 +50,7 @@ module Commands::Install::Linker
       dependencies.each do |(name, version_or_alias, root_name)|
         workspace = state.context.workspaces.try &.find { |w| w.package.name == root_name }
         node_modules = workspace.try(&.path./ "node_modules") || Path.new(state.config.node_modules)
-        package_path = node_modules / name
+        package_path = Utils::File.safe_join(node_modules, name)
         if File.directory?(package_path)
           package = Data::Package.init?(package_path)
           version = version_or_alias.is_a?(String) ? version_or_alias : version_or_alias.version
@@ -73,7 +74,15 @@ module Commands::Install::Linker
       end
     end
 
-    private def prune_workspace_orphans(modules_directory : Path, *, unlink_binaries : Bool = true)
+    private def prune_workspace_orphans(modules_directory : Path, *, unlink_binaries : Bool = true, root : Path? = nil)
+      info = ::File.info?(modules_directory, follow_symlinks: false)
+      return unless info.try(&.type.directory?)
+      return if Utils::File.junction?(modules_directory)
+      root ||= Utils::File.realpath?(state.config.prefix) || return
+      real = Utils::File.realpath?(modules_directory)
+      return unless real
+      relative = real.relative_to?(root)
+      return if relative.nil? || relative.parts.first? == ".."
       if Dir.exists?(modules_directory)
         remaining = 0
         # For each hoisted or direct dependency
@@ -82,10 +91,10 @@ module Commands::Install::Linker
 
           if package_dir.starts_with?('@')
             # Scoped package - recurse on children
-            prune_workspace_orphans(package_path, unlink_binaries: unlink_binaries)
+            prune_workspace_orphans(package_path, unlink_binaries: unlink_binaries, root: root)
             remaining += 1 if Dir.exists?(package_path)
           else
-            if should_prune_orphan?(package_path)
+            if should_prune_orphan?(package_path, root)
               Log.debug { "Pruning orphan package: #{package_dir}" }
               if unlink_binaries
                 package = Data::Package.init?(package_path)
@@ -109,7 +118,18 @@ module Commands::Install::Linker
       end
     end
 
-    private def should_prune_orphan?(package_path : Path) : Bool
+    private def should_prune_orphan?(package_path : Path, root : Path) : Bool
+      # A symlink entry can be removed without touching its target, and its
+      # target may be gone (a deleted workspace): do not require realpath to
+      # succeed for it. Junctions are resolved conservatively below.
+      return false if Utils::File.junction?(package_path)
+      info = ::File.info?(package_path, follow_symlinks: false)
+      unless info.try(&.type.symlink?)
+        real = Utils::File.realpath?(package_path)
+        return false unless real
+        relative = real.relative_to?(root)
+        return false if relative.nil? || relative.parts.first? == ".."
+      end
       remove_child = false
       # The installed state records the key that was linked at this path
       if entry = state.installed_state[package_path.to_s]?
@@ -124,14 +144,16 @@ module Commands::Install::Linker
       if bin = package.bin
         if bin.is_a?(Hash)
           bin.each do |name, path|
-            bin_name = name.split("/").last
-            bin_path = Utils::File.join(state.config.bin_path, bin_name)
+            bin_name = Utils::File.bin_name(name)
+            next unless bin_name
+            bin_path = Utils::File.safe_join(state.config.bin_path, bin_name)
             File.delete?(bin_path)
           end
         else
-          bin_name = package.name.split("/").last
-          bin_path = Utils::File.join(state.config.bin_path, bin_name)
-          File.delete?(bin_path)
+          if bin_name = Utils::File.bin_name(package.name)
+            bin_path = Utils::File.safe_join(state.config.bin_path, bin_name)
+            File.delete?(bin_path)
+          end
         end
       end
     end

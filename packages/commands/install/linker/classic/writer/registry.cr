@@ -38,7 +38,7 @@ class Commands::Install::Linker::Classic
     # node_modules: it is only valid while the dependency is installed at
     # the parent's own level, and the hoist above just decided otherwise.
     private def remove_stale_copy(parent_location : LocationNode)
-      stale_path = parent_location.value.node_modules / (aliased_name || dependency.name)
+      stale_path = Utils::File.safe_join(parent_location.value.node_modules, aliased_name || dependency.name)
       return unless Dir.exists?(stale_path)
       package = Data::Package.init?(stale_path)
       if package
@@ -68,7 +68,7 @@ class Commands::Install::Linker::Classic
     end
 
     def install : InstallResult
-      installation_path = location.value.node_modules / (aliased_name || dependency.name)
+      installation_path = Utils::File.safe_join(location.value.node_modules, aliased_name || dependency.name)
       installed = Timings.measure(Timings::Phase::LinkBackend) do
         begin
           Backend.link(dependency: dependency, target: installation_path, store: state.store, backend: state.config.file_backend, pipeline: state.pipeline, installed_state: state.installed_state, patch_hash: Patches.expected_hash(dependency, state: state)) {

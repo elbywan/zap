@@ -7,6 +7,7 @@ require "semver"
 require "shared/constants"
 require "utils/macros"
 require "utils/converters"
+require "utils/file"
 require "concurrency/rwlock"
 require "concurrency/mutex"
 require "./package/overrides"
@@ -23,7 +24,6 @@ class Data::Lockfile
 
   enum ReadStatus
     FromDisk
-    Error
     NotFound
   end
 
@@ -66,7 +66,13 @@ class Data::Lockfile
     instance = uninitialized self
 
     # Try to read the lockfile in message pack format
-    if File.readable? lockfile_path
+    if info = ::File.info?(lockfile_path)
+      unless info.type.file?
+        raise "Lockfile at #{lockfile_path} must be a regular file"
+      end
+    end
+
+    if File::Info.readable?(lockfile_path)
       begin
         instance = self.from_msgpack(File.read(lockfile_path))
         instance.read_status = ReadStatus::FromDisk
@@ -77,15 +83,11 @@ class Data::Lockfile
           instance.read_status = ReadStatus::FromDisk
           instance.format = Format::YAML
         rescue ex_yaml
-          Log.warn { "Failed to parse lockfile at #{lockfile_path}" }
-          Log.debug { "MessagePack parse error: #{ex_msgpack.message}" }
-          Log.debug { "YAML parse error: #{ex_yaml.message}" }
-          instance = self.allocate
-          instance.read_status = ReadStatus::Error
-          instance.format = default_format
+          raise "Failed to parse lockfile at #{lockfile_path}: #{ex_yaml.message}\nThe lockfile may be corrupt. Delete it and run `zap i` again to regenerate it."
         end
       end
     else
+      raise "Lockfile at #{lockfile_path} exists but is not readable" if ::File.exists?(lockfile_path)
       instance = self.allocate
       instance.format = default_format
     end
@@ -200,7 +202,7 @@ class Data::Lockfile
 
   def write(format : Format? = nil)
     format ||= @format
-    File.open(@lockfile_path.to_s, "w") do |file|
+    Utils::File.atomic_write(@lockfile_path.not_nil!) do |file|
       self.serialize(file, format)
     end
   end
@@ -307,8 +309,8 @@ class Data::Lockfile
                  sorted = patches.to_a.sort!
                  ctx << sorted.to_json
                  sorted.each do |_, rel|
-                   patch_path = Path.new(rel).expand(prefix)
-                   ctx << File.read(patch_path).gsub("\r\n", "\n") if File.exists?(patch_path)
+                   patch_path = Utils::File.safe_relative(prefix, rel)
+                   ctx << Utils::File.read_regular(patch_path).gsub("\r\n", "\n") if File.exists?(patch_path)
                  end
                end.hexstring
              end

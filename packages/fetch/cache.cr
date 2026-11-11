@@ -149,12 +149,7 @@ class Fetch(T, Transport)
             Log.debug { "(#{key_str}) Cache hit (etag) - serving metadata from #{path}" }
             next path
           end
-        }.try do |path|
-          io = ::File.open(path)
-          @serializer.deserialize(io, path)
-        ensure
-          io.try &.close
-        end
+        }.try { |path| read_body(path) }
       end
 
       def get(key_str : String, &get_etag : -> String?) : T?
@@ -185,12 +180,15 @@ class Fetch(T, Transport)
               next path
             end
           end
-        }.try do |path|
-          io = ::File.open(path)
-          @serializer.deserialize(io, path)
-        ensure
-          io.try &.close
-        end
+        }.try { |path| read_body(path) }
+      end
+
+      private def read_body(path : Path) : T?
+        ::File.open(path) { |io| @serializer.deserialize(io, path) }
+      rescue ::File::NotFoundError
+        # The body was removed between File.readable? and File.open:
+        # a cache miss, not an install failure.
+        nil
       end
 
       def set(key_str : String, value : T, expiry : Time::Span? = nil, etag : String? = nil) : Nil

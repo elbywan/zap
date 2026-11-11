@@ -1,5 +1,7 @@
 require "dir"
 require "git/ignore"
+require "random/secure"
+require "./directories"
 
 module Utils::File
   def self.crawl(
@@ -47,7 +49,7 @@ module Utils::File
 
   # See: https://docs.npmjs.com/cli/v9/configuring-npm/package-json#files
   ALWAYS_INCLUDED = %w(/package.json /README.* /Readme.* /readme.* /LICENSE.* /License.* /license.* /LICENCE.* /Licence.* /licence.*)
-  ALWAYS_IGNORED  = %w(.git CVS .svn .hg .lock-wscript .wafpickle-N .*.swp .DS_Store ._* npm-debug.log .npmrc node_modules config.gypi *.orig package-lock.json)
+  ALWAYS_IGNORED  = %w(.git CVS .svn .hg .lock-wscript .wafpickle-N .*.swp .DS_Store ._* npm-debug.log .npmrc node_modules config.gypi *.orig package-lock.json .zap-install.lock)
 
   # Crawl a package and yield directories and files that are not ignored by git and included in the package.json files field.
   def self.crawl_package_files(directory : Path, &block : Path -> Bool | Nil)
@@ -97,6 +99,239 @@ module Utils::File
     paths.map(&.to_s).join(::Path::SEPARATORS[0])
   end
 
+  WINDOWS_RESERVED_NAMES  = %w(CON PRN AUX NUL COM1 COM2 COM3 COM4 COM5 COM6 COM7 COM8 COM9 LPT1 LPT2 LPT3 LPT4 LPT5 LPT6 LPT7 LPT8 LPT9)
+  WINDOWS_MOUNT_POINT_TAG = 0xA0000003_u32
+
+  # Windows device names are not valid file names, even with an extension.
+  def self.windows_reserved?(name : String) : Bool
+    {% if flag?(:windows) %}
+      base = name.upcase.split('.', 2)[0].rstrip(' ')
+      WINDOWS_RESERVED_NAMES.includes?(base)
+    {% else %}
+      false
+    {% end %}
+  end
+
+  # Resolves *path*, returning nil when it does not exist or cannot be read.
+  def self.realpath?(path : Path | String) : Path?
+    Path.new(::File.realpath(path))
+  rescue
+    nil
+  end
+
+  # Crystal resolves symlinks but not directory junctions on Windows. A
+  # validated path must not silently treat a junction as a regular child, so
+  # detect it (a reparse directory that is not a symlink) and fail closed.
+  {% if flag?(:windows) %}
+    def self.junction?(path : Path | String) : Bool
+      return false if ::File.symlink?(path)
+      handle = LibC.FindFirstFileW(path.to_s.to_utf16.to_unsafe, out data)
+      return false if handle == LibC::INVALID_HANDLE_VALUE
+      LibC.FindClose(handle)
+      data.dwReserved0 == WINDOWS_MOUNT_POINT_TAG
+    end
+  {% else %}
+    def self.junction?(path : Path | String) : Bool
+      false
+    end
+  {% end %}
+
+  # Joins untrusted path components under *base* and raises if the normalized
+  # result escapes it. Package names, versions and patch paths are untrusted.
+  def self.safe_join(base : Path | String, *parts : Path | String) : Path
+    # Fast path for the overwhelmingly common unscoped package name: it is
+    # already a single safe component, so no normalization/relative walk.
+    if parts.size == 1
+      name = parts[0].to_s
+      unless name.empty? || name == "." || name == ".." ||
+             name.includes?('/') || name.includes?('\\') || name.includes?(':') ||
+             windows_reserved?(name)
+        root = base.is_a?(Path) ? base : Path.new(base)
+        return checked_target(root / name, root)
+      end
+    end
+    raise "Cannot join an empty path component" if parts.any?(&.to_s.empty?)
+    {% if flag?(:windows) %}
+      if parts.any? { |part| part.to_s.split(/[\/\\]/).any? { |component| windows_reserved?(component) } }
+        raise "Path component is a Windows device name: #{parts.join(" / ")}"
+      end
+      if parts.any? { |part| part.to_s.includes?(':') }
+        raise "Path component contains a drive separator: #{parts.join(" / ")}"
+      end
+    {% end %}
+    root = Path.new(base).normalize
+    path = parts.reduce(root) { |acc, part| acc / part }.normalize
+    relative = path.relative_to?(root)
+    if relative.nil? || relative.parts.first?.in?("..", ".")
+      raise "Path escapes #{root}: #{path}"
+    end
+
+    # Reject an existing parent/ancestor that resolves outside the base.
+    # Checking only the immediate parent misses a symlink higher up when the
+    # remaining directories do not exist yet, so validate the deepest existing
+    # ancestor (the root itself when the tree is not created yet).
+    # The final component is allowed to be a symlink (file:/workspace links).
+    parent = Path.new(path.dirname)
+    root_real = resolve_base(root)
+    raise "Path ancestor is a junction under #{root}" if junction_ancestor?(parent, root)
+    if parent_real = realpath?(parent)
+      ensure_within!(parent_real, root_real, "Path parent", path)
+      raise "Path parent resolves to a junction: #{parent}" if junction?(parent_real)
+    elsif ::File.exists?(root)
+      ancestor = parent
+      until ::File.exists?(ancestor) || ::File.symlink?(ancestor) || ancestor == root
+        ancestor = Path.new(ancestor.dirname)
+      end
+      if ancestor_real = realpath?(ancestor)
+        ensure_within!(ancestor_real, root_real, "Path ancestor", path)
+        raise "Path ancestor resolves to a junction: #{ancestor}" if junction?(ancestor_real)
+      elsif ::File.symlink?(ancestor)
+        raise "Path ancestor is a broken symlink: #{ancestor}"
+      end
+    end
+    checked_target(path, root, root_real)
+  end
+
+  private def self.resolve_base(base : Path | String) : Path
+    root = Path.new(base).normalize
+    if real = realpath?(root)
+      real
+    else
+      raise "Path root is a broken symlink: #{root}" if ::File.symlink?(root)
+      root
+    end
+  end
+
+  private def self.junction_ancestor?(path : Path, root : Path | String) : Bool
+    {% if flag?(:windows) %}
+      relative = path.relative_to?(root)
+      return false unless relative
+      current = Path.new(root)
+      relative.parts.each do |part|
+        current = current / part
+        return true if junction?(current)
+      end
+    {% end %}
+    false
+  end
+
+  private def self.ensure_within!(resolved : Path, root_real : Path, label : String, path : Path) : Nil
+    relative = resolved.relative_to?(root_real)
+    if relative.nil? || relative.parts.first? == ".."
+      raise "#{label} escapes #{root_real}: #{path}"
+    end
+  end
+
+  # Joins a project-relative path (e.g. a configured patch file) under *base*.
+  # Absolute paths are rejected: re-rooting them under the project would be
+  # surprising, and allowing them would defeat the containment check.
+  def self.safe_relative(base : Path | String, path : Path | String) : Path
+    candidate = Path.new(path)
+    raise "Path must be relative: #{path}" if candidate.absolute?
+    safe_join(base, candidate)
+  end
+
+  private def self.checked_target(path : Path, root : Path | String, root_real : Path? = nil) : Path
+    # Resolve the base only when there is something to validate: cold installs
+    # mostly target package directories that do not exist yet.
+    return path if ::File.symlink?(path) || !::File.exists?(path)
+    # Symlink targets are intentional (file:/workspace links); a junction or
+    # other resolved directory must still stay inside the base.
+    raise "Path target is a junction: #{path}" if junction?(path)
+    root_real ||= resolve_base(root)
+    target_real = Path.new(::File.realpath(path))
+    relative = target_real.relative_to?(root_real)
+    if relative.nil? || relative.parts.first? == ".."
+      raise "Path target escapes #{root_real}: #{path}"
+    end
+    path
+  end
+
+  def self.regular_file?(path : Path | String) : Bool
+    ::File.info?(path).try(&.type.file?) || false
+  end
+
+  # The safe file name for a package `bin` entry. Windows accepts both
+  # slash styles; splitting only on `/` would leave a backslash traversal
+  # in the basename.
+  def self.bin_name(name : String) : String?
+    basename = name.split(/[\/\\]/).last?
+    return if basename.nil? || basename.empty? || basename == "." || basename == ".."
+    # A bare drive-relative name (C:tool) is not a file name on Windows.
+    return if basename.includes?(':') || windows_reserved?(basename)
+    basename
+  end
+
+  def self.safe_bin_path(root : Path | String, path : String) : Path
+    candidate = Path.new(path)
+    raise "Bin path must be relative: #{path}" if candidate.absolute?
+    target = safe_join(root, path)
+    if ::File.symlink?(target) || ::File.exists?(target)
+      root_real = Path.new(::File.realpath(root))
+      target_real = Path.new(::File.realpath(target))
+      raise "Bin root is a directory junction: #{root}" if junction?(root_real)
+      raise "Bin target is a directory junction: #{path}" if junction?(target_real)
+      relative = target_real.relative_to?(root_real)
+      if relative.nil? || relative.parts.first? == ".."
+        raise "Bin target escapes the package: #{path}"
+      end
+    end
+    target
+  end
+
+  def self.realpath_within!(path : Path | String, root : Path | String) : Path
+    raise "Path is a directory junction: #{path}" if junction?(path)
+    target = Path.new(::File.realpath(path))
+    raise "Path resolves to a directory junction: #{path}" if junction?(target)
+    base = Path.new(::File.realpath(root))
+    relative = target.relative_to?(base)
+    if relative.nil? || relative.parts.first? == ".."
+      raise "Path resolves outside #{base}: #{target}"
+    end
+    target
+  end
+
+  # Reads a project-owned configuration file only when it is a regular file;
+  # a FIFO/special file must not block an install.
+  def self.read_regular(path : Path | String) : String
+    raise "#{path} must be a regular file" unless regular_file?(path)
+    ::File.read(path)
+  end
+
+  # Writes *path* through a unique temporary file and an atomic rename.
+  # A crash mid-write leaves the previous file intact; concurrent writers
+  # produce one complete file (last writer wins) instead of interleaving.
+  def self.atomic_write(path : Path | String, content : String) : Nil
+    atomic_write(path) { |io| io << content }
+  end
+
+  def self.atomic_write(path : Path | String, & : IO ->) : Nil
+    target = Path.new(path)
+    dir = Path.new(target.dirname)
+    Utils::Directories.mkdir_p(dir)
+    mode = ::File.info?(target).try(&.permissions.to_i32) || 0o644
+    temp = dir / ".#{target.basename}.#{Process.pid}.#{Random::Secure.hex(6)}.tmp"
+    begin
+      ::File.open(temp, "w", perm: mode) do |file|
+        yield file
+        file.flush
+        file.fsync
+      end
+      ::File.rename(temp, target)
+      sync_directory(dir)
+    ensure
+      ::File.delete?(temp)
+    end
+  end
+
+  # Best effort: make the rename durable in the directory entry. Directory
+  # fsync is not supported everywhere (notably Windows), so an unsupported
+  # platform must not turn a successful write into a failed install.
+  private def self.sync_directory(dir : Path) : Nil
+    ::File.open(dir, "r") { |file| file.fsync }
+  rescue
+  end
+
   def self.with_flock(
     path : Path | String,
     *,
@@ -128,35 +363,17 @@ module Utils::File
         io << prefix
         io << '-'
       end
-
-      io << Time.local.to_s("%Y%m%d")
-      io << '-'
-
-      io << Process.pid
-      io << '-'
-
-      io << Random.rand(0x100000000).to_s(36)
-
+      io << Random::Secure.hex(8)
       io << suffix
     end
   end
 
   def self.linkeable_ancestor?(path : Path) : String?
-    linkeable_parent = nil
     tempfile_name = self.tempname
     path.each_parent do |parent|
-      link_source = parent / tempfile_name
-      link_dest = path / tempfile_name
-      ::File.touch(link_source)
-      ::File.link(link_source, link_dest)
-      linkeable_parent = parent
-      break
-    rescue
-      # ignore
-    ensure
-      ::File.delete?(link_dest) if link_dest
+      return parent.to_s if self.can_hardlink?(parent, path, tempfile_name: tempfile_name)
     end
-    linkeable_parent.try &.to_s
+    nil
   end
 
   def self.can_hardlink?(source : Path | String, dest : Path | String, *, tempfile_name : String? = nil) : Bool

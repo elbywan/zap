@@ -3,27 +3,27 @@
 module HTTP2
   class Frame
     enum Type : UInt8
-      DATA = 0x0
-      HEADERS = 0x1
-      PRIORITY = 0x2
-      RST_STREAM = 0x3
-      SETTINGS = 0x4
-      PUSH_PROMISE = 0x5
-      PING = 0x6
-      GOAWAY = 0x7
-      WINDOW_UPDATE = 0x8
-      CONTINUATION = 0x9
-      UNKNOWN = 0xFF
+      DATA          =  0x0
+      HEADERS       =  0x1
+      PRIORITY      =  0x2
+      RST_STREAM    =  0x3
+      SETTINGS      =  0x4
+      PUSH_PROMISE  =  0x5
+      PING          =  0x6
+      GOAWAY        =  0x7
+      WINDOW_UPDATE =  0x8
+      CONTINUATION  =  0x9
+      UNKNOWN       = 0xFF
     end
 
     # The flag bits (RFC 9113 section 6.2). ACK is the 0x1 bit on
     # SETTINGS and PING, which is END_STREAM on other frame types.
     module Flags
-      END_STREAM = 0x1_u8
-      ACK = 0x1_u8
-      END_HEADERS = 0x4_u8
-      PADDED = 0x8_u8
-      PRIORITY = 0x20_u8
+      END_STREAM  =  0x1_u8
+      ACK         =  0x1_u8
+      END_HEADERS =  0x4_u8
+      PADDED      =  0x8_u8
+      PRIORITY    = 0x20_u8
     end
 
     getter type : Type
@@ -44,6 +44,49 @@ module HTTP2
 
     def ack? : Bool
       flags & Flags::ACK != 0
+    end
+
+    def padded? : Bool
+      flags & Flags::PADDED != 0
+    end
+
+    def priority? : Bool
+      flags & Flags::PRIORITY != 0
+    end
+
+    # The HPACK block carried by a HEADERS frame, without its optional
+    # pad-length/padding or priority fields (RFC 9113 section 6.2).
+    def headers_payload : Bytes
+      payload = @payload || Bytes.empty
+      return payload unless padded? || priority?
+      offset = 0
+      if padded?
+        raise Error.new("padded HEADERS frame has no pad length") if payload.empty?
+        padding = payload[0].to_i32
+        offset = 1
+      else
+        padding = 0
+      end
+      if priority?
+        raise Error.new("priority HEADERS frame is too short") if payload.size < offset + 5
+        offset += 5
+      end
+      if padding > payload.size - offset
+        raise Error.new("invalid HEADERS padding")
+      end
+      payload[offset, payload.size - offset - padding]
+    end
+
+    # The application data carried by a DATA frame, without its optional
+    # padding (RFC 9113 section 6.1). Flow control still accounts for the
+    # full payload, including the pad length byte and padding.
+    def data_payload : Bytes
+      payload = @payload || Bytes.empty
+      return payload unless padded?
+      raise Error.new("padded DATA frame has no pad length") if payload.empty?
+      padding = payload[0].to_i32
+      raise Error.new("invalid DATA padding") if padding > payload.size - 1
+      payload[1, payload.size - 1 - padding]
     end
 
     def to_bytes : Bytes

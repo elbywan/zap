@@ -33,4 +33,29 @@ describe Utils::TarGzip do
       FileUtils.rm_rf(destination)
     end
   end
+
+  it "strips setuid/setgid mode bits from unpacked files" do
+    io = IO::Memory.new
+    Compress::Gzip::Writer.open(io) do |gzip|
+      tar = Crystar::Writer.new(gzip)
+      header = Crystar::Header.new(
+        name: "package/executable",
+        mode: 0o4755_i64,
+        size: 2_i64,
+        flag: Crystar::REG.ord.to_u8
+      )
+      tar.write_header(header)
+      tar.write("x\n".to_slice)
+      tar.close
+    end
+    io.rewind
+
+    destination = Path.new(Dir.tempdir, "zap-targzip-spec-#{Random::Secure.hex(4)}")
+    begin
+      Utils::TarGzip.unpack_to(io, destination)
+      File.info(destination / "executable").permissions.to_i32.should eq(0o755)
+    ensure
+      FileUtils.rm_rf(destination)
+    end
+  end
 end
