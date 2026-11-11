@@ -200,7 +200,12 @@ class Commands::Install::Linker::Isolated < Commands::Install::Linker::Base
       symlink(source, target)
 
       # Link binaries
-      link_binaries(dependency, package_path: target, target_node_modules: install_path)
+      link_binaries(
+        dependency,
+        package_path: target,
+        target_node_modules: install_path,
+        allow_outside: package.is_a?(Data::Package) && package.kind.link?
+      )
     end
 
     if package.is_a?(Data::Package)
@@ -253,12 +258,14 @@ class Commands::Install::Linker::Isolated < Commands::Install::Linker::Base
     prune_workspace_orphans(@hoisted_store, unlink_binaries: false)
   end
 
-  protected def link_binaries(package : Data::Package, *, package_path : Path, target_node_modules : Path)
+  protected def link_binaries(package : Data::Package, *, package_path : Path, target_node_modules : Path, allow_outside = false)
     if bin = package.bin
       return if bin.is_a?(String) && bin.empty?
       base_bin_path = target_node_modules / ".bin"
       Utils::Directories.mkdir_p(base_bin_path)
-      Utils::File.realpath_within!(base_bin_path, state.config.prefix) unless package.kind.link? || package.kind.workspace?
+      unless package.kind.link? || package.kind.workspace? || allow_outside
+        Utils::File.realpath_within!(base_bin_path, state.config.prefix)
+      end
       if bin.is_a?(Hash)
         bin.each do |name, path|
           bin_name = Utils::File.bin_name(name)

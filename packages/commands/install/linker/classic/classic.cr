@@ -216,7 +216,12 @@ class Commands::Install::Linker::Classic < Commands::Install::Linker::Base
           bin_folder_path = location.node_modules / ".bin"
         end
         Utils::Directories.mkdir_p(bin_folder_path)
-        Utils::File.realpath_within!(bin_folder_path, state.config.prefix) unless dependency.kind.link? || dependency.kind.workspace?
+        # A file: link's own tree lives outside the project by design; its
+        # descendants may write bins there, but everything else stays inside.
+        inside_linked_tree = ancestors.any? { |ancestor| ancestor.kind.link? }
+        unless dependency.kind.link? || dependency.kind.workspace? || inside_linked_tree
+          Utils::File.realpath_within!(bin_folder_path, state.config.prefix)
+        end
         if bin.is_a?(Hash)
           bin.each do |name, path|
             bin_name = Utils::File.bin_name(name)

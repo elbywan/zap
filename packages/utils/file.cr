@@ -99,7 +99,8 @@ module Utils::File
     paths.map(&.to_s).join(::Path::SEPARATORS[0])
   end
 
-  WINDOWS_RESERVED_NAMES = %w(CON PRN AUX NUL COM1 COM2 COM3 COM4 COM5 COM6 COM7 COM8 COM9 LPT1 LPT2 LPT3 LPT4 LPT5 LPT6 LPT7 LPT8 LPT9)
+  WINDOWS_RESERVED_NAMES  = %w(CON PRN AUX NUL COM1 COM2 COM3 COM4 COM5 COM6 COM7 COM8 COM9 LPT1 LPT2 LPT3 LPT4 LPT5 LPT6 LPT7 LPT8 LPT9)
+  WINDOWS_MOUNT_POINT_TAG = 0xA0000003_u32
 
   # Windows device names are not valid file names, even with an extension.
   def self.windows_reserved?(name : String) : Bool
@@ -118,6 +119,23 @@ module Utils::File
     nil
   end
 
+  # Crystal resolves symlinks but not directory junctions on Windows. A
+  # validated path must not silently treat a junction as a regular child, so
+  # detect it (a reparse directory that is not a symlink) and fail closed.
+  {% if flag?(:windows) %}
+    def self.junction?(path : Path | String) : Bool
+      return false if ::File.symlink?(path)
+      handle = LibC.FindFirstFileW(path.to_s.to_utf16.to_unsafe, out data)
+      return false if handle == LibC::INVALID_HANDLE_VALUE
+      LibC.FindClose(handle)
+      data.dwReserved0 == WINDOWS_MOUNT_POINT_TAG
+    end
+  {% else %}
+    def self.junction?(path : Path | String) : Bool
+      false
+    end
+  {% end %}
+
   # Joins untrusted path components under *base* and raises if the normalized
   # result escapes it. Package names, versions and patch paths are untrusted.
   def self.safe_join(base : Path | String, *parts : Path | String) : Path
@@ -133,16 +151,18 @@ module Utils::File
       end
     end
     raise "Cannot join an empty path component" if parts.any?(&.to_s.empty?)
-    if parts.any? { |part| windows_reserved?(part.to_s) }
-      raise "Path component is a Windows device name: #{parts.join(" / ")}"
-    end
     {% if flag?(:windows) %}
-      raise "Path component contains a drive separator: #{parts.join(" / ")}" if parts.any? { |part| part.to_s.includes?(':') }
+      if parts.any? { |part| part.to_s.split(/[\/\\]/).any? { |component| windows_reserved?(component) } }
+        raise "Path component is a Windows device name: #{parts.join(" / ")}"
+      end
+      if parts.any? { |part| part.to_s.includes?(':') }
+        raise "Path component contains a drive separator: #{parts.join(" / ")}"
+      end
     {% end %}
     root = Path.new(base).normalize
     path = parts.reduce(root) { |acc, part| acc / part }.normalize
     relative = path.relative_to?(root)
-    if relative.nil? || relative.parts.first? == ".."
+    if relative.nil? || relative.parts.first?.in?("..", ".")
       raise "Path escapes #{root}: #{path}"
     end
 
@@ -153,8 +173,10 @@ module Utils::File
     # The final component is allowed to be a symlink (file:/workspace links).
     parent = Path.new(path.dirname)
     root_real = resolve_base(root)
+    raise "Path ancestor is a junction under #{root}" if junction_ancestor?(parent, root)
     if parent_real = realpath?(parent)
       ensure_within!(parent_real, root_real, "Path parent", path)
+      raise "Path parent resolves to a junction: #{parent}" if junction?(parent_real)
     elsif ::File.exists?(root)
       ancestor = parent
       until ::File.exists?(ancestor) || ::File.symlink?(ancestor) || ancestor == root
@@ -162,6 +184,7 @@ module Utils::File
       end
       if ancestor_real = realpath?(ancestor)
         ensure_within!(ancestor_real, root_real, "Path ancestor", path)
+        raise "Path ancestor resolves to a junction: #{ancestor}" if junction?(ancestor_real)
       elsif ::File.symlink?(ancestor)
         raise "Path ancestor is a broken symlink: #{ancestor}"
       end
@@ -177,6 +200,19 @@ module Utils::File
       raise "Path root is a broken symlink: #{root}" if ::File.symlink?(root)
       root
     end
+  end
+
+  private def self.junction_ancestor?(path : Path, root : Path | String) : Bool
+    {% if flag?(:windows) %}
+      relative = path.relative_to?(root)
+      return false unless relative
+      current = Path.new(root)
+      relative.parts.each do |part|
+        current = current / part
+        return true if junction?(current)
+      end
+    {% end %}
+    false
   end
 
   private def self.ensure_within!(resolved : Path, root_real : Path, label : String, path : Path) : Nil
@@ -201,6 +237,7 @@ module Utils::File
     return path if ::File.symlink?(path) || !::File.exists?(path)
     # Symlink targets are intentional (file:/workspace links); a junction or
     # other resolved directory must still stay inside the base.
+    raise "Path target is a junction: #{path}" if junction?(path)
     root_real ||= resolve_base(root)
     target_real = Path.new(::File.realpath(path))
     relative = target_real.relative_to?(root_real)
@@ -232,6 +269,8 @@ module Utils::File
     if ::File.symlink?(target) || ::File.exists?(target)
       root_real = Path.new(::File.realpath(root))
       target_real = Path.new(::File.realpath(target))
+      raise "Bin root is a directory junction: #{root}" if junction?(root_real)
+      raise "Bin target is a directory junction: #{path}" if junction?(target_real)
       relative = target_real.relative_to?(root_real)
       if relative.nil? || relative.parts.first? == ".."
         raise "Bin target escapes the package: #{path}"
@@ -241,7 +280,9 @@ module Utils::File
   end
 
   def self.realpath_within!(path : Path | String, root : Path | String) : Path
+    raise "Path is a directory junction: #{path}" if junction?(path)
     target = Path.new(::File.realpath(path))
+    raise "Path resolves to a directory junction: #{path}" if junction?(target)
     base = Path.new(::File.realpath(root))
     relative = target.relative_to?(base)
     if relative.nil? || relative.parts.first? == ".."

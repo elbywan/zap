@@ -4,8 +4,9 @@
 
 - **Install path containment.** Package names, bin targets, patch paths,
   workspace globs and tarball cache paths are now joined under their owning
-  directory and rejected when they escape it. Windows device names, drive
-  separators and junctions are neutralized as well.
+  directory and rejected when they escape it. Configured patch paths must be
+  relative to the project. Windows device names, drive separators and
+  directory junctions are rejected as well.
 - **Atomic project writes and crash safety.** The lockfile, installed state,
   fingerprints, `package.json` edits, patch metadata, PnP runtime files and
   tarball caches are written through a temporary file and a rename (with a

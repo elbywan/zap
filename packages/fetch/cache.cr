@@ -184,14 +184,11 @@ class Fetch(T, Transport)
       end
 
       private def read_body(path : Path) : T?
-        io = ::File.open(path)
-        @serializer.deserialize(io, path)
+        ::File.open(path) { |io| @serializer.deserialize(io, path) }
       rescue ::File::NotFoundError
         # The body was removed between File.readable? and File.open:
         # a cache miss, not an install failure.
         nil
-      ensure
-        io.try &.close
       end
 
       def set(key_str : String, value : T, expiry : Time::Span? = nil, etag : String? = nil) : Nil

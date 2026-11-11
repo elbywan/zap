@@ -1,3 +1,4 @@
+require "utils/file"
 require "../install/install"
 
 module Commands::Rebuild
@@ -80,7 +81,7 @@ module Commands::Rebuild
 
   private def self.crawl_native_packages(root : String, &block : String ->)
     info = File.info?(root, follow_symlinks: false)
-    return if !info || info.symlink?
+    return if !info || info.symlink? || Utils::File.junction?(root)
 
     if File.exists?(File.join(root, "package.json"))
       yield root if File.exists?(::File.join(root, "binding.gyp"))

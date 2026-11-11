@@ -98,9 +98,11 @@ module Commands::Patch
     Commands::Install.with_project_lock(config) do
       patches_dir = Path.new(config.prefix) / "patches"
       raise "Patch directory must not be a symlink: #{patches_dir}" if File.symlink?(patches_dir)
+      raise "Patch directory must not be a junction: #{patches_dir}" if Utils::File.junction?(patches_dir)
       if File.exists?(patches_dir)
         root = Path.new(File.realpath(config.prefix))
         real = Path.new(File.realpath(patches_dir))
+        raise "Patch directory resolves to a junction: #{patches_dir}" if Utils::File.junction?(real)
         relative = real.relative_to?(root)
         raise "Patch directory escapes the project: #{patches_dir}" if relative.nil? || relative.parts.first? == ".."
       end

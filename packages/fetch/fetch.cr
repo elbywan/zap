@@ -1,4 +1,5 @@
 require "concurrency/dedupe_lock"
+require "uri"
 require "./cache"
 require "./timings"
 
@@ -36,7 +37,7 @@ class Fetch(T, Transport)
   def fetch_with_cache(*args, **kwargs, &transform_body : (String -> T)) : T
     return @fallback.not_nil!.fetch_with_cache(*args, **kwargs, &transform_body) if @transport.unavailable?
     url = args[0]
-    full_url = base_url + url
+    full_url = URI.parse(base_url).resolve(url).to_s
     headers = fetch_headers(args, kwargs)
 
     # Extract the body from the cache if possible

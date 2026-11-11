@@ -165,7 +165,7 @@ module Backend
         path = dir / name
         # Do not follow symlinks/junctions: file:/workspace: packages point
         # at their sources, which can be huge, cyclic or outside the project.
-        if File.directory?(path) && !File.symlink?(path)
+        if File.directory?(path) && !File.symlink?(path) && !Utils::File.junction?(path)
           walk(path, root, &block)
         elsif name == ".zap.metadata" && Utils::File.regular_file?(path)
           block.call(dir, Utils::File.read_regular(path))

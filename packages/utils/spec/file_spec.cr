@@ -13,6 +13,17 @@ describe Utils::File do
       Utils::File.safe_join("/tmp/node_modules", "pkg/../other").to_s.should eq("/tmp/node_modules/other")
     end
 
+    it "rejects a component that normalizes back to the base" do
+      dir = Path.new(Dir.tempdir, "zap-safe-join-dot-#{Random::Secure.hex(4)}")
+      begin
+        expect_raises(Exception, /escapes/) do
+          Utils::File.safe_join(dir / "missing" / "node_modules", "a/..")
+        end
+      ensure
+        FileUtils.rm_rf(dir)
+      end
+    end
+
     it "rejects a parent symlink that escapes the base" do
       dir = Path.new(Dir.tempdir, "zap-safe-join-#{Random::Secure.hex(4)}")
       base = dir / "node_modules"

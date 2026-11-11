@@ -88,7 +88,9 @@ class Workspaces
     root_real = Utils::File.realpath?(root) || root
     Utils::Glob.glob(patterns, exclude: ["node_modules", ".git"]) do |path|
       path = Path.new(path).normalize
+      raise "Workspace path is a directory junction: #{path}" if Utils::File.junction?(path)
       path_real = Utils::File.realpath?(path) || path
+      raise "Workspace path resolves to a directory junction: #{path}" if Utils::File.junction?(path_real)
       relative = path_real.relative_to?(root_real)
       if relative.nil? || relative.parts.first? == ".."
         raise "Workspace path escapes the project root: #{path}"

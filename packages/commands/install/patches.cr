@@ -18,8 +18,9 @@ module Commands::Install::Patches
   # platform-specific dependencies).
   def self.apply(dependency : Data::Package, install_folder : Path, *, state : Commands::Install::State) : String?
     # Symlinked packages (file: or workspace: dependencies) point at their
-    # source: patching them would modify the original files.
-    return if File.symlink?(install_folder)
+    # source: patching them would modify the original files. Junctions are
+    # rejected for the same reason.
+    return if File.symlink?(install_folder) || Utils::File.junction?(install_folder)
 
     patch_path = self.patch_path(dependency, state)
     return unless patch_path

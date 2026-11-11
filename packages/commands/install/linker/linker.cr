@@ -77,6 +77,7 @@ module Commands::Install::Linker
     private def prune_workspace_orphans(modules_directory : Path, *, unlink_binaries : Bool = true, root : Path? = nil)
       info = ::File.info?(modules_directory, follow_symlinks: false)
       return unless info.try(&.type.directory?)
+      return if Utils::File.junction?(modules_directory)
       root ||= Utils::File.realpath?(state.config.prefix) || return
       real = Utils::File.realpath?(modules_directory)
       return unless real
@@ -121,6 +122,7 @@ module Commands::Install::Linker
       # A symlink entry can be removed without touching its target, and its
       # target may be gone (a deleted workspace): do not require realpath to
       # succeed for it. Junctions are resolved conservatively below.
+      return false if Utils::File.junction?(package_path)
       info = ::File.info?(package_path, follow_symlinks: false)
       unless info.try(&.type.symlink?)
         real = Utils::File.realpath?(package_path)

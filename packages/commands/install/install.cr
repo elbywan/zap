@@ -303,7 +303,9 @@ module Commands::Install
   # approve-builds) use this for their pre-install writes so they do not
   # race a concurrent install.
   def self.with_project_lock(config : Core::Config, *, nested : Bool = false, &)
-    lock = open_project_lock(config)
+    # Use the effective store path so this lock matches Install.run's after
+    # check_if_store_is_linkeable relocates it for cross-mount projects.
+    lock = open_project_lock(config.check_if_store_is_linkeable)
     begin
       if nested
         with_project_lock_owner(config) { yield }
@@ -333,9 +335,11 @@ module Commands::Install
       paths << workspace_node_modules / ".store"
     end
     paths.each do |path|
+      raise "#{path} is a directory junction" if Utils::File.junction?(path)
       # A dangling link has no target to validate; the install will repair or
       # replace it instead of failing on a cryptic realpath error.
       target = Utils::File.realpath?(path) || next
+      raise "#{path} resolves to a directory junction" if Utils::File.junction?(target)
       relative = target.relative_to?(root)
       if relative.nil? || relative.parts.first? == ".."
         raise "#{path} resolves outside the project"

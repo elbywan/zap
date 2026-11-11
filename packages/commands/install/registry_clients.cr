@@ -90,6 +90,11 @@ class Commands::Install::RegistryClients
     end
   end
 
+  # The metadata path for a package below the registry's base path.
+  def self.metadata_path(base_url : URI, name : String) : String
+    "#{base_url.path.to_s.rstrip('/')}/#{name}"
+  end
+
   # Returns the client pool for the given registry url or creates a new one if it doesn't exist.
   def get_or_init_pool(url : String) : Pool
     @@client_pool_by_registry_lock.synchronize do

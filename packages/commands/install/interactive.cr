@@ -134,7 +134,7 @@ module Commands::Install
           base_url = URI.parse(scoped)
         end
       end
-      metadata_url = base_url.relativize("/#{name}").to_s
+      metadata_url = RegistryClients.metadata_path(base_url, name)
       manifest = state.registry_clients.get_or_init_pool(base_url.to_s)
         .fetch_with_cache(metadata_url, Shared::Constants::HEADERS) { |body| Manifest.new(body) }
       manifest.get_raw_metadata?(range).try { |raw| Data::Package.from_json(raw).version }
